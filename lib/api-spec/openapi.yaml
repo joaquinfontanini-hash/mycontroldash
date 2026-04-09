@@ -3,20 +3,40 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Dashboard Web Personal API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: tasks
+    description: Task management
+  - name: shortcuts
+    description: Quick access shortcuts
+  - name: fiscal
+    description: Fiscal monitor updates
+  - name: travel
+    description: Travel offers
+  - name: settings
+    description: App and widget settings
+  - name: news
+    description: News articles
+  - name: emails
+    description: Email summaries
+  - name: weather
+    description: Weather data
+  - name: users
+    description: User management
+  - name: dashboard
+    description: Dashboard summary
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +44,539 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Dashboard summary
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard overview summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  # Tasks
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List all tasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a new task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get a task by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskBody"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  # Shortcuts
+  /shortcuts:
+    get:
+      operationId: listShortcuts
+      tags: [shortcuts]
+      summary: List all shortcuts
+      responses:
+        "200":
+          description: List of shortcuts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Shortcut"
+    post:
+      operationId: createShortcut
+      tags: [shortcuts]
+      summary: Create a shortcut
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShortcutBody"
+      responses:
+        "201":
+          description: Created shortcut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shortcut"
+
+  /shortcuts/{id}:
+    patch:
+      operationId: updateShortcut
+      tags: [shortcuts]
+      summary: Update a shortcut
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateShortcutBody"
+      responses:
+        "200":
+          description: Updated shortcut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shortcut"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteShortcut
+      tags: [shortcuts]
+      summary: Delete a shortcut
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  # Fiscal Monitor
+  /fiscal:
+    get:
+      operationId: listFiscalUpdates
+      tags: [fiscal]
+      summary: List fiscal updates
+      parameters:
+        - name: jurisdiction
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: impact
+          in: query
+          schema:
+            type: string
+        - name: requiresAction
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of fiscal updates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FiscalUpdate"
+
+  /fiscal/metrics:
+    get:
+      operationId: getFiscalMetrics
+      tags: [fiscal]
+      summary: Get fiscal dashboard metrics
+      responses:
+        "200":
+          description: Fiscal metrics summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FiscalMetrics"
+
+  /fiscal/{id}:
+    get:
+      operationId: getFiscalUpdate
+      tags: [fiscal]
+      summary: Get fiscal update by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Fiscal update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FiscalUpdate"
+        "404":
+          description: Not found
+
+  /fiscal/{id}/save:
+    patch:
+      operationId: toggleFiscalSaved
+      tags: [fiscal]
+      summary: Toggle saved status of fiscal update
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated fiscal update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FiscalUpdate"
+        "404":
+          description: Not found
+
+  /fiscal/saved:
+    get:
+      operationId: listSavedFiscalUpdates
+      tags: [fiscal]
+      summary: List saved fiscal updates
+      responses:
+        "200":
+          description: Saved fiscal updates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FiscalUpdate"
+
+  # Travel Offers
+  /travel:
+    get:
+      operationId: listTravelOffers
+      tags: [travel]
+      summary: List travel offers
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+        - name: budgetMax
+          in: query
+          schema:
+            type: number
+        - name: durationMax
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of travel offers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TravelOffer"
+
+  /travel/{id}:
+    get:
+      operationId: getTravelOffer
+      tags: [travel]
+      summary: Get a travel offer by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Travel offer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TravelOffer"
+        "404":
+          description: Not found
+
+  # News
+  /news:
+    get:
+      operationId: listNews
+      tags: [news]
+      summary: List news articles
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of news articles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NewsArticle"
+
+  # Emails (mock)
+  /emails:
+    get:
+      operationId: listEmails
+      tags: [emails]
+      summary: List recent emails
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of emails
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmailItem"
+
+  /emails/stats:
+    get:
+      operationId: getEmailStats
+      tags: [emails]
+      summary: Get email stats for last 24h
+      responses:
+        "200":
+          description: Email statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailStats"
+
+  # Weather
+  /weather:
+    get:
+      operationId: getWeather
+      tags: [weather]
+      summary: Get weather forecast for Neuquen
+      responses:
+        "200":
+          description: Weather data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeatherDay"
+
+  # App Settings
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get app settings
+      responses:
+        "200":
+          description: App settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+    patch:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update app settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsBody"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+
+  # Users (admin)
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (admin only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppUser"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create user record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+
+  /users/me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "404":
+          description: Not found
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +587,432 @@ components:
       required:
         - status
 
+    DashboardSummary:
+      type: object
+      properties:
+        emailCount24h:
+          type: integer
+        pendingTasks:
+          type: integer
+        fiscalUpdatesCount:
+          type: integer
+        fiscalRequireAction:
+          type: integer
+        travelOffersCount:
+          type: integer
+        newsCount:
+          type: integer
+      required:
+        - emailCount24h
+        - pendingTasks
+        - fiscalUpdatesCount
+        - fiscalRequireAction
+        - travelOffersCount
+        - newsCount
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+        priority:
+          type: string
+        dueDate:
+          type: ["string", "null"]
+        userId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - title
+        - status
+        - priority
+        - createdAt
+        - updatedAt
+
+    CreateTaskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+        priority:
+          type: string
+        dueDate:
+          type: ["string", "null"]
+      required:
+        - title
+        - status
+        - priority
+
+    UpdateTaskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+        priority:
+          type: string
+        dueDate:
+          type: ["string", "null"]
+
+    Shortcut:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        url:
+          type: string
+        category:
+          type: ["string", "null"]
+        icon:
+          type: ["string", "null"]
+        userId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - url
+        - createdAt
+
+    CreateShortcutBody:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        category:
+          type: ["string", "null"]
+        icon:
+          type: ["string", "null"]
+      required:
+        - name
+        - url
+
+    UpdateShortcutBody:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        category:
+          type: ["string", "null"]
+        icon:
+          type: ["string", "null"]
+
+    FiscalUpdate:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        jurisdiction:
+          type: string
+        category:
+          type: string
+        organism:
+          type: string
+        date:
+          type: string
+        impact:
+          type: string
+        summary:
+          type: string
+        requiresAction:
+          type: boolean
+        isSaved:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - title
+        - jurisdiction
+        - category
+        - organism
+        - date
+        - impact
+        - summary
+        - requiresAction
+        - isSaved
+        - createdAt
+
+    FiscalMetrics:
+      type: object
+      properties:
+        total:
+          type: integer
+        highImpact:
+          type: integer
+        requiresAction:
+          type: integer
+        normative:
+          type: integer
+      required:
+        - total
+        - highImpact
+        - requiresAction
+        - normative
+
+    TravelOffer:
+      type: object
+      properties:
+        id:
+          type: integer
+        destination:
+          type: string
+        price:
+          type: number
+        currency:
+          type: string
+        provider:
+          type: string
+        offerType:
+          type: string
+        travelType:
+          type: string
+        duration:
+          type: integer
+        hotel:
+          type: ["string", "null"]
+        hotelCategory:
+          type: ["integer", "null"]
+        region:
+          type: string
+        link:
+          type: string
+        validUntil:
+          type: ["string", "null"]
+        isValid:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - destination
+        - price
+        - currency
+        - provider
+        - offerType
+        - travelType
+        - duration
+        - region
+        - link
+        - isValid
+        - createdAt
+
+    NewsArticle:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        source:
+          type: string
+        category:
+          type: string
+        date:
+          type: string
+        summary:
+          type: string
+        url:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+      required:
+        - id
+        - title
+        - source
+        - category
+        - date
+        - summary
+        - url
+
+    EmailItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        sender:
+          type: string
+        senderEmail:
+          type: string
+        subject:
+          type: string
+        preview:
+          type: string
+        date:
+          type: string
+        isRead:
+          type: boolean
+        category:
+          type: string
+      required:
+        - id
+        - sender
+        - senderEmail
+        - subject
+        - preview
+        - date
+        - isRead
+        - category
+
+    EmailStats:
+      type: object
+      properties:
+        total24h:
+          type: integer
+        unread:
+          type: integer
+        important:
+          type: integer
+      required:
+        - total24h
+        - unread
+        - important
+
+    WeatherDay:
+      type: object
+      properties:
+        date:
+          type: string
+        dayName:
+          type: string
+        condition:
+          type: string
+        conditionIcon:
+          type: string
+        tempMin:
+          type: number
+        tempMax:
+          type: number
+        rainProbability:
+          type: integer
+        windSpeed:
+          type: number
+        windDirection:
+          type: string
+      required:
+        - date
+        - dayName
+        - condition
+        - conditionIcon
+        - tempMin
+        - tempMax
+        - rainProbability
+        - windSpeed
+        - windDirection
+
+    AppSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+        dashboardName:
+          type: string
+        headerText:
+          type: string
+        theme:
+          type: string
+        weatherLocation:
+          type: string
+        newsCount:
+          type: integer
+        updatedAt:
+          type: string
+      required:
+        - id
+        - dashboardName
+        - headerText
+        - theme
+        - weatherLocation
+        - newsCount
+        - updatedAt
+
+    UpdateSettingsBody:
+      type: object
+      properties:
+        dashboardName:
+          type: string
+        headerText:
+          type: string
+        theme:
+          type: string
+        weatherLocation:
+          type: string
+        newsCount:
+          type: integer
+
+    AppUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        email:
+          type: string
+        name:
+          type: ["string", "null"]
+        role:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - clerkId
+        - email
+        - role
+        - isActive
+        - createdAt
+
+    CreateUserBody:
+      type: object
+      properties:
+        clerkId:
+          type: string
+        email:
+          type: string
+        name:
+          type: ["string", "null"]
+        role:
+          type: string
+      required:
+        - clerkId
+        - email
+        - role
+
+    UpdateUserBody:
+      type: object
+      properties:
+        role:
+          type: string
+        isActive:
+          type: boolean
+        name:
+          type: ["string", "null"]
