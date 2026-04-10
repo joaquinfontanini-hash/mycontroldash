@@ -14,6 +14,9 @@ import syncRouter from "./sync";
 import currencyRouter from "./currency";
 import dueDatesRouter from "./due-dates";
 import externalSourcesRouter from "./external-sources";
+import clientsRouter from "./clients";
+import annualCalendarsRouter from "./annual-calendars";
+import supplierBatchesRouter from "./supplier-batches";
 
 const router: IRouter = Router();
 
@@ -32,5 +35,8 @@ router.use(syncRouter);
 router.use(currencyRouter);
 router.use(dueDatesRouter);
 router.use(externalSourcesRouter);
+router.use(clientsRouter);
+router.use(annualCalendarsRouter);
+router.use(supplierBatchesRouter);
 
 export default router;

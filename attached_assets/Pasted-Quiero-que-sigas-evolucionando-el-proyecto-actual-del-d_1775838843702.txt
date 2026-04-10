@@ -1,0 +1,401 @@
+Quiero que sigas evolucionando el proyecto actual del dashboard web y monitor fiscal, trabajando sobre la base existente, sin romper nada de lo ya implementado.
+
+IMPORTANTE
+- No rehagas la app desde cero
+- Trabajá sobre la arquitectura actual
+- Mantené la lógica modular existente
+- Todo debe quedar integrado, auditado, validado y orientado al usuario
+- Priorizá robustez, UX, calidad de datos, persistencia y mantenibilidad
+- Evitá duplicados, layouts rotos, truncados visuales y lógica inconsistente
+
+OBJETIVO DE ESTA ETAPA
+Quiero mejorar:
+1. Monitor Fiscal con filtro por medios igual al de Noticias
+2. Vencimientos con periodicidad
+3. Vencimientos AFIP automáticos por cliente, CUIT e impuesto según tabla anual
+4. Carga de PDF anual de vencimientos para usarlo como base
+5. Carga periódica de reporte de proveedores para generar vencimiento agrupado semanal
+6. Todo con lógica senior full stack, pero usable y clara para el usuario
+
+==================================================
+1) MONITOR FISCAL: FILTRO POR MEDIOS IGUAL AL DE NOTICIAS
+==================================================
+
+Quiero que el Monitor Fiscal tenga el mismo esquema de filtro por medios que el módulo Noticias.
+
+REQUISITOS
+- Debajo de los filtros principales del Monitor Fiscal, agregar una fila de filtros por medios/fuentes
+- Debe usar la misma lógica visual y técnica que Noticias
+- Permitir seleccionar uno o varios medios
+- Agregar opción “Todos los medios”
+- Estados visuales:
+  - activo
+  - inactivo
+  - hover
+- Debe filtrar correctamente por fuente/origen de la novedad fiscal
+- Fuentes a contemplar:
+  - Ámbito
+  - La Nación
+  - iProfesional
+  - Tributum.news
+  - Contadores en Red
+  - Ignacio Online
+  - El Cronista
+  - Boletín Oficial
+  - AFIP / ARCA
+  - ERREPAR
+  - fuentes provinciales si aplica
+- Si no hay logo real, usar avatar visual elegante y consistente
+- Debe ser responsive
+- Debe integrarse con los demás filtros ya existentes:
+  - jurisdicción
+  - organismo
+  - categoría
+  - impacto
+  - requiere acción
+  - fecha
+  - texto libre
+- Permitir limpiar filtros
+- Mostrar resumen visual del filtrado aplicado
+
+IMPORTANTE
+- Reutilizá componentes y lógica del módulo Noticias si conviene
+- No dupliques código innecesariamente
+
+==================================================
+2) VENCIMIENTOS CON PERIODICIDAD
+==================================================
+
+Quiero mejorar el módulo de vencimientos para que permita vencimientos periódicos.
+
+REQUISITOS
+- Al crear o editar un vencimiento, permitir elegir:
+  - sin periodicidad
+  - semanal
+  - mensual
+  - anual
+  - personalizado
+- Ejemplos:
+  - todos los 20 de cada mes
+  - todos los lunes
+  - todos los días 5 y 20
+  - primer lunes del mes
+- Permitir definir:
+  - fecha de inicio
+  - fecha de fin opcional
+  - frecuencia
+  - regla de repetición
+- Generar automáticamente las próximas ocurrencias
+- Mostrar próximas ocurrencias en la UI
+- Persistir regla y ocurrencias
+- Permitir editar solo una ocurrencia o toda la serie si hace falta
+- Validar reglas para evitar inconsistencias
+- Mantener diseño simple para el usuario
+
+==================================================
+3) CLIENTES + CUIT + IMPUESTOS ASIGNADOS
+==================================================
+
+Necesito incorporar una lógica de clientes para calcular vencimientos impositivos automáticos.
+
+REQUISITOS
+- Crear módulo o submódulo de “Clientes”
+- Cada cliente debe poder tener:
+  - razón social o nombre
+  - CUIT
+  - estado activo/inactivo
+  - observaciones
+  - impuestos/obligaciones asignadas
+- Permitir asignar a cada cliente uno o varios de estos conceptos:
+  - IVA
+  - Ganancias
+  - IIBB Neuquén
+  - IIBB Río Negro
+  - Monotributo
+  - Facturación
+  - Autónomo
+  - Empleada doméstica
+  - Cargas sociales
+  - Sindicato
+- Validar CUIT
+- Tomar automáticamente el último número del CUIT para determinar vencimientos cuando aplique
+- Relacionar cliente + impuesto + regla de vencimiento
+- Poder editar, agregar y eliminar clientes
+- Poder filtrar clientes
+- Poder ver próximos vencimientos por cliente
+
+==================================================
+4) PDF ANUAL DE VENCIMIENTOS: CARGA Y PARSEO
+==================================================
+
+Voy a usar un PDF anual con la tabla de vencimientos para alimentar el sistema.
+
+YA HAY UN PDF SUBIDO Y DEBÉS USARLO COMO BASE DE ESTA ETAPA.
+
+REQUISITOS
+- Crear una funcionalidad para registrar/cargar PDFs de vencimientos anuales
+- En esta etapa, usar el PDF ya cargado como ejemplo base
+- El parser debe poder extraer la lógica de meses y días de vencimiento
+- Tener en cuenta que en la tabla:
+  - los meses están como filas
+  - varios impuestos vencen según rangos o terminación de CUIT
+  - la tabla principal incluye conceptos como Autónomos, Monotributo, Empleadores (SICOSS), Ganancias sociedades DDJJ, anticipos, Convenio Multilateral, IVA DDJJ, internos, retenciones/percepciones y personal de casas particulares
+  - además hay cuadros complementarios para Ganancias Personas Humanas, Bienes Personales, Acciones/Participaciones y otros casos
+- El sistema debe guardar esta información en estructura normalizada
+- Debe quedar preparado para subir nuevos PDFs en el futuro
+- Debe permitir seleccionar cuál calendario anual está activo
+- Registrar:
+  - nombre del archivo
+  - año
+  - fecha de carga
+  - estado de parseo
+  - errores de parseo si existieran
+
+IMPORTANTE
+- No dependas de texto fijo frágil
+- Diseñá una capa de importación/parsing mantenible
+- Si hay ambigüedad en algún bloque, registrarlo para revisión manual
+- El parser debe contemplar que el PDF tiene vencimientos por mes y por terminación de CUIT, por ejemplo en la tabla 2026 aparecen filas mensuales y columnas por rangos CUIT 0-3, 4-6, 7-9 y otros cortes según tributo
+
+==================================================
+5) MOTOR DE VENCIMIENTOS AFIP POR CUIT
+==================================================
+
+Quiero una lógica que use:
+- cliente
+- último número del CUIT
+- impuesto asignado
+- calendario anual cargado desde PDF
+
+para generar vencimientos automáticos.
+
+REQUISITOS
+- Crear un motor de cálculo de vencimientos
+- Dado un cliente y sus impuestos asignados:
+  - detectar el último número del CUIT
+  - buscar la tabla correspondiente del calendario activo
+  - ubicar el impuesto correcto
+  - obtener el día de vencimiento del mes correspondiente
+  - generar el vencimiento
+- Debe soportar al menos en esta etapa:
+  - IVA
+  - Monotributo
+  - Autónomos
+  - Empleadores / SICOSS / Cargas sociales si corresponde
+  - Ganancias cuando la tabla o cuadro lo permita
+- Para impuestos no resueltos automáticamente por la tabla principal, dejar estructura preparada para resolución manual o reglas específicas
+- Debe permitir revisión manual por admin
+- Debe registrar de dónde salió el cálculo:
+  - calendario
+  - mes
+  - impuesto
+  - terminación de CUIT
+  - regla aplicada
+- Debe ser auditable
+- Debe evitar crear duplicados
+- Debe regenerar vencimientos al cambiar:
+  - calendario activo
+  - CUIT del cliente
+  - impuestos asignados
+
+==================================================
+6) REGLAS ESPECIALES Y TABLAS COMPLEMENTARIAS
+==================================================
+
+El sistema debe contemplar que el PDF anual no solo tiene una tabla principal, sino también cuadros complementarios y notas.
+
+REQUISITOS
+- Preparar el modelo para soportar:
+  - tablas principales
+  - tablas complementarias
+  - reglas especiales
+  - notas/manual overrides
+- Las notas del PDF pueden implicar tratamientos especiales o meses particulares
+- Guardar notas y observaciones asociadas a reglas
+- Si una regla no puede automatizarse totalmente, permitir resolución manual asistida
+
+==================================================
+7) REPORTE DE PROVEEDORES: CARGA Y AGRUPACIÓN SEMANAL
+==================================================
+
+Voy a subir una composición de saldo de proveedores que se paga todos los lunes.
+
+REGLA DE NEGOCIO
+- Todos los lunes pagamos lo vencido hasta el sábado anterior
+- Cada vez que se suba el reporte, el sistema debe agrupar lo vencido de la semana anterior y generar un vencimiento agrupado para el lunes de pago
+- Al hacer click en el vencimiento agrupado, debo poder ver el detalle de lo que vence esa semana
+
+REQUISITOS
+- Crear una funcionalidad visible y cómoda para subir este reporte
+- Necesito un lugar claro en la UI, con botón o link de carga
+- El sistema debe permitir subir el archivo manualmente
+- Preparar compatibilidad al menos con Excel o formato tabular común
+- Registrar cada archivo cargado con:
+  - nombre
+  - fecha de carga
+  - usuario que lo cargó
+  - estado de procesamiento
+- Procesar el contenido y detectar vencimientos de proveedores
+- Generar automáticamente:
+  - un vencimiento agrupado semanal con fecha lunes
+  - total agrupado
+  - cantidad de comprobantes/documentos si aplica
+- Al abrir el vencimiento agrupado:
+  - mostrar detalle
+  - proveedor
+  - fecha de vencimiento original
+  - importe
+  - documento u observación si existe
+- Evitar duplicar la misma semana si se sube dos veces el mismo reporte
+- Si el archivo cambia, permitir recalcular o versionar
+
+IMPORTANTE
+- Diseñá la funcionalidad para que sea robusta y extensible
+- Si todavía no está completa la lectura de Excel en nube, al menos resolver la carga manual local desde la app
+- Quiero un “link o botón de subir archivo” bien visible y usable
+
+==================================================
+8) WIDGET DE VENCIMIENTOS: MEJORA FUNCIONAL
+==================================================
+
+Ampliar el widget vertical de vencimientos del dashboard inicial.
+
+REQUISITOS
+- Mantenerlo del lado derecho en vertical
+- Mostrar:
+  - próximos vencimientos
+  - alertas por color suave
+  - cantidad crítica
+  - agrupados por categoría
+- Agregar tabs o filtros rápidos por:
+  - impuestos
+  - cargas sociales
+  - proveedores
+  - hematólogos
+  - alquileres
+  - otras categorías
+- Permitir ver:
+  - vencimientos manuales
+  - vencimientos periódicos
+  - vencimientos calculados por cliente/CUIT
+  - vencimientos agrupados de proveedores
+- Permitir click para abrir detalle
+- Excelente legibilidad y sin truncados
+
+==================================================
+9) MODELOS Y BASE DE DATOS
+==================================================
+
+Actualizar base de datos para soportar todo esto de forma prolija.
+Agregar o ajustar modelos/tablas para:
+
+- clients
+- client_tax_assignments
+- annual_due_calendars
+- annual_due_calendar_rules
+- annual_due_calendar_notes
+- due_date_rules
+- due_dates
+- due_date_occurrences
+- uploaded_due_files
+- supplier_payment_batches
+- supplier_payment_batch_items
+- import_jobs
+- import_logs
+
+No dupliques estructuras innecesariamente.
+Diseñá un esquema simple, claro y mantenible.
+
+==================================================
+10) PANEL ADMIN Y AUDITORÍA
+==================================================
+
+Expandir panel admin para permitir:
+- ver calendarios anuales cargados
+- activar/desactivar calendario vigente
+- ver estado del parseo
+- ver clientes
+- ver impuestos asignados por cliente
+- forzar regeneración de vencimientos
+- ver archivos subidos
+- ver lotes de proveedores procesados
+- ver logs de importación
+- ver errores y advertencias
+
+Todo debe ser auditable.
+Registrar:
+- quién cargó qué
+- cuándo
+- qué se procesó
+- qué falló
+- qué reglas se aplicaron
+
+==================================================
+11) UX Y VALIDACIONES
+==================================================
+
+REQUISITOS OBLIGATORIOS
+- Validar CUIT
+- Validar impuestos asignados
+- Validar periodicidad
+- Validar archivos subidos
+- Manejar errores de parseo elegantemente
+- Mostrar estados de carga y progreso
+- Empty states útiles
+- No romper responsive
+- No generar visualizaciones truncas
+- Confirmaciones claras antes de recalcular o sobrescribir
+- Mantener diseño premium, moderno y claro
+
+==================================================
+12) ORDEN DE IMPLEMENTACIÓN
+==================================================
+
+Hacelo en este orden:
+1. reutilizar filtro por medios en Monitor Fiscal
+2. agregar periodicidad a vencimientos
+3. crear módulo de clientes y asignación de impuestos
+4. crear estructura de importación de PDF anual
+5. parsear el PDF ya cargado y mapear reglas base
+6. crear motor de cálculo por CUIT e impuesto
+7. crear carga de reporte de proveedores
+8. generar agrupación semanal al lunes
+9. integrar todo al widget de vencimientos
+10. expandir panel admin
+11. ejecutar auditoría final
+12. dejar todo estable y ejecutable
+
+==================================================
+13) AUDITORÍA FINAL OBLIGATORIA
+==================================================
+
+Al terminar:
+- revisá errores de compilación
+- revisá imports rotos
+- verificá que Monitor Fiscal filtre por medios
+- verificá que periodicidad funcione
+- verificá validación de CUIT
+- verificá que el PDF anual quede registrado y parseado
+- verificá que el motor use último número de CUIT cuando corresponda
+- verificá que no se dupliquen vencimientos
+- verificá que la carga de proveedores genere lote agrupado semanal
+- verificá que al clickear el agrupado se vea el detalle
+- verificá persistencia
+- verificá responsive
+- verificá que no haya componentes truncos
+
+==================================================
+14) ENTREGABLE
+==================================================
+
+Quiero que me entregues:
+- código actualizado
+- migraciones o cambios de base de datos
+- endpoints nuevos
+- componentes nuevos
+- servicios de importación y cálculo
+- resumen de lo implementado
+- qué quedó 100% funcional
+- qué quedó preparado pero pendiente
+- checklist de pruebas
+- instrucciones exactas para probarlo en Replit

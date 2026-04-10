@@ -27,6 +27,9 @@ interface DueDate {
   description?: string | null;
   priority: "low" | "medium" | "high" | "critical";
   status: "pending" | "done" | "cancelled"; alertEnabled: boolean;
+  recurrenceType?: string;
+  source?: string;
+  clientId?: number | null;
 }
 
 // ── Widget config ─────────────────────────────────────────────────────────────
@@ -385,14 +388,31 @@ const URGENCY_CFG = {
   done:    { dot: "bg-muted-foreground/20", label: "Listo",   text: "text-muted-foreground" },
 };
 
+const VENC_TABS = [
+  { key: "all", label: "Todos" },
+  { key: "impuestos", label: "Impuestos" },
+  { key: "cargas_sociales", label: "Cargas" },
+  { key: "proveedores", label: "Proveedores" },
+  { key: "alquileres", label: "Alquileres" },
+];
+
 function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLoading: boolean }) {
-  const pending = useMemo(() =>
-    dueDates
-      .filter(d => d.status === "pending")
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-      .slice(0, 9),
-    [dueDates]
-  );
+  const [activeTab, setActiveTab] = useState("all");
+
+  const pending = useMemo(() => {
+    let items = dueDates.filter(d => d.status === "pending");
+    if (activeTab !== "all") {
+      items = items.filter(d => {
+        const cat = d.category?.toLowerCase() ?? "";
+        if (activeTab === "impuestos") return cat === "impuestos";
+        if (activeTab === "cargas_sociales") return cat === "cargas sociales" || cat === "cargas_sociales";
+        if (activeTab === "proveedores") return cat === "proveedores";
+        if (activeTab === "alquileres") return cat === "alquileres";
+        return true;
+      });
+    }
+    return items.sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 10);
+  }, [dueDates, activeTab]);
 
   const critical = useMemo(() =>
     dueDates.filter(d => {
@@ -405,7 +425,7 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
 
   return (
     <Card className="border-border/60">
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <CalendarClock className="h-4 w-4 text-primary shrink-0" />
@@ -422,6 +442,32 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
             </Link>
           </Button>
         </div>
+        {/* Category tabs */}
+        <div className="flex gap-1 overflow-x-auto scrollbar-none mt-1.5 pb-0.5">
+          {VENC_TABS.map(tab => {
+            const count = tab.key === "all"
+              ? dueDates.filter(d => d.status === "pending").length
+              : dueDates.filter(d => d.status === "pending" && (d.category?.toLowerCase() === tab.key || d.category?.toLowerCase() === tab.key.replace("_", " "))).length;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium transition-all border
+                  ${activeTab === tab.key
+                    ? "bg-primary/10 text-primary border-primary/25"
+                    : "text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground"
+                  }`}
+              >
+                {tab.label}
+                {count > 0 && (
+                  <span className={`inline-flex items-center justify-center min-w-3 h-3 px-0.5 rounded-full text-[8px] font-bold ${activeTab === tab.key ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </CardHeader>
       <CardContent className="pt-0 pb-3 px-4">
         {isLoading ? (
@@ -429,46 +475,54 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
           </div>
         ) : pending.length === 0 ? (
-          <div className="py-6 text-center">
-            <CheckCircle2 className="h-8 w-8 text-emerald-500/40 mx-auto mb-2" />
-            <p className="text-xs text-muted-foreground">Sin vencimientos pendientes</p>
-            <Button asChild variant="link" size="sm" className="text-[10px] h-6 mt-1">
-              <Link href="/dashboard/due-dates">Agregar vencimiento</Link>
-            </Button>
+          <div className="py-5 text-center">
+            <CheckCircle2 className="h-7 w-7 text-emerald-500/40 mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground">
+              {activeTab === "all" ? "Sin vencimientos pendientes" : `Sin vencimientos en "${VENC_TABS.find(t => t.key === activeTab)?.label}"`}
+            </p>
+            {activeTab === "all" && (
+              <Button asChild variant="link" size="sm" className="text-[10px] h-6 mt-1">
+                <Link href="/dashboard/due-dates">Agregar vencimiento</Link>
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {pending.map(item => {
               const urgency = getUrgency(item.dueDate, item.status);
               const cfg = URGENCY_CFG[urgency as keyof typeof URGENCY_CFG] ?? URGENCY_CFG.future;
               const date = new Date(item.dueDate + "T00:00:00").toLocaleDateString("es-AR", {
                 day: "numeric", month: "short",
               });
+              const isRecurring = item.recurrenceType && item.recurrenceType !== "none";
               return (
                 <Link key={item.id} href="/dashboard/due-dates" className="block">
                   <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-muted/40 transition-colors group">
-                    <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />
+                    <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium leading-snug truncate group-hover:text-primary transition-colors">
+                      <p className="text-xs font-medium leading-snug line-clamp-2 group-hover:text-primary transition-colors">
                         {item.title}
                       </p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className={`text-[9px] font-semibold uppercase tracking-wide ${cfg.text}`}>{cfg.label}</span>
                         <span className="text-[9px] text-muted-foreground/60">·</span>
                         <span className="text-[9px] text-muted-foreground">{date}</span>
+                        {isRecurring && <span className="text-[9px] text-primary/60">↻</span>}
+                        {item.source === "afip-engine" && <span className="text-[8px] font-semibold text-blue-500/70 uppercase">AFIP</span>}
+                        {item.source === "supplier-batch" && <span className="text-[8px] font-semibold text-amber-500/70 uppercase">Prov.</span>}
                       </div>
                     </div>
-                    {item.priority === "critical" && (
-                      <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />
+                    {(item.priority === "critical" || item.priority === "high") && urgency === "overdue" && (
+                      <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-1" />
                     )}
                   </div>
                 </Link>
               );
             })}
-            {dueDates.filter(d => d.status === "pending").length > 9 && (
-              <Button asChild variant="ghost" size="sm" className="w-full h-7 text-[10px] text-muted-foreground mt-1">
+            {dueDates.filter(d => d.status === "pending").length > 10 && (
+              <Button asChild variant="ghost" size="sm" className="w-full h-7 text-[10px] text-muted-foreground mt-0.5">
                 <Link href="/dashboard/due-dates">
-                  +{dueDates.filter(d => d.status === "pending").length - 9} más
+                  +{dueDates.filter(d => d.status === "pending").length - 10} más
                 </Link>
               </Button>
             )}

@@ -25,6 +25,7 @@ type FiscalItem = {
   jurisdiction: string;
   category: string;
   organism: string;
+  source?: string | null;
   date: string;
   impact: string;
   summary: string;
@@ -39,6 +40,26 @@ type FiscalItem = {
   isHidden?: boolean;
   createdAt: string;
 };
+
+interface FiscalSourceEntry {
+  name: string;
+  shortName: string;
+  initials: string;
+  avatarBg: string;
+  avatarText: string;
+  ringColor: string;
+}
+
+const FISCAL_SOURCE_CATALOG: FiscalSourceEntry[] = [
+  { name: "Ámbito Financiero", shortName: "Ámbito", initials: "ÁM", avatarBg: "bg-orange-500/15", avatarText: "text-orange-600 dark:text-orange-400", ringColor: "ring-orange-500/50" },
+  { name: "Tributum", shortName: "Tributum", initials: "TR", avatarBg: "bg-cyan-500/15", avatarText: "text-cyan-600 dark:text-cyan-400", ringColor: "ring-cyan-500/50" },
+  { name: "Contadores en Red", shortName: "Cont. Red", initials: "CR", avatarBg: "bg-lime-500/15", avatarText: "text-lime-600 dark:text-lime-500", ringColor: "ring-lime-500/50" },
+  { name: "Rentas Neuquén", shortName: "Rentas NQN", initials: "RN", avatarBg: "bg-violet-500/15", avatarText: "text-violet-600 dark:text-violet-400", ringColor: "ring-violet-500/50" },
+  { name: "AFIP", shortName: "AFIP", initials: "AF", avatarBg: "bg-blue-500/15", avatarText: "text-blue-600 dark:text-blue-400", ringColor: "ring-blue-500/50" },
+  { name: "Boletín Oficial", shortName: "Boletin Of.", initials: "BO", avatarBg: "bg-emerald-500/15", avatarText: "text-emerald-600 dark:text-emerald-400", ringColor: "ring-emerald-500/50" },
+  { name: "El Cronista", shortName: "Cronista", initials: "EC", avatarBg: "bg-rose-500/15", avatarText: "text-rose-600 dark:text-rose-400", ringColor: "ring-rose-500/50" },
+  { name: "iProfesional", shortName: "iProf.", initials: "IP", avatarBg: "bg-amber-500/15", avatarText: "text-amber-600 dark:text-amber-400", ringColor: "ring-amber-500/50" },
+];
 
 function qualityColor(score: number) {
   if (score >= 80) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
@@ -85,10 +106,15 @@ export default function FiscalPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [dateRange, setDateRange] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [activeSources, setActiveSources] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const [qualityMin, setQualityMin] = useState(40);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+
+  const toggleSource = (name: string) => {
+    setActiveSources(prev => prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]);
+  };
 
   const { data: updates, isLoading: updatesLoading, error } = useListFiscalUpdates({
     impact: quickFilter === "high" ? "high" : undefined,
@@ -148,8 +174,12 @@ export default function FiscalPage() {
       );
     }
 
+    if (activeSources.length > 0) {
+      items = items.filter(u => u.source != null && activeSources.includes(u.source));
+    }
+
     return items;
-  }, [updates, quickFilter, categoryFilter, dateRange, searchQuery]);
+  }, [updates, quickFilter, categoryFilter, dateRange, searchQuery, activeSources, qualityMin]);
 
   const categories = useMemo(() => {
     const cats = [...new Set(((updates ?? []) as FiscalItem[]).map(u => u.category).filter(Boolean))];
@@ -158,13 +188,14 @@ export default function FiscalPage() {
 
   const isLoading = updatesLoading || metricsLoading;
 
-  const hasActiveFilters = categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "" || qualityMin > 40;
+  const hasActiveFilters = categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "" || qualityMin > 40 || activeSources.length > 0;
 
   const clearFilters = () => {
     setCategoryFilter("all");
     setDateRange("all");
     setSearchQuery("");
     setQualityMin(40);
+    setActiveSources([]);
   };
 
   if (isLoading) {
@@ -286,6 +317,67 @@ export default function FiscalPage() {
               </span>
             )}
           </button>
+        </div>
+
+        {/* Fuentes / Medios filter row */}
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">Fuentes</span>
+              {activeSources.length > 0 && (
+                <>
+                  <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
+                    {activeSources.length}
+                  </span>
+                  <button
+                    onClick={() => setActiveSources([])}
+                    className="text-[10px] text-primary/70 hover:text-primary underline underline-offset-2 transition-colors"
+                  >
+                    limpiar
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="relative">
+              <div className="flex gap-2 overflow-x-auto scrollbar-none pb-0.5">
+                {FISCAL_SOURCE_CATALOG.map(entry => {
+                  const active = activeSources.includes(entry.name);
+                  return (
+                    <button
+                      key={entry.name}
+                      onClick={() => toggleSource(entry.name)}
+                      title={entry.name}
+                      className={`
+                        shrink-0 flex flex-col items-center gap-1 w-[68px] pt-2 pb-1.5 px-1 rounded-xl
+                        border transition-all duration-150 group
+                        ${active
+                          ? "border-primary/40 bg-primary/5 shadow-sm"
+                          : "border-transparent hover:border-border/60 hover:bg-muted/30"
+                        }
+                      `}
+                    >
+                      <div className={`
+                        h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0
+                        transition-all duration-150
+                        ${entry.avatarBg} ${entry.avatarText}
+                        ${active ? `ring-2 ${entry.ringColor}` : "group-hover:ring-1 group-hover:ring-border/60"}
+                      `}>
+                        {entry.initials}
+                      </div>
+                      <span className={`
+                        text-[9px] font-medium leading-tight text-center w-full px-0.5 line-clamp-2
+                        transition-colors duration-150
+                        ${active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground/80"}
+                      `}>
+                        {entry.shortName}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-card/80 to-transparent" />
+            </div>
+          </div>
         </div>
 
         {showFilters && (

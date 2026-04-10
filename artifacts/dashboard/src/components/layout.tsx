@@ -20,6 +20,8 @@ import {
   Moon,
   Sun,
   Menu,
+  Users,
+  Truck,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/fiscal", label: "Monitor Fiscal", icon: Briefcase },
   { href: "/dashboard/travel", label: "Viajes", icon: Plane },
   { href: "/dashboard/due-dates", label: "Vencimientos", icon: CalendarClock },
+  { href: "/dashboard/clients", label: "Clientes", icon: Users },
+  { href: "/dashboard/supplier-batches", label: "Proveedores", icon: Truck },
 ];
 
 function NavLink({ href, label, icon: Icon, location, onClick }: {

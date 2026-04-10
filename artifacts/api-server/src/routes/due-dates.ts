@@ -76,6 +76,9 @@ router.post("/due-dates", async (req, res): Promise<void> => {
     status: data.status ?? "pending",
     alertEnabled: data.alertEnabled ?? true,
     userId: data.userId ?? null,
+    recurrenceType: data.recurrenceType ?? "none",
+    recurrenceRule: data.recurrenceRule ?? null,
+    recurrenceEndDate: data.recurrenceEndDate ?? null,
   }).returning();
   res.status(201).json(item);
 });
@@ -94,6 +97,9 @@ router.put("/due-dates/:id", async (req, res): Promise<void> => {
   if (data.priority !== undefined) updateData["priority"] = data.priority;
   if (data.status !== undefined) updateData["status"] = data.status;
   if (data.alertEnabled !== undefined) updateData["alertEnabled"] = data.alertEnabled;
+  if (data.recurrenceType !== undefined) updateData["recurrenceType"] = data.recurrenceType;
+  if (data.recurrenceRule !== undefined) updateData["recurrenceRule"] = data.recurrenceRule ?? null;
+  if (data.recurrenceEndDate !== undefined) updateData["recurrenceEndDate"] = data.recurrenceEndDate ?? null;
 
   const [updated] = await db.update(dueDatesTable).set(updateData).where(eq(dueDatesTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }

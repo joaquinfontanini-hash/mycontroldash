@@ -21,6 +21,8 @@ import WeatherPage from "@/pages/dashboard/weather";
 import FiscalPage from "@/pages/dashboard/fiscal";
 import TravelPage from "@/pages/dashboard/travel";
 import DueDatesPage from "@/pages/dashboard/due-dates";
+import ClientsPage from "@/pages/dashboard/clients";
+import SupplierBatchesPage from "@/pages/dashboard/supplier-batches";
 import AdminPage from "@/pages/admin";
 import SettingsPage from "@/pages/settings";
 
@@ -100,6 +102,8 @@ function ClerkProviderWithRoutes() {
             <Route path="/dashboard/fiscal" component={() => <ProtectedRoute component={() => <DashboardLayout><FiscalPage /></DashboardLayout>} />} />
             <Route path="/dashboard/travel" component={() => <ProtectedRoute component={() => <DashboardLayout><TravelPage /></DashboardLayout>} />} />
             <Route path="/dashboard/due-dates" component={() => <ProtectedRoute component={() => <DashboardLayout><DueDatesPage /></DashboardLayout>} />} />
+            <Route path="/dashboard/clients" component={() => <ProtectedRoute component={() => <DashboardLayout><ClientsPage /></DashboardLayout>} />} />
+            <Route path="/dashboard/supplier-batches" component={() => <ProtectedRoute component={() => <DashboardLayout><SupplierBatchesPage /></DashboardLayout>} />} />
             <Route path="/admin" component={() => <ProtectedRoute component={() => <DashboardLayout><AdminPage /></DashboardLayout>} />} />
             <Route path="/settings" component={() => <ProtectedRoute component={() => <DashboardLayout><SettingsPage /></DashboardLayout>} />} />
             

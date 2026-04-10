@@ -8,6 +8,7 @@ export const fiscalUpdatesTable = pgTable("fiscal_updates", {
   jurisdiction: text("jurisdiction").notNull(),
   category: text("category").notNull(),
   organism: text("organism").notNull(),
+  source: text("source"),
   date: text("date").notNull(),
   impact: text("impact").notNull().default("medium"),
   summary: text("summary").notNull(),

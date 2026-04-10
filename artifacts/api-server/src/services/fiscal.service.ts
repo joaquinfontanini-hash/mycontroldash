@@ -162,6 +162,7 @@ export async function refreshFiscalSources(): Promise<number> {
             jurisdiction: source.jurisdiction,
             category,
             organism: source.organism,
+            source: source.name,
             date: new Date(item.pubDate).toISOString().split("T")[0] ?? new Date().toISOString().split("T")[0],
             impact,
             summary: item.summary.slice(0, 1000) || item.title,

@@ -23,6 +23,13 @@ interface DueDate {
   priority: "low" | "medium" | "high" | "critical";
   status: "pending" | "done" | "cancelled";
   alertEnabled: boolean;
+  recurrenceType?: string;
+  recurrenceRule?: string | null;
+  recurrenceEndDate?: string | null;
+  isRecurrenceParent?: boolean;
+  parentId?: number | null;
+  source?: string;
+  clientId?: number | null;
   createdAt: string;
 }
 
@@ -163,6 +170,9 @@ interface DueDateForm {
   priority: DueDate["priority"];
   status: DueDate["status"];
   alertEnabled: boolean;
+  recurrenceType: string;
+  recurrenceRule: string;
+  recurrenceEndDate: string;
 }
 
 const EMPTY_FORM: DueDateForm = {
@@ -173,7 +183,18 @@ const EMPTY_FORM: DueDateForm = {
   priority: "medium",
   status: "pending",
   alertEnabled: true,
+  recurrenceType: "none",
+  recurrenceRule: "",
+  recurrenceEndDate: "",
 };
+
+const RECURRENCE_TYPES = [
+  { key: "none", label: "Sin periodicidad" },
+  { key: "weekly", label: "Semanal" },
+  { key: "monthly", label: "Mensual" },
+  { key: "yearly", label: "Anual" },
+  { key: "custom", label: "Personalizado" },
+];
 
 export default function DueDatesPage() {
   const qc = useQueryClient();
@@ -274,6 +295,9 @@ export default function DueDatesPage() {
       priority: item.priority,
       status: item.status,
       alertEnabled: item.alertEnabled,
+      recurrenceType: item.recurrenceType ?? "none",
+      recurrenceRule: item.recurrenceRule ?? "",
+      recurrenceEndDate: item.recurrenceEndDate ?? "",
     });
     setDialogOpen(true);
   };
@@ -529,6 +553,58 @@ export default function DueDatesPage() {
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               />
+            </div>
+
+            {/* Recurrence section */}
+            <div className="space-y-2 pt-1 border-t border-border/40">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Periodicidad</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {RECURRENCE_TYPES.map(rt => (
+                  <button
+                    key={rt.key}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, recurrenceType: rt.key }))}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-150
+                      ${form.recurrenceType === rt.key
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground"
+                      }`}
+                  >
+                    {rt.label}
+                  </button>
+                ))}
+              </div>
+              {form.recurrenceType !== "none" && (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  {form.recurrenceType === "custom" && (
+                    <div className="col-span-2 space-y-1">
+                      <p className="text-[10px] text-muted-foreground">Descripción de la regla (ej: "los días 5 y 20 de cada mes")</p>
+                      <Input
+                        placeholder="Ej: días 5 y 20 de cada mes"
+                        value={form.recurrenceRule}
+                        onChange={e => setForm(f => ({ ...f, recurrenceRule: e.target.value }))}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  )}
+                  {form.recurrenceType !== "custom" && (
+                    <div className="col-span-2 text-[11px] text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+                      {form.recurrenceType === "weekly" && "Se repetirá cada semana el mismo día."}
+                      {form.recurrenceType === "monthly" && "Se repetirá todos los meses el mismo día."}
+                      {form.recurrenceType === "yearly" && "Se repetirá una vez al año en la misma fecha."}
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Fecha fin (opcional)</p>
+                    <Input
+                      type="date"
+                      value={form.recurrenceEndDate}
+                      onChange={e => setForm(f => ({ ...f, recurrenceEndDate: e.target.value }))}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

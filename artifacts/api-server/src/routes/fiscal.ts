@@ -73,6 +73,11 @@ router.get("/fiscal", async (req, res): Promise<void> => {
     // Quality threshold
     items = items.filter(f => (f.qualityScore ?? 70) >= qualityMin);
 
+    const rawSources = req.query.sources;
+    const activeSources = rawSources
+      ? (Array.isArray(rawSources) ? rawSources : [rawSources]) as string[]
+      : [];
+
     if (query.success) {
       const { jurisdiction, category, impact, requiresAction, search } = query.data;
       if (jurisdiction) items = items.filter(f => f.jurisdiction === jurisdiction);
@@ -88,6 +93,10 @@ router.get("/fiscal", async (req, res): Promise<void> => {
           f.organism.toLowerCase().includes(s)
         );
       }
+    }
+
+    if (activeSources.length > 0) {
+      items = items.filter(f => f.source != null && activeSources.includes(f.source));
     }
 
     res.json(items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
