@@ -6,6 +6,46 @@ import {
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { getAuth } from "@clerk/express";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+
+const UPLOAD_DIR = path.join(process.cwd(), "uploads", "tax-calendars");
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+  filename: (_req, file, cb) => {
+    const ts = Date.now();
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext).replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
+    cb(null, `${ts}_${base}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [".pdf", ".xlsx", ".xls", ".csv"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error("Solo se aceptan archivos PDF, Excel o CSV"));
+  },
+});
+
+function detectYear(filename: string): number | null {
+  const m = filename.match(/20\d{2}/);
+  return m ? parseInt(m[0]) : null;
+}
+
+function detectFileType(filename: string): string {
+  const ext = path.extname(filename).toLowerCase();
+  if (ext === ".pdf") return "pdf";
+  if ([".xlsx", ".xls"].includes(ext)) return "excel";
+  if (ext === ".csv") return "csv";
+  return "other";
+}
 
 const router: IRouter = Router();
 
@@ -150,5 +190,70 @@ router.post("/uploaded-due-files", async (req, res): Promise<void> => {
     res.status(500).json({ error: "Error al registrar archivo" });
   }
 });
+
+router.delete("/uploaded-due-files/:id", async (req, res): Promise<void> => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+    const [record] = await db.select().from(uploadedDueFilesTable).where(eq(uploadedDueFilesTable.id, id));
+    if (!record) { res.status(404).json({ error: "Archivo no encontrado" }); return; }
+    if (record.filePath) {
+      try { fs.unlinkSync(record.filePath); } catch (_) {}
+    }
+    await db.delete(uploadedDueFilesTable).where(eq(uploadedDueFilesTable.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "File delete error");
+    res.status(500).json({ error: "Error al eliminar archivo" });
+  }
+});
+
+router.post(
+  "/tax-calendars/upload",
+  upload.single("file"),
+  async (req, res): Promise<void> => {
+    try {
+      const userId = getAuth(req)?.userId;
+      const file = req.file;
+      if (!file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
+
+      const detectedYear = detectYear(file.originalname) ?? (req.body.year ? parseInt(req.body.year) : null);
+      const fileType = detectFileType(file.originalname);
+      const calendarName = req.body.name || `Calendario ${detectedYear ?? "sin año"} — ${file.originalname}`;
+
+      const [calendar] = await db.insert(annualDueCalendarsTable).values({
+        name: calendarName,
+        year: detectedYear ?? new Date().getFullYear(),
+        status: "draft",
+        parseStatus: "pending",
+        uploadedFile: file.path,
+        userId: userId ?? null,
+      }).returning();
+
+      const [fileRecord] = await db.insert(uploadedDueFilesTable).values({
+        fileName: file.originalname,
+        fileType,
+        filePath: file.path,
+        fileSize: file.size,
+        year: detectedYear,
+        status: "pending",
+        parseStatus: "pending",
+        calendarId: calendar.id,
+        userId: userId ?? null,
+      }).returning();
+
+      logger.info({ calendarId: calendar.id, fileId: fileRecord.id, year: detectedYear }, "Tax calendar uploaded");
+
+      res.status(201).json({
+        calendar,
+        file: fileRecord,
+        message: "Archivo subido correctamente. Pendiente de procesamiento manual.",
+      });
+    } catch (err) {
+      logger.error({ err }, "Tax calendar upload error");
+      res.status(500).json({ error: "Error al subir el archivo" });
+    }
+  }
+);
 
 export default router;

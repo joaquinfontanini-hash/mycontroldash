@@ -1,0 +1,71 @@
+Necesito que corrijas esto puntual en el proyecto actual.
+
+PROBLEMA
+La app quedó preparada para trabajar con la tabla/calendario anual de vencimientos impositivos, pero no me generaste una interfaz visible y usable para subir el archivo y vincularlo al sistema.
+
+OBJETIVO
+Quiero un flujo real, claro y funcional para cargar manualmente el archivo de vencimientos impositivos desde la app.
+
+REQUISITOS
+1. Crear una sección visible dentro del panel administrador o ajustes llamada:
+   - "Calendarios impositivos"
+   o
+   - "Carga de vencimientos fiscales"
+
+2. Dentro de esa sección, agregar:
+   - botón visible: "Subir calendario anual"
+   - área drag and drop
+   - opción de seleccionar archivo desde la computadora
+   - aceptar PDF inicialmente
+   - dejar preparada la estructura para Excel en el futuro
+
+3. Al subir el archivo, el sistema debe:
+   - guardar el archivo
+   - registrar nombre, fecha de carga, usuario que lo subió, año detectado si es posible y estado de procesamiento
+   - mostrar si fue procesado correctamente o si requiere revisión manual
+   - permitir marcar ese calendario como activo
+
+4. Debe haber una vista/listado de archivos cargados con:
+   - nombre del archivo
+   - año
+   - fecha de carga
+   - estado
+   - activo/inactivo
+   - acciones:
+     - ver detalle
+     - reprocesar
+     - activar
+     - eliminar
+
+5. Debe integrarse con el motor de vencimientos para clientes, de forma que:
+   - si existe un calendario activo, se use para calcular vencimientos por CUIT e impuesto
+   - si no existe calendario activo, se muestre advertencia clara
+
+6. Crear también un endpoint backend real para la carga del archivo, por ejemplo:
+   - POST /api/tax-calendars/upload
+   y los endpoints que hagan falta para:
+   - listar calendarios
+   - activar calendario
+   - ver estado de parseo
+   - eliminar calendario
+
+7. Muy importante:
+   - no quiero solo el backend
+   - no quiero solo la estructura
+   - quiero la pantalla visible, navegable y usable desde la app
+
+8. Agregar mensajes claros:
+   - "No hay calendarios cargados"
+   - "Calendario procesado correctamente"
+   - "Calendario cargado, pendiente de revisión"
+   - "Este calendario está activo"
+
+9. Revisar responsive y diseño
+   - que se vea moderno
+   - prolijo
+   - consistente con el resto del dashboard
+
+10. Al finalizar:
+   - dejame el flujo funcionando
+   - indicame exactamente en qué menú entro para subir el PDF
+   - confirmame qué botón tengo que tocar

@@ -13,6 +13,7 @@ import {
   Briefcase,
   Plane,
   CalendarClock,
+  CalendarDays,
   Settings,
   Shield,
   Search,
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/due-dates", label: "Vencimientos", icon: CalendarClock },
   { href: "/dashboard/clients", label: "Clientes", icon: Users },
   { href: "/dashboard/supplier-batches", label: "Proveedores", icon: Truck },
+  { href: "/dashboard/tax-calendars", label: "Calendarios", icon: CalendarDays },
 ];
 
 function NavLink({ href, label, icon: Icon, location, onClick }: {

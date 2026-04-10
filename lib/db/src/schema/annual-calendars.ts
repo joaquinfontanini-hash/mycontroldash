@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, integer, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -42,6 +42,8 @@ export const uploadedDueFilesTable = pgTable("uploaded_due_files", {
   id: serial("id").primaryKey(),
   fileName: text("file_name").notNull(),
   fileType: text("file_type").notNull().default("pdf"),
+  filePath: text("file_path"),
+  fileSize: bigint("file_size", { mode: "number" }),
   year: integer("year"),
   status: text("status").notNull().default("pending"),
   parseStatus: text("parse_status").notNull().default("pending"),

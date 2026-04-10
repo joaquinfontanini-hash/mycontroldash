@@ -23,6 +23,7 @@ import TravelPage from "@/pages/dashboard/travel";
 import DueDatesPage from "@/pages/dashboard/due-dates";
 import ClientsPage from "@/pages/dashboard/clients";
 import SupplierBatchesPage from "@/pages/dashboard/supplier-batches";
+import TaxCalendarsPage from "@/pages/dashboard/tax-calendars";
 import AdminPage from "@/pages/admin";
 import SettingsPage from "@/pages/settings";
 
@@ -104,6 +105,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/dashboard/due-dates" component={() => <ProtectedRoute component={() => <DashboardLayout><DueDatesPage /></DashboardLayout>} />} />
             <Route path="/dashboard/clients" component={() => <ProtectedRoute component={() => <DashboardLayout><ClientsPage /></DashboardLayout>} />} />
             <Route path="/dashboard/supplier-batches" component={() => <ProtectedRoute component={() => <DashboardLayout><SupplierBatchesPage /></DashboardLayout>} />} />
+            <Route path="/dashboard/tax-calendars" component={() => <ProtectedRoute component={() => <DashboardLayout><TaxCalendarsPage /></DashboardLayout>} />} />
             <Route path="/admin" component={() => <ProtectedRoute component={() => <DashboardLayout><AdminPage /></DashboardLayout>} />} />
             <Route path="/settings" component={() => <ProtectedRoute component={() => <DashboardLayout><SettingsPage /></DashboardLayout>} />} />
             
