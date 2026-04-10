@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Briefcase, AlertTriangle, Bookmark, BookmarkCheck, RefreshCw,
-  Search, X, SlidersHorizontal, ShieldCheck, Info,
+  Search, X, SlidersHorizontal, ShieldCheck, Info, LayoutGrid, List,
+  ExternalLink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,7 @@ export default function FiscalPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const [qualityMin, setQualityMin] = useState(40);
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
   const { data: updates, isLoading: updatesLoading, error } = useListFiscalUpdates({
     impact: quickFilter === "high" ? "high" : undefined,
@@ -202,10 +204,26 @@ export default function FiscalPage() {
             )}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing} className="shrink-0">
-          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Actualizando..." : "Actualizar"}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setViewMode("cards")}
+              className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors ${viewMode === "cards" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-2.5 py-1.5 text-xs flex items-center gap-1 transition-colors border-l ${viewMode === "table" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <List className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Actualizando..." : "Actualizar"}
+          </Button>
+        </div>
       </div>
 
       {metrics && (
@@ -349,30 +367,106 @@ export default function FiscalPage() {
         )}
       </div>
 
-      <div className="space-y-3">
-        {displayed.length === 0 ? (
-          <Empty className="border-2 border-dashed py-16">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Briefcase />
-              </EmptyMedia>
-              <EmptyTitle>Sin actualizaciones</EmptyTitle>
-              <EmptyDescription>
-                {hasActiveFilters
-                  ? "No hay resultados para los filtros aplicados."
-                  : "No hay novedades fiscales para este criterio."}
-              </EmptyDescription>
-            </EmptyHeader>
-            {hasActiveFilters && (
-              <EmptyContent>
-                <Button variant="outline" size="sm" onClick={clearFilters}>
-                  <X className="h-3.5 w-3.5 mr-1.5" /> Limpiar filtros
-                </Button>
-              </EmptyContent>
-            )}
-          </Empty>
-        ) : (
-          displayed.map(update => {
+      {displayed.length === 0 ? (
+        <Empty className="border-2 border-dashed py-16">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Briefcase />
+            </EmptyMedia>
+            <EmptyTitle>Sin actualizaciones</EmptyTitle>
+            <EmptyDescription>
+              {hasActiveFilters
+                ? "No hay resultados para los filtros aplicados."
+                : "No hay novedades fiscales para este criterio."}
+            </EmptyDescription>
+          </EmptyHeader>
+          {hasActiveFilters && (
+            <EmptyContent>
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                <X className="h-3.5 w-3.5 mr-1.5" /> Limpiar filtros
+              </Button>
+            </EmptyContent>
+          )}
+        </Empty>
+      ) : viewMode === "table" ? (
+        <div className="rounded-xl border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/60">
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">Fecha</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">Organismo</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider hidden sm:table-cell">Categoría</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">Título</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider hidden md:table-cell">Impacto</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider hidden lg:table-cell">Calidad</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {displayed.map(update => {
+                  const score = update.qualityScore ?? 70;
+                  return (
+                    <tr key={update.id} className={`hover:bg-muted/30 transition-colors ${update.requiresAction ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(update.date).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-medium">{update.organism}</span>
+                        {update.needsReview && (
+                          <AlertTriangle className="h-3 w-3 text-amber-500 inline ml-1.5" />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        <Badge variant="outline" className="text-xs capitalize">{update.category}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium leading-snug line-clamp-1 max-w-xs">{update.title}</p>
+                        {update.requiresAction && (
+                          <span className="text-[10px] text-orange-600 dark:text-orange-400">Acción requerida</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${IMPACT_COLORS[update.impact as keyof typeof IMPACT_COLORS] ?? ""}`}>
+                          {IMPACT_LABELS[update.impact as keyof typeof IMPACT_LABELS] ?? update.impact}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${qualityColor(score)}`}>
+                          <ShieldCheck className="h-2.5 w-2.5" />
+                          {score}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 justify-end">
+                          {update.sourceUrl && (
+                            <a
+                              href={update.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleToggleSave(update.id)}
+                            className={`p-1.5 rounded hover:bg-muted transition-colors ${update.isSaved ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                          >
+                            {update.isSaved ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {displayed.map(update => {
             const score = update.qualityScore ?? 70;
             const issues = parseIssues(update.qualityIssues);
             return (
@@ -463,9 +557,9 @@ export default function FiscalPage() {
                 </CardContent>
               </Card>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
 
       {displayed.length > 0 && (
         <p className="text-xs text-muted-foreground text-center pt-2">

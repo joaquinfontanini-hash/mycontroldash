@@ -3,12 +3,12 @@ import {
   useListTasks, useCreateTask, useUpdateTask, useDeleteTask, getListTasksQueryKey,
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   CheckSquare, Plus, Clock, Trash2, MoreHorizontal, AlertCircle, Star,
+  ChevronRight, ChevronLeft, CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -21,39 +21,64 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
-} from "@/components/ui/empty";
+import { Badge } from "@/components/ui/badge";
 
-const PRIORITY_LABELS = { high: "Alta", medium: "Media", low: "Baja" };
-const STATUS_LABELS = { pending: "Pendiente", "in-progress": "En progreso", done: "Completada" };
-
-const STATUS_BADGE = {
-  pending: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
-  "in-progress": "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
-  done: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800",
-};
-
-const PRIORITY_BADGE = {
+const PRIORITY_LABELS: Record<string, string> = { high: "Alta", medium: "Media", low: "Baja" };
+const PRIORITY_BADGE: Record<string, string> = {
   high: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
   medium: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
-  low: "bg-muted text-muted-foreground border-muted",
+  low: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
 };
 
-interface FormErrors {
-  title?: string;
-}
+const COLUMNS = [
+  {
+    key: "pending",
+    label: "Pendiente",
+    color: "border-t-amber-400",
+    headerBg: "bg-amber-50 dark:bg-amber-950/30",
+    headerText: "text-amber-700 dark:text-amber-400",
+    countBg: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-400",
+  },
+  {
+    key: "in-progress",
+    label: "En progreso",
+    color: "border-t-blue-400",
+    headerBg: "bg-blue-50 dark:bg-blue-950/30",
+    headerText: "text-blue-700 dark:text-blue-400",
+    countBg: "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-400",
+  },
+  {
+    key: "done",
+    label: "Terminado",
+    color: "border-t-emerald-400",
+    headerBg: "bg-emerald-50 dark:bg-emerald-950/30",
+    headerText: "text-emerald-700 dark:text-emerald-400",
+    countBg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-400",
+  },
+] as const;
+
+type ColumnKey = typeof COLUMNS[number]["key"];
+
+interface FormErrors { title?: string }
 
 function validateForm(form: { title: string }): FormErrors {
   const errors: FormErrors = {};
-  if (!form.title.trim()) {
-    errors.title = "El título es obligatorio.";
-  } else if (form.title.trim().length < 3) {
-    errors.title = "El título debe tener al menos 3 caracteres.";
-  } else if (form.title.trim().length > 200) {
-    errors.title = "El título no puede superar 200 caracteres.";
-  }
+  if (!form.title.trim()) errors.title = "El título es obligatorio.";
+  else if (form.title.trim().length < 3) errors.title = "Al menos 3 caracteres.";
+  else if (form.title.trim().length > 200) errors.title = "Máximo 200 caracteres.";
   return errors;
+}
+
+function getNextStatus(current: ColumnKey): ColumnKey | null {
+  const keys: ColumnKey[] = ["pending", "in-progress", "done"];
+  const idx = keys.indexOf(current);
+  return idx < keys.length - 1 ? keys[idx + 1] : null;
+}
+
+function getPrevStatus(current: ColumnKey): ColumnKey | null {
+  const keys: ColumnKey[] = ["pending", "in-progress", "done"];
+  const idx = keys.indexOf(current);
+  return idx > 0 ? keys[idx - 1] : null;
 }
 
 export default function TasksPage() {
@@ -66,7 +91,9 @@ export default function TasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", priority: "medium", dueDate: "" });
   const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [defaultColumn, setDefaultColumn] = useState<ColumnKey>("pending");
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
 
@@ -74,7 +101,6 @@ export default function TasksPage() {
     const errors = validateForm(form);
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-
     createTask.mutate(
       {
         data: {
@@ -82,7 +108,7 @@ export default function TasksPage() {
           description: form.description.trim() || undefined,
           priority: form.priority as "high" | "medium" | "low",
           dueDate: form.dueDate || undefined,
-          status: "pending",
+          status: defaultColumn,
         },
       },
       {
@@ -96,9 +122,9 @@ export default function TasksPage() {
     );
   };
 
-  const handleStatus = (id: number, status: string) => {
+  const handleMove = (id: number, newStatus: ColumnKey) => {
     updateTask.mutate(
-      { id, data: { status: status as "pending" | "in-progress" | "done" } },
+      { id, data: { status: newStatus } },
       { onSuccess: invalidate },
     );
   };
@@ -115,6 +141,11 @@ export default function TasksPage() {
     }
   };
 
+  const openCreate = (col: ColumnKey) => {
+    setDefaultColumn(col);
+    setCreateOpen(true);
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -122,8 +153,8 @@ export default function TasksPage() {
           <Skeleton className="h-9 w-36" />
           <Skeleton className="h-9 w-28" />
         </div>
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        <div className="grid grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-64 rounded-xl" />)}
         </div>
       </div>
     );
@@ -139,14 +170,28 @@ export default function TasksPage() {
   }
 
   const allTasks = tasks ?? [];
-  const filtered = statusFilter === "all" ? allTasks : allTasks.filter(t => t.status === statusFilter);
 
+  let filtered = allTasks;
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
+  }
+  if (priorityFilter !== "all") {
+    filtered = filtered.filter(t => t.priority === priorityFilter);
+  }
+
+  const byColumn = (col: ColumnKey) => filtered.filter(t => t.status === col);
   const pending = allTasks.filter(t => t.status === "pending").length;
   const inProgress = allTasks.filter(t => t.status === "in-progress").length;
   const done = allTasks.filter(t => t.status === "done").length;
 
+  const isOverdue = (dueDate: string | null | undefined) => {
+    if (!dueDate) return false;
+    return new Date(dueDate) < new Date();
+  };
+
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Tareas</h1>
@@ -154,141 +199,172 @@ export default function TasksPage() {
             {pending} pendiente{pending !== 1 ? "s" : ""} · {inProgress} en progreso · {done} completada{done !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="shrink-0">
+        <Button onClick={() => openCreate("pending")} className="shrink-0">
           <Plus className="mr-2 h-4 w-4" />
           Nueva Tarea
         </Button>
       </div>
 
-      {allTasks.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {[
-            { key: "all", label: "Todas" },
-            { key: "pending", label: "Pendientes" },
-            { key: "in-progress", label: "En progreso" },
-            { key: "done", label: "Completadas" },
-          ].map(f => (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-150 border
-                ${statusFilter === f.key
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                  : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
-                }`}
-            >
-              {f.label}
-            </button>
-          ))}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-48 max-w-sm">
+          <Input
+            placeholder="Buscar tareas..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-8 text-sm pl-3 pr-3"
+          />
         </div>
-      )}
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+          <SelectTrigger className="h-8 w-36 text-sm">
+            <SelectValue placeholder="Prioridad" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las prioridades</SelectItem>
+            <SelectItem value="high">Alta</SelectItem>
+            <SelectItem value="medium">Media</SelectItem>
+            <SelectItem value="low">Baja</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-      {filtered.length === 0 ? (
-        <Empty className="border-2 border-dashed py-16">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <CheckSquare />
-            </EmptyMedia>
-            <EmptyTitle>
-              {allTasks.length === 0 ? "Sin tareas todavía" : "Sin resultados"}
-            </EmptyTitle>
-            <EmptyDescription>
-              {allTasks.length === 0
-                ? "Creá tu primera tarea para organizarte mejor."
-                : "No hay tareas para el filtro seleccionado."}
-            </EmptyDescription>
-          </EmptyHeader>
-          {allTasks.length === 0 && (
-            <EmptyContent>
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Crear primera tarea
-              </Button>
-            </EmptyContent>
-          )}
-        </Empty>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map(task => (
-            <Card
-              key={task.id}
-              className={`card-hover ${task.status === "done" ? "opacity-60" : ""} ${task.priority === "high" && task.status !== "done" ? "border-l-4 border-l-red-500" : ""}`}
-            >
-              <CardHeader className="p-4">
-                <div className="flex items-start gap-3">
-                  <button
-                    onClick={() => handleStatus(task.id, task.status === "done" ? "pending" : "done")}
-                    className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
-                      ${task.status === "done"
-                        ? "bg-green-500 border-green-500 text-white"
-                        : "border-muted-foreground hover:border-primary"
-                      }`}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {COLUMNS.map(col => {
+          const colTasks = byColumn(col.key);
+          return (
+            <div key={col.key} className={`rounded-xl border-t-4 ${col.color} bg-muted/30 dark:bg-muted/10 flex flex-col min-h-[400px]`}>
+              <div className={`px-4 py-3 ${col.headerBg} rounded-t-lg flex items-center justify-between`}>
+                <span className={`font-semibold text-sm ${col.headerText}`}>{col.label}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${col.countBg}`}>
+                    {colTasks.length}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => openCreate(col.key)}
                   >
-                    {task.status === "done" && <CheckSquare className="h-3 w-3" />}
-                  </button>
-
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-medium text-sm ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>
-                      {task.title}
-                    </p>
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${STATUS_BADGE[task.status as keyof typeof STATUS_BADGE] ?? ""}`}>
-                        {STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] ?? task.status}
-                      </span>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${PRIORITY_BADGE[task.priority as keyof typeof PRIORITY_BADGE] ?? ""}`}>
-                        {task.priority === "high" && <Star className="h-2.5 w-2.5 mr-1 fill-current" />}
-                        {PRIORITY_LABELS[task.priority as keyof typeof PRIORITY_LABELS] ?? task.priority}
-                      </span>
-                      {task.dueDate && (
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {new Date(task.dueDate).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleStatus(task.id, "pending")}>
-                        Marcar Pendiente
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleStatus(task.id, "in-progress")}>
-                        Marcar En Progreso
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleStatus(task.id, "done")}>
-                        Marcar Completada
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => handleDelete(task.id)}
-                      >
-                        <Trash2 className="mr-2 h-3.5 w-3.5" />
-                        Eliminar
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-      )}
+              </div>
+
+              <div className="flex-1 p-3 space-y-2 overflow-y-auto">
+                {colTasks.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    {col.key === "done"
+                      ? <CheckCheck className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                      : <CheckSquare className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                    }
+                    <p className="text-xs text-muted-foreground">
+                      {col.key === "done" ? "Ninguna completada aún" : "Sin tareas"}
+                    </p>
+                  </div>
+                ) : (
+                  colTasks.map(task => {
+                    const overdue = isOverdue(task.dueDate) && task.status !== "done";
+                    return (
+                      <Card
+                        key={task.id}
+                        className={`shadow-none border ${task.priority === "high" ? "border-l-4 border-l-red-400" : ""} ${task.status === "done" ? "opacity-60" : ""}`}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium leading-snug ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>
+                                {task.title}
+                              </p>
+                              {task.description && (
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+                              )}
+                              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${PRIORITY_BADGE[task.priority] ?? ""}`}>
+                                  {task.priority === "high" && <Star className="h-2.5 w-2.5 mr-0.5 fill-current" />}
+                                  {PRIORITY_LABELS[task.priority] ?? task.priority}
+                                </span>
+                                {task.dueDate && (
+                                  <span className={`flex items-center gap-0.5 text-[10px] ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {new Date(task.dueDate).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
+                                    {overdue && " (vencido)"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="text-sm">
+                                {getPrevStatus(col.key as ColumnKey) && (
+                                  <DropdownMenuItem onClick={() => handleMove(task.id, getPrevStatus(col.key as ColumnKey)!)}>
+                                    <ChevronLeft className="h-3.5 w-3.5 mr-2" />
+                                    Mover a {COLUMNS.find(c => c.key === getPrevStatus(col.key as ColumnKey))?.label}
+                                  </DropdownMenuItem>
+                                )}
+                                {getNextStatus(col.key as ColumnKey) && (
+                                  <DropdownMenuItem onClick={() => handleMove(task.id, getNextStatus(col.key as ColumnKey)!)}>
+                                    <ChevronRight className="h-3.5 w-3.5 mr-2" />
+                                    Mover a {COLUMNS.find(c => c.key === getNextStatus(col.key as ColumnKey))?.label}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleDelete(task.id)}
+                                >
+                                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-border/50">
+                            {getPrevStatus(col.key as ColumnKey) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground flex-1"
+                                onClick={() => handleMove(task.id, getPrevStatus(col.key as ColumnKey)!)}
+                              >
+                                <ChevronLeft className="h-3 w-3 mr-0.5" />
+                                {COLUMNS.find(c => c.key === getPrevStatus(col.key as ColumnKey))?.label}
+                              </Button>
+                            )}
+                            {getNextStatus(col.key as ColumnKey) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground flex-1"
+                                onClick={() => handleMove(task.id, getNextStatus(col.key as ColumnKey)!)}
+                              >
+                                {COLUMNS.find(c => c.key === getNextStatus(col.key as ColumnKey))?.label}
+                                <ChevronRight className="h-3 w-3 ml-0.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       <Dialog open={createOpen} onOpenChange={handleCloseDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nueva Tarea</DialogTitle>
-            <DialogDescription>Agregá una tarea a tu lista de pendientes.</DialogDescription>
+            <DialogDescription>
+              Agregá una tarea a <strong>{COLUMNS.find(c => c.key === defaultColumn)?.label}</strong>.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -343,6 +419,19 @@ export default function TasksPage() {
                   onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
                 />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="task-col">Estado inicial</Label>
+              <Select value={defaultColumn} onValueChange={v => setDefaultColumn(v as ColumnKey)}>
+                <SelectTrigger id="task-col">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COLUMNS.map(c => (
+                    <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

@@ -13,8 +13,9 @@ router.get("/news", async (req, res): Promise<void> => {
     const query = ListNewsQueryParams.safeParse(req.query);
     const category = query.success ? query.data.category : undefined;
     const limit = query.success ? (query.data.limit ?? 20) : 20;
+    const source = typeof req.query.source === "string" ? req.query.source : undefined;
 
-    const news = await getNews({ category, limit });
+    const news = await getNews({ category, source, limit });
 
     res.json(news.map(n => ({
       id: n.id,

@@ -1,0 +1,460 @@
+Quiero que evoluciones el proyecto actual del dashboard web manteniendo toda la lógica, arquitectura y módulos existentes, pero agregando nuevas funcionalidades, más interactividad, más capacidad de configuración por el usuario y una mejora visual integral.
+
+IMPORTANTE
+- No rompas nada de lo ya implementado
+- No rehagas la app desde cero
+- Trabajá sobre la base actual
+- Mantené la estructura modular existente
+- Todo lo nuevo debe quedar integrado con backend, frontend, base de datos, validaciones, estados de carga, manejo de errores y configuración desde panel
+- Pensá y ejecutá esto como un desarrollador senior full stack
+- Priorizá robustez, claridad, mantenibilidad, UX/UI moderna y calidad de datos
+- Evitá visualizaciones truncas, componentes rotos, estados vacíos pobres o lógica inconsistente
+- Todo debe quedar auditado, validado y coherente con el resto del sistema
+
+OBJETIVO GENERAL
+Quiero que el dashboard sea mucho más configurable, interactivo y agradable visualmente, manteniendo una experiencia premium, moderna, clara y orientada al usuario.
+
+==================================================
+1) WIDGET NUEVO: COTIZACIONES DEL DÓLAR EN EL INICIO
+==================================================
+
+Agregar en la pantalla de inicio un widget de cotizaciones con la misma lógica visual del widget de clima, mostrando en forma clara y elegante:
+
+- Dólar oficial: tipo vendedor billete
+  Fuente principal: https://bna.com.ar/Personas
+
+- Dólar blue: promedio entre comprador y vendedor
+  Fuente principal: https://www.ambito.com/contenidos/dolar.html
+
+- Dólar MEP
+  Fuente principal: https://www.ambito.com/contenidos/dolar.html
+
+REQUISITOS
+- Debe verse como un widget premium y claro en home
+- Debe mostrar:
+  - nombre de cotización
+  - valor actual
+  - fuente
+  - fecha/hora de actualización
+  - estado de sincronización
+- Debe tener botón de refresco manual
+- Debe tener fallback si una fuente falla
+- Debe registrar la última actualización
+- Debe poder conectarse mediante backend y no consumir fuentes directamente desde frontend
+- Debe dejar preparada la arquitectura para agregar luego más tipos de dólar o monedas
+- Si una fuente no puede scrapearse o integrarse en esta etapa, dejar adapter/fallback y documentar claramente
+- Priorizar calidad de datos y validación del valor obtenido
+
+==================================================
+2) WIDGETS INTERACTIVOS Y EDITABLES
+==================================================
+
+Quiero que todos los widgets del dashboard sean más interactivos y configurables por el usuario.
+
+REQUISITOS
+- Cada widget debe poder:
+  - expandirse
+  - colapsarse
+  - reubicarse dentro del dashboard
+  - editar su configuración
+  - refrescar datos manualmente
+  - mostrar estado de sincronización
+  - mostrar última actualización
+- Evaluar si conviene implementar drag and drop para reorganizar widgets
+- Persistir la disposición personalizada de widgets por usuario
+- Persistir configuración individual por widget
+- Agregar controles de visibilidad:
+  - mostrar
+  - ocultar
+  - anclar en inicio
+- Agregar validaciones para evitar layouts rotos o widgets vacíos mal renderizados
+
+==================================================
+3) AJUSTES: CONFIGURACIÓN DE FUENTES DE INFORMACIÓN
+==================================================
+
+En la sección de ajustes, quiero que el usuario admin pueda configurar desde qué páginas o fuentes se obtiene la información.
+
+REQUISITOS
+- Crear una sección de “Fuentes y sincronizaciones”
+- Permitir:
+  - ver fuentes activas por módulo
+  - agregar nuevas fuentes
+  - editar fuentes existentes
+  - activar o desactivar fuentes
+  - priorizar una fuente sobre otra
+  - definir fallback por módulo
+- Cada fuente debe poder tener:
+  - nombre
+  - tipo de fuente
+  - URL
+  - módulo asociado
+  - estado activa/inactiva
+  - prioridad
+  - método de integración (rss, scraping, api, manual, adapter)
+  - notas internas
+- Validar URLs
+- Evitar duplicados
+- Mostrar última sincronización por fuente
+- Mostrar estado de salud de cada fuente
+- Crear estructura backend para administrar estas fuentes
+- Guardar todo en base de datos
+- Preparar esta lógica para:
+  - noticias
+  - monitor fiscal
+  - dólar
+  - viajes
+  - clima si aplica
+
+==================================================
+4) MONITOR FISCAL MÁS INTERACTIVO Y CON MÁS FILTROS
+==================================================
+
+Quiero que el Monitor Fiscal sea mucho más potente, interactivo y profesional.
+
+REQUISITOS
+- Mejorar mucho la experiencia del módulo
+- Agregar filtros avanzados por:
+  - jurisdicción
+  - organismo
+  - categoría
+  - impacto
+  - requiere acción
+  - tipo de contenido
+  - fuente
+  - fecha desde/hasta
+  - texto libre
+  - estado guardado/favorito
+- Permitir combinar varios filtros al mismo tiempo
+- Agregar ordenamientos por:
+  - fecha
+  - impacto
+  - relevancia
+  - organismo
+- Agregar vista tipo:
+  - tarjetas
+  - tabla
+- Permitir guardar filtros frecuentes
+- Permitir limpiar filtros rápidamente
+- Agregar panel superior con métricas dinámicas según filtros aplicados
+- Agregar mejores badges visuales
+- Mejorar detalle de cada novedad
+- Asegurar que no haya render truncado ni overflow visual
+- Mantener persistencia de favoritas/guardadas
+- Mejorar la deduplicación y validación de novedades
+
+==================================================
+5) VIAJES: PARÁMETROS DE BÚSQUEDA EDITABLES
+==================================================
+
+En el módulo Viajes, necesito que el usuario pueda definir y modificar los parámetros de búsqueda sin tocar código.
+
+REQUISITOS
+- Crear panel de configuración de búsqueda para viajes
+- Permitir editar:
+  - tipo de viaje (familia / pareja / personalizado)
+  - presupuesto máximo
+  - tolerancia sobre presupuesto
+  - duración mínima y máxima
+  - destinos
+  - regiones
+  - categoría de hotel
+  - régimen de comidas
+  - proveedores preferidos
+  - incluir vuelos
+  - incluir paquetes
+  - cantidad de pasajeros
+  - edades si aplica
+- Guardar plantillas de búsqueda
+- Permitir activar/desactivar búsquedas
+- Permitir búsqueda manual y refresco manual
+- Mostrar claramente los parámetros actualmente activos
+- Persistir configuraciones por usuario o globales
+- Validar inputs para que no haya combinaciones inválidas
+- Mantener arquitectura lista para proveedores reales
+- Validar links y estado de las ofertas
+- Mejorar UX de filtros y resultados
+
+==================================================
+6) NOTICIAS: FILTRAR POR PÁGINA Y AGREGAR NUEVAS FUENTES
+==================================================
+
+En el módulo de noticias quiero más control por fuente.
+
+REQUISITOS
+- Agregar filtro por medio/página, por ejemplo:
+  - Ámbito
+  - La Nación
+  - iProfesional
+  - Tributum.news
+  - Contadores en Red
+  - Ignacio Online
+- Agregar esas fuentes a la arquitectura del agregador de noticias
+- Mantener fuentes actuales y sumar nuevas
+- Normalizar todos los resultados para que tengan el mismo formato
+- Permitir activar o desactivar medios desde ajustes
+- Evitar noticias duplicadas entre medios
+- Mostrar claramente el medio fuente
+- Permitir filtrar por:
+  - medio
+  - categoría
+  - jurisdicción
+  - fecha
+  - texto libre
+- Mantener botón de refresco manual
+- Mostrar hora de última sincronización
+- Mejorar la relevancia y calidad del resumen
+- Si alguna fuente no puede integrarse en esta etapa, dejarla preparada y documentada
+
+==================================================
+7) TAREAS: TABLERO EN 3 COLUMNAS TIPO KANBAN
+==================================================
+
+Transformar el módulo de tareas en un tablero más visual, con tres columnas:
+
+- Asignadas
+- En proceso
+- Terminadas
+
+REQUISITOS
+- Implementar tablero tipo Kanban
+- Permitir mover tareas entre columnas
+- Si es posible, usar drag and drop
+- También permitir cambio de estado desde menú o botones
+- Cada tarea debe poder:
+  - crearse
+  - editarse
+  - eliminarse
+  - cambiar prioridad
+  - cambiar fecha de vencimiento
+  - cambiar responsable si existe sistema de usuarios
+  - cambiar etapa
+- Agregar filtros por:
+  - prioridad
+  - estado
+  - vencimiento
+  - responsable
+  - texto libre
+- Mostrar tarjetas prolijas y compactas
+- Evitar truncado visual
+- Persistir todos los cambios en base de datos
+- Mantener compatibilidad con vistas actuales si existen
+- Agregar validaciones y mensajes claros
+
+==================================================
+8) DISEÑO VISUAL: COLORES PASTELES MODERNOS
+==================================================
+
+Quiero una mejora integral del diseño.
+
+REQUISITOS
+- Rehacer la paleta visual con colores pasteles modernos
+- Mantener aspecto profesional, limpio y premium
+- Evitar colores chillones o infantiles
+- Mejorar:
+  - fondos
+  - tarjetas
+  - sidebar
+  - header
+  - botones
+  - badges
+  - tablas
+  - widgets
+  - estados de error
+  - estados vacíos
+- Lograr una interfaz más agradable a la vista
+- Respetar contraste y legibilidad
+- Mantener modo claro/oscuro si existe
+- Revisar espaciados, jerarquía tipográfica y consistencia visual
+- Generar una identidad visual coherente en toda la app
+
+==================================================
+9) USUARIOS: AGREGAR, MODIFICAR O ELIMINAR SINCRONIZACIONES
+==================================================
+
+En el módulo de usuarios o administración, necesito gestionar sincronizaciones.
+
+REQUISITOS
+- Permitir agregar sincronizaciones
+- Permitir editar sincronizaciones existentes
+- Permitir eliminar sincronizaciones
+- Permitir activarlas o pausarlas
+- Cada sincronización debe tener:
+  - nombre
+  - módulo asociado
+  - fuente asociada
+  - frecuencia
+  - estado
+  - última ejecución
+  - resultado de última ejecución
+  - notas
+- Mostrar logs resumidos por sincronización
+- Validar frecuencia y parámetros
+- Crear estructura backend y base de datos para esta funcionalidad
+- Integrarlo con panel admin y ajustes
+- Permitir refresco manual
+
+==================================================
+10) SISTEMA PARA AGREGAR WIDGETS
+==================================================
+
+Quiero que el sistema permita agregar widgets nuevos desde la app, bajo una lógica consistente.
+
+REQUISITOS
+- Crear una sección “Agregar widget”
+- Permitir elegir entre varios tipos base:
+  - widget de datos
+  - widget de links
+  - widget de noticias
+  - widget de métricas
+  - widget de integración externa
+  - widget personalizado simple
+- Cada widget nuevo debe poder configurar:
+  - nombre
+  - descripción
+  - tipo
+  - tamaño
+  - ubicación
+  - fuente de datos
+  - URL si aplica
+  - link manual si aplica
+  - sincronización si aplica
+  - frecuencia de actualización
+  - visibilidad
+- Permitir:
+  - crear
+  - editar
+  - duplicar
+  - eliminar
+- Validar todas las configuraciones
+- Evitar widgets mal formados o visualizaciones rotas
+- Mantener consistencia de diseño con el resto del dashboard
+- Persistir configuración por usuario o global
+- Diseñar una arquitectura extensible para soportar nuevos widgets en el futuro
+
+==================================================
+11) CALIDAD, VALIDACIÓN Y AUDITORÍA
+==================================================
+
+Todo lo anterior debe implementarse con la misma lógica de calidad que venimos trabajando.
+
+REQUISITOS OBLIGATORIOS
+- Validaciones de frontend y backend
+- Manejo de errores consistente
+- Estados de carga elegantes
+- Estados vacíos útiles
+- Auditoría de integridad de datos
+- Evitar duplicados
+- Evitar visualizaciones truncas
+- Evitar cards rotas por texto largo
+- Adaptabilidad responsive
+- Logs claros para admin
+- Checklist de pruebas
+- Seguridad razonable
+- No exponer secretos al frontend
+- Mantener separación clara entre:
+  - frontend
+  - backend
+  - servicios
+  - providers
+  - settings
+  - widgets
+  - sincronizaciones
+
+==================================================
+12) BASE DE DATOS Y MODELOS
+==================================================
+
+Actualizar la base de datos para soportar todo lo nuevo.
+Agregar o ajustar tablas/modelos según haga falta para:
+
+- widget_layouts
+- widget_instances
+- widget_types
+- widget_settings
+- data_sources
+- sync_jobs
+- sync_logs
+- currency_rates
+- news_sources
+- user_preferences
+- travel_search_profiles
+
+No dupliques modelos innecesariamente. Diseñá una estructura clara, simple y extensible.
+
+==================================================
+13) PANEL ADMIN Y AJUSTES
+==================================================
+
+Expandir panel admin y ajustes para incluir:
+
+- gestión de fuentes
+- gestión de sincronizaciones
+- gestión de widgets
+- estado de integraciones
+- última actualización por módulo
+- errores recientes
+- parámetros globales
+- configuración visual
+- configuración de home
+- activación/desactivación de módulos
+
+==================================================
+14) ENTREGABLE ESPERADO
+==================================================
+
+Quiero que implementes estos cambios sobre el proyecto existente y me entregues:
+
+- código actualizado y estable
+- frontend actualizado
+- backend actualizado
+- cambios de base de datos o migraciones
+- seeds si hacen falta
+- endpoints nuevos si hacen falta
+- servicios nuevos si hacen falta
+- paneles de configuración funcionando
+- resumen final de lo implementado
+- listado de lo que quedó completamente funcional
+- listado de lo que quedó preparado pero pendiente de credenciales o fuentes
+- checklist de prueba
+- instrucciones exactas para correrlo en Replit sin errores
+
+==================================================
+15) ORDEN DE TRABAJO
+==================================================
+
+Hacelo en este orden:
+1. revisar la arquitectura actual
+2. corregir errores si existen
+3. mejorar diseño visual global
+4. agregar widget de dólar
+5. mejorar widgets para que sean interactivos y editables
+6. crear sistema de fuentes configurables
+7. expandir noticias con filtro por medio y nuevas fuentes
+8. mejorar monitor fiscal con más filtros
+9. mejorar viajes con parámetros configurables
+10. convertir tareas en tablero 3 columnas
+11. agregar gestión de sincronizaciones
+12. agregar sistema para crear widgets
+13. revisar integridad general
+14. ejecutar auditoría técnica final
+15. dejar todo listo para correr
+
+==================================================
+16) AUDITORÍA FINAL OBLIGATORIA
+==================================================
+
+Al terminar:
+- revisá errores de compilación
+- revisá imports rotos
+- revisá dependencias faltantes
+- verificá que no haya rutas inconsistentes
+- verificá que frontend y backend arranquen
+- verificá que no haya pantallas vacías
+- verificá que no haya widgets truncos
+- verificá que todas las configuraciones persistan
+- verificá que no se expongan secretos
+- dejá un resumen técnico final con pendientes reales
+
+IMPORTANTE FINAL
+Quiero una implementación robusta, prolija, validada y mantenible. Priorizá experiencia de usuario, calidad visual, consistencia técnica y calidad de datos.

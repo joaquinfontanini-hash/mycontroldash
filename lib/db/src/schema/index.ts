@@ -9,3 +9,5 @@ export * from "./weather";
 export * from "./sync-logs";
 export * from "./email-connections";
 export * from "./discard-logs";
+export * from "./currency";
+export * from "./data-sources";

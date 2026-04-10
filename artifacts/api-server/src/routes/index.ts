@@ -11,6 +11,7 @@ import settingsRouter from "./settings";
 import usersRouter from "./users";
 import dashboardRouter from "./dashboard";
 import syncRouter from "./sync";
+import currencyRouter from "./currency";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(weatherRouter);
 router.use(settingsRouter);
 router.use(usersRouter);
 router.use(syncRouter);
+router.use(currencyRouter);
 
 export default router;

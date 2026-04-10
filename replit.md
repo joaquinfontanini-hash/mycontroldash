@@ -2,7 +2,7 @@
 
 ## Overview
 
-A full-stack personal executive dashboard for an Argentine contador/consultor in Neuquén. Built with React + Vite + TypeScript on the frontend and Express + Node.js on the backend, using PostgreSQL via Drizzle ORM. v2 features global search (Cmd+K), functional dark/light mode, advanced fiscal filters, full settings persistence, tabbed admin panel with integration status, inline form validation, and elegant empty states.
+A full-stack personal executive dashboard for an Argentine contador/consultor in Neuquén. Built with React + Vite + TypeScript on the frontend and Express + Node.js on the backend, using PostgreSQL via Drizzle ORM. Now at v4 with dollar quotes widget, Kanban tasks board, news source filtering, fiscal table/card view toggle, data quality hardening, and expanded admin panel.
 
 ## Stack
 

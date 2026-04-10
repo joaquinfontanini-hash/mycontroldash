@@ -1,18 +1,159 @@
+import { useQuery } from "@tanstack/react-query";
 import { useGetDashboardSummary, useGetWeather } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Mail, CheckSquare, Briefcase, Plane, Newspaper, CloudSun,
-  CloudRain, Sun, Cloud, ArrowRight, TrendingUp,
+  CloudRain, Sun, Cloud, ArrowRight, TrendingUp, RefreshCw,
+  DollarSign, AlertCircle,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+
+interface DolarRate {
+  type: string;
+  label: string;
+  buy: number | null;
+  sell: number | null;
+  avg: number | null;
+  source: string;
+  sourceUrl: string;
+  status: "ok" | "error" | "stale";
+  fetchedAt: string;
+}
+
+async function fetchCurrency(): Promise<DolarRate[]> {
+  const res = await fetch("/api/currency");
+  if (!res.ok) throw new Error("Error al cargar cotizaciones");
+  return res.json();
+}
 
 function WeatherIcon({ icon, className }: { icon: string; className?: string }) {
   if (icon.includes("rain")) return <CloudRain className={className} />;
   if (icon.includes("sun") || icon.includes("clear")) return <Sun className={className} />;
   if (icon.includes("cloud")) return <Cloud className={className} />;
   return <CloudSun className={className} />;
+}
+
+const DOLAR_DISPLAY = ["oficial", "blue", "bolsa", "cripto"];
+const DOLAR_COLORS: Record<string, { accent: string; bg: string; border: string }> = {
+  oficial: { accent: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/40", border: "border-l-blue-500" },
+  blue:    { accent: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40", border: "border-l-emerald-500" },
+  bolsa:   { accent: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/40", border: "border-l-purple-500" },
+  cripto:  { accent: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/40", border: "border-l-orange-500" },
+};
+
+function formatRate(n: number | null) {
+  if (n === null) return "—";
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n);
+}
+
+function DollarWidget() {
+  const [refreshing, setRefreshing] = useState(false);
+  const { data: rates, isLoading, error, refetch } = useQuery<DolarRate[]>({
+    queryKey: ["currency"],
+    queryFn: fetchCurrency,
+    staleTime: 25 * 60 * 1000,
+  });
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch("/api/currency/refresh", { method: "POST" });
+      refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const lastUpdate = rates?.[0]?.fetchedAt
+    ? new Date(rates[0].fetchedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  if (isLoading) {
+    return (
+      <Card className="border-l-4 border-l-slate-300">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !rates?.length) {
+    return (
+      <Card className="border-l-4 border-l-destructive/50">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            <span className="text-sm">No se pudieron cargar las cotizaciones.</span>
+            <Button variant="ghost" size="sm" onClick={handleRefresh} className="ml-auto h-7 text-xs">
+              <RefreshCw className="h-3 w-3 mr-1" /> Reintentar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const displayRates = DOLAR_DISPLAY
+    .map(type => rates.find(r => r.type === type))
+    .filter(Boolean) as DolarRate[];
+
+  return (
+    <Card className="border-l-4 border-l-slate-400">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+              <DollarSign className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cotizaciones</p>
+              {lastUpdate && (
+                <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>
+              )}
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {displayRates.map(rate => {
+            const colors = DOLAR_COLORS[rate.type] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
+            return (
+              <div
+                key={rate.type}
+                className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}
+              >
+                <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{rate.label}</p>
+                <p className={`text-lg font-bold ${colors.accent} leading-none`}>
+                  {formatRate(rate.sell ?? rate.avg)}
+                </p>
+                {rate.buy !== null && rate.sell !== null && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Cpr: {formatRate(rate.buy)} · Vta: {formatRate(rate.sell)}
+                  </p>
+                )}
+                {rate.status === "error" && (
+                  <p className="text-[10px] text-destructive mt-1">Sin datos</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function DashboardSummary() {
@@ -28,8 +169,10 @@ export default function DashboardSummary() {
           <Skeleton className="h-9 w-64 mb-2" />
           <Skeleton className="h-4 w-44" />
         </div>
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-32 rounded-xl" />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
+          {[...Array(5)].map((_, i) => (
             <Card key={i}>
               <CardHeader className="pb-2">
                 <Skeleton className="h-4 w-1/3" />
@@ -55,8 +198,8 @@ export default function DashboardSummary() {
       value: summary?.emailCount24h ?? "—",
       subtitle: "Últimas 24 horas",
       href: "/dashboard/emails",
-      accent: "text-blue-500",
-      bg: "bg-blue-500/10",
+      accent: "text-blue-600 dark:text-blue-400",
+      bg: "bg-blue-50 dark:bg-blue-950/40",
     },
     {
       title: "Tareas pendientes",
@@ -64,8 +207,8 @@ export default function DashboardSummary() {
       value: summary?.pendingTasks ?? "—",
       subtitle: "Requieren atención",
       href: "/dashboard/tasks",
-      accent: "text-amber-500",
-      bg: "bg-amber-500/10",
+      accent: "text-amber-600 dark:text-amber-400",
+      bg: "bg-amber-50 dark:bg-amber-950/40",
     },
     {
       title: "Monitor Fiscal",
@@ -73,8 +216,8 @@ export default function DashboardSummary() {
       value: summary?.fiscalUpdatesCount ?? "—",
       subtitle: `${summary?.fiscalRequireAction ?? 0} requieren acción`,
       href: "/dashboard/fiscal",
-      accent: "text-red-500",
-      bg: "bg-red-500/10",
+      accent: "text-red-600 dark:text-red-400",
+      bg: "bg-red-50 dark:bg-red-950/40",
     },
     {
       title: "Ofertas de viaje",
@@ -82,8 +225,8 @@ export default function DashboardSummary() {
       value: summary?.travelOffersCount ?? "—",
       subtitle: "Disponibles hoy",
       href: "/dashboard/travel",
-      accent: "text-emerald-500",
-      bg: "bg-emerald-500/10",
+      accent: "text-emerald-600 dark:text-emerald-400",
+      bg: "bg-emerald-50 dark:bg-emerald-950/40",
     },
     {
       title: "Noticias",
@@ -91,13 +234,13 @@ export default function DashboardSummary() {
       value: summary?.newsCount ?? "—",
       subtitle: "Artículos relevantes",
       href: "/dashboard/news",
-      accent: "text-purple-500",
-      bg: "bg-purple-500/10",
+      accent: "text-violet-600 dark:text-violet-400",
+      bg: "bg-violet-50 dark:bg-violet-950/40",
     },
   ];
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-5 max-w-6xl">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
@@ -112,7 +255,7 @@ export default function DashboardSummary() {
       </div>
 
       {today && (
-        <Card className="card-hover border-l-4 border-l-amber-500 bg-gradient-to-r from-amber-500/5 to-transparent">
+        <Card className="border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -148,7 +291,9 @@ export default function DashboardSummary() {
         </Card>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <DollarWidget />
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {widgets.map((widget, idx) => (
           <Card key={idx} className="card-hover group">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

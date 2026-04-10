@@ -49,6 +49,36 @@ export const RSS_SOURCES = [
     category: "impuestos",
     enabled: true,
   },
+  {
+    url: "https://www.iprofesional.com/rss/home.xml",
+    name: "iProfesional",
+    category: "negocios",
+    enabled: true,
+  },
+  {
+    url: "https://www.clarin.com/rss/economia/",
+    name: "Clarín",
+    category: "economia",
+    enabled: true,
+  },
+  {
+    url: "https://www.pagina12.com.ar/rss/secciones/economia/notas",
+    name: "Página 12",
+    category: "economia",
+    enabled: true,
+  },
+  {
+    url: "https://tributum.news/feed/",
+    name: "Tributum",
+    category: "impuestos",
+    enabled: true,
+  },
+  {
+    url: "https://contadoresenred.com/feed/",
+    name: "Contadores en Red",
+    category: "impuestos",
+    enabled: true,
+  },
 ];
 
 const FISCAL_KEYWORDS = [
@@ -139,10 +169,11 @@ export async function refreshNews(): Promise<number> {
 
 export async function getNews(options: {
   category?: string;
+  source?: string;
   limit?: number;
   search?: string;
 } = {}) {
-  const { category, limit = 20, search } = options;
+  const { category, source, limit = 20, search } = options;
   const [settings] = await db.select().from(appSettingsTable).limit(1);
   const maxCount = settings?.newsCount ?? limit;
 
@@ -150,9 +181,10 @@ export async function getNews(options: {
     .select()
     .from(newsItemsTable)
     .orderBy(desc(newsItemsTable.importanceScore))
-    .limit(200);
+    .limit(300);
 
   if (category) items = items.filter(n => n.category === category);
+  if (source) items = items.filter(n => n.source.toLowerCase() === source.toLowerCase());
   if (search) {
     const q = search.toLowerCase();
     items = items.filter(n => n.title.toLowerCase().includes(q) || n.summary.toLowerCase().includes(q));
