@@ -1,0 +1,495 @@
+Quiero que conviertas mi proyecto “Dashboard Web Personal” desde una versión con datos mock a una versión con integraciones reales, manteniendo la arquitectura existente, sin romper la UI, sin eliminar funcionalidades actuales y conservando fallbacks seguros cuando una API falle.
+
+OBJETIVO
+Integrar APIs reales para:
+1. Noticias
+2. Clima
+3. Email
+4. Monitor Fiscal
+5. Monitor de Ofertas de Viajes
+
+IMPORTANTE
+- No quiero que reemplaces brutalmente el proyecto.
+- Quiero que trabajes sobre la base actual.
+- Mantené la UI actual y mejorala solo si hace falta para soportar los nuevos datos.
+- Si una integración falla, mostrar mensajes claros y usar fallback con últimos datos guardados o datos de ejemplo.
+- Toda clave o credencial debe ir en variables de entorno.
+- No hardcodear secretos en el código.
+- Agregá logs claros en backend.
+- Validá respuestas de APIs antes de mostrarlas.
+- Evitá links rotos, datos truncos, duplicados y resultados poco confiables.
+- Generá un README actualizado con todas las variables de entorno y pasos de configuración.
+
+ARQUITECTURA GENERAL
+Quiero que la integración quede separada por capas:
+- routes
+- controllers
+- services
+- adapters/integrations
+- validators
+- models
+- jobs o schedulers si hace falta actualización periódica
+
+Además:
+- Crear endpoints backend para cada integración
+- Mantener cache simple cuando convenga
+- Guardar último resultado útil en base de datos cuando sea razonable
+- Implementar manejo de errores consistente
+- Crear estado de “última actualización”
+- Crear botón “Actualizar ahora” por widget
+- Agregar refresco automático configurable por módulo
+
+========================================
+1) INTEGRACIÓN REAL DE NOTICIAS
+========================================
+
+OBJETIVO
+Conectar el widget de noticias con fuentes reales.
+
+REQUISITOS
+- Crear backend aggregator para noticias
+- No consumir APIs directamente desde frontend si exponen secretos
+- Permitir combinar múltiples fuentes
+- Evitar duplicados por título/link
+- Normalizar estructura de noticias
+
+CAMPOS NORMALIZADOS
+Cada noticia debe tener:
+- id
+- title
+- source
+- publishedAt
+- summary
+- url
+- category
+- region
+- importanceScore
+- imageUrl si existe
+- isFiscalRelated boolean
+
+FUENTES
+Prepará el sistema para soportar:
+- RSS feeds
+- News APIs
+- Scraping controlado solo si fuera necesario y separado
+- Configuración flexible de fuentes
+
+FILTROS
+Mantener y mejorar filtros por:
+- nacionales
+- provinciales
+- economía
+- impuestos
+- negocios
+
+LÓGICA
+- Calcular importanceScore básico según fuente, keywords y recencia
+- Ordenar por relevancia
+- Limitar cantidad configurable desde settings
+- No mostrar noticias sin título o sin link válido
+- Validar que la URL sea utilizable
+
+UI
+- Mostrar fecha bien formateada
+- Mostrar fuente
+- Mostrar resumen corto limpio
+- Botón “abrir fuente”
+- Estado de carga, error y vacío
+- Mostrar última actualización
+
+CONFIG
+Agregar variables de entorno y settings necesarios para noticias.
+
+========================================
+2) INTEGRACIÓN REAL DE CLIMA
+========================================
+
+OBJETIVO
+Conectar el widget de clima con una API real para Neuquén, dejando configurable la ubicación principal.
+
+REQUISITOS
+- Crear servicio backend de clima
+- Soportar ubicación configurable desde app settings
+- Obtener pronóstico de próximos 3 días
+- Normalizar respuesta
+
+CAMPOS
+- date
+- minTemp
+- maxTemp
+- condition
+- rainProbability
+- windSpeed
+- humidity si está disponible
+- iconCode o iconUrl si aplica
+
+LÓGICA
+- Guardar último resultado correcto
+- Si falla la API, mostrar último dato disponible con aviso
+- Poder refrescar manualmente
+- Actualización automática configurable
+
+UI
+- Mantener tarjeta limpia y moderna
+- Iconografía clara
+- Mostrar mínima, máxima, lluvia y viento
+- Mostrar “actualizado hace...”
+
+CONFIG
+- Variables de entorno necesarias
+- Setting para ciudad principal
+
+========================================
+3) INTEGRACIÓN REAL DE EMAIL
+========================================
+
+OBJETIVO
+Conectar el widget de emails con una integración real, preferentemente Gmail, dejando preparada la arquitectura para Microsoft Outlook más adelante.
+
+REQUISITOS
+- Implementar integración backend segura
+- Usar autenticación OAuth
+- No exponer tokens al frontend
+- Guardar solo lo mínimo necesario
+- Respetar sesiones por usuario
+
+FUNCIONALIDAD
+- Mostrar emails recibidos en últimas 24 hs
+- Vista detalle de emails recientes
+- Mostrar:
+  - sender
+  - subject
+  - receivedAt
+  - snippet o preview
+- Posibilidad de refrescar
+- Mostrar cantidad de no leídos si está disponible
+
+LÓGICA
+- No descargar cuerpo completo salvo que sea necesario
+- Limitar volumen por performance
+- Evitar duplicados
+- Manejar expiración de tokens
+- Si el usuario no conectó su cuenta, mostrar estado “no conectado” con CTA para conectar
+
+UI
+- Widget con estado:
+  - conectado
+  - no conectado
+  - error
+  - cargando
+- Botón “Conectar Gmail”
+- Botón “Actualizar”
+- Mostrar últimas 24 horas y listado resumido
+
+SEGURIDAD
+- No hardcodear client id ni secret
+- Guardar tokens de forma segura
+- Agregar endpoints claros para auth/callback/status/disconnect
+
+========================================
+4) INTEGRACIÓN REAL DEL MONITOR FISCAL
+========================================
+
+OBJETIVO
+Convertir el módulo de Monitor Fiscal en un agregador real de novedades fiscales.
+
+REQUISITOS PRINCIPALES
+- Crear un pipeline de recolección de fuentes
+- Separar recolección, parsing, normalización, scoring y persistencia
+- Poder actualizar manualmente y también por cron/job
+- No duplicar novedades
+- Marcar claramente la fuente
+
+FUENTES A SOPORTAR
+Dejar preparado el sistema para consultar y/o parsear:
+- Boletín Oficial nacional
+- ARCA / AFIP si corresponde según disponibilidad actual
+- organismos fiscales nacionales
+- organismos provinciales relevantes
+- sitios periodísticos / profesionales fiscales configurables
+- feeds RSS cuando existan
+
+IMPORTANTE
+No quiero scraping desordenado mezclado con UI.
+Quiero módulos separados por fuente.
+
+MODELO NORMALIZADO DE NOVEDAD FISCAL
+Cada novedad debe tener:
+- id
+- title
+- jurisdiction
+- category
+- organism
+- publishedAt
+- summary
+- fullContent opcional
+- sourceName
+- sourceUrl
+- impactLevel (alto, medio, bajo)
+- requiresAction boolean
+- tags[]
+- fingerprint/hash para deduplicación
+- fetchedAt
+- isNormative boolean
+
+LÓGICA DE CLASIFICACIÓN
+Implementar reglas simples pero útiles:
+- Detectar jurisdicción por fuente o keywords
+- Detectar categoría:
+  - impuestos
+  - laboral
+  - seguridad social
+  - facturación
+  - percepciones/retenciones
+  - regímenes de información
+  - provincial
+  - municipal
+- Detectar requiresAction por keywords como:
+  - vence
+  - obligación
+  - presentar
+  - reglamenta
+  - prórroga
+  - implementación
+- Detectar impactLevel por combinación de keywords y tipo de organismo
+- Detectar normativa cuando haya resolución, decreto, ley, disposición, etc.
+
+FILTROS
+Mantener filtros actuales y mejorarlos:
+- jurisdicción
+- categoría
+- impacto
+- requiere acción
+- normativa
+- texto libre
+- rango de fechas
+
+MÉTRICAS
+Mantener métricas superiores:
+- total novedades
+- impacto alto
+- requieren acción
+- normativa
+
+FAVORITOS
+Mantener favoritos/guardadas persistentes por usuario.
+
+DETALLE
+Vista detalle con:
+- resumen expandido
+- fuente
+- link original
+- fecha
+- organismo
+- badges claros
+- tags
+- observación “contenido resumido automáticamente” si aplica
+
+ACTUALIZACIÓN
+- Botón “Actualizar monitor fiscal”
+- Job configurable diario
+- Guardar historial de sincronización
+- Mostrar última actualización y cantidad de items nuevos
+
+CALIDAD
+- Evitar duplicados por huella/fingerprint
+- No mostrar entradas vacías
+- Si no se puede extraer resumen, generar uno corto limpiando HTML
+- Validar enlaces
+- Manejar timeouts y errores de fuente sin romper todo el módulo
+
+========================================
+5) INTEGRACIÓN REAL DEL MONITOR DE OFERTAS DE VIAJES
+========================================
+
+OBJETIVO
+Dejar este módulo conectado a fuentes reales o semi-reales de manera robusta, con arquitectura preparada para validación, evitando mostrar resultados falsos, caídos o inconsistentes.
+
+IMPORTANTE
+Quiero priorizar confiabilidad.
+No quiero links rotos.
+No quiero resultados que no coincidan con el precio mostrado.
+Si una fuente no permite integración estable, dejar un adapter deshabilitado y documentado.
+
+ARQUITECTURA
+Separar:
+- search providers
+- validators
+- normalizers
+- scoring/ranking
+- cache
+- update jobs
+
+MODELO DE OFERTA
+Cada oferta debe tener:
+- id
+- type (paquete o vuelo)
+- audience (familia o pareja)
+- destination
+- region
+- provider
+- priceAmount
+- priceCurrency
+- durationDays
+- departureDate opcional
+- returnDate opcional
+- hotelName opcional
+- hotelStars opcional
+- mealPlan opcional
+- deepLink
+- validationStatus
+- checkedAt
+- sourceName
+- notes opcional
+
+REGLAS
+- Permitir filtros por:
+  - familia
+  - pareja
+  - presupuesto
+  - región
+  - duración
+  - tipo de oferta
+  - hotel estrellas
+  - media pensión / all inclusive si aplica
+- Excluir resultados fuera de presupuesto por más del margen configurado
+- Mostrar validación:
+  - validado
+  - pendiente
+  - inconsistente
+  - caído
+- Antes de mostrar una oferta, validar link y consistencia mínima
+- Si una fuente devuelve basura o no se puede validar, no mostrarla o marcarla claramente
+- Botón “Actualizar”
+- Última actualización visible
+
+LÓGICA DE VALIDACIÓN
+- Revisar que exista URL
+- Revisar que la URL responda o al menos tenga formato correcto
+- Revisar que el precio no sea cero o nulo
+- Revisar que destino y tipo estén presentes
+- Marcar inconsistencias si faltan campos clave
+
+CONFIG
+- Presupuesto editable desde settings
+- Parámetros por audiencia:
+  - familia
+  - pareja
+- Regiones configurables
+- Umbral de descarte configurable
+
+========================================
+6) SETTINGS, JOBS Y REFRESH
+========================================
+
+Agregar sistema de configuración editable desde panel admin para:
+- frecuencia de actualización por widget
+- cantidad máxima de resultados
+- ubicación de clima
+- fuentes habilitadas
+- presupuestos de viajes
+- umbral de descarte
+- si usar cache o no
+- tiempo de expiración de cache
+
+Agregar jobs/scheduler para:
+- noticias
+- clima
+- monitor fiscal
+- ofertas de viajes
+
+IMPORTANTE
+- Que los jobs puedan desactivarse
+- Que también exista refresco manual por botón
+- Guardar logs de sincronización con:
+  - módulo
+  - fecha/hora
+  - estado
+  - cantidad de registros
+  - mensaje de error si falló
+
+========================================
+7) BASE DE DATOS
+========================================
+
+Agregar o ajustar tablas/modelos para soportar integraciones reales.
+Mínimo considerar:
+- news_items
+- weather_snapshots
+- email_connections
+- email_messages_cache
+- fiscal_sources
+- fiscal_updates
+- sync_logs
+- travel_offer_sources
+- travel_offers
+- integration_settings
+
+Mantener compatibilidad con lo anterior cuando sea posible.
+
+========================================
+8) UX / UI / ESTADOS
+========================================
+
+Quiero que todos los widgets integrados tengan:
+- loading state
+- empty state
+- error state
+- last updated
+- botón actualizar
+- mensaje claro si la integración no está conectada
+- diseño consistente con el dashboard actual
+
+Agregar badges:
+- conectado
+- no conectado
+- error
+- usando cache
+- actualizado
+
+========================================
+9) SEGURIDAD
+========================================
+
+- Todas las credenciales en variables de entorno
+- No exponer secretos al cliente
+- Validar inputs
+- Sanitizar datos externos
+- Manejar rate limiting básico si aplica
+- Proteger endpoints sensibles
+- Registrar errores sin exponer secretos
+- Mantener roles y permisos de admin/editor/viewer
+
+========================================
+10) ENTREGABLE
+========================================
+
+Quiero que hagas todo esto y me entregues:
+1. Código actualizado del proyecto
+2. Estructura de carpetas mejorada
+3. Variables de entorno listadas claramente
+4. Endpoints creados
+5. Integraciones implementadas con adapters separados
+6. Seeds o datos iniciales mínimos donde haga falta
+7. README actualizado
+8. Instrucciones exactas para configurar cada integración
+9. Lista de lo que quedó realmente conectado y lo que quedó preparado
+10. Validación final para que compile y corra en Replit
+
+PASO DE TRABAJO
+Hacelo en este orden:
+1. Revisar proyecto actual
+2. Detectar qué ya existe
+3. Integrar clima real
+4. Integrar noticias reales
+5. Integrar email real
+6. Integrar monitor fiscal real
+7. Integrar ofertas de viajes con validación
+8. Agregar scheduler, logs y settings
+9. Corregir errores
+10. Dejar versión final estable
+
+IMPORTANTE FINAL
+- Si alguna API requiere decisión de proveedor, dejá la arquitectura lista y marcá exactamente dónde configurar la elegida.
+- Si algo no se puede conectar de forma robusta hoy, no lo simules como si fuera real: dejalo preparado, documentado y marcado como pendiente.
+- Quiero transparencia total entre “conectado”, “preparado” y “mock”.

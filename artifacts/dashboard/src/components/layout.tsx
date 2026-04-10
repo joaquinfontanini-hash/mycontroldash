@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
 import { useTheme } from "@/components/theme-provider";
@@ -17,7 +17,8 @@ import {
   LogOut,
   Moon,
   Sun,
-  Menu
+  Menu,
+  ChevronRight,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -43,138 +45,162 @@ const NAV_ITEMS = [
   { href: "/dashboard/travel", label: "Viajes", icon: Plane },
 ];
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+const BOTTOM_NAV = [
+  { href: "/admin", label: "Admin", icon: Shield },
+  { href: "/settings", label: "Ajustes", icon: Settings },
+];
+
+function NavLink({ href, label, icon: Icon, location, onClick }: {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  location: string;
+  onClick?: () => void;
+}) {
+  const isActive = location === href || (href !== "/dashboard" && location.startsWith(href));
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 group
+        ${isActive
+          ? "bg-primary/10 text-primary font-semibold border-l-[3px] border-primary pl-[calc(0.75rem-3px)]"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/60 border-l-[3px] border-transparent pl-[calc(0.75rem-3px)]"
+        }`}
+    >
+      <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`} />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const { theme, setTheme } = useTheme();
+  const isAdmin = true;
 
-  // In a real app we'd fetch the user's role from our API to check if admin
-  const isAdmin = true; // Hardcoded for now
-
-  const SidebarContent = () => (
-    <div className="flex h-full flex-col">
-      <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-        <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-          <Briefcase className="h-6 w-6 text-primary" />
-          <span className="font-serif tracking-tight">Executive</span>
+  return (
+    <div className="flex h-full flex-col bg-sidebar border-r border-sidebar-border">
+      <div className="flex h-[60px] items-center px-5 shrink-0">
+        <Link href="/dashboard" className="flex items-center gap-2.5" onClick={onNavigate}>
+          <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center">
+            <Briefcase className="h-3.5 w-3.5 text-primary-foreground" />
+          </div>
+          <div className="flex flex-col leading-none">
+            <span className="font-serif font-bold text-sm tracking-tight text-foreground">Executive</span>
+            <span className="text-[10px] text-muted-foreground">Dashboard Personal</span>
+          </div>
         </Link>
       </div>
-      <div className="flex-1 overflow-auto py-2">
-        <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-          {NAV_ITEMS.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${
-                  isActive ? "bg-muted text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-          
-          <div className="mt-4 mb-2 px-3 text-xs font-semibold uppercase text-muted-foreground">
-            Configuración
-          </div>
-          
+
+      <Separator />
+
+      <div className="flex-1 overflow-y-auto py-3 px-2">
+        <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+          Principal
+        </p>
+        <nav className="flex flex-col gap-0.5">
+          {NAV_ITEMS.map((item) => (
+            <NavLink key={item.href} {...item} location={location} onClick={onNavigate} />
+          ))}
+        </nav>
+
+        <Separator className="my-3" />
+
+        <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+          Sistema
+        </p>
+        <nav className="flex flex-col gap-0.5">
           {isAdmin && (
-            <Link
-              href="/admin"
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${
-                location === "/admin" ? "bg-muted text-primary" : "text-muted-foreground"
-              }`}
-            >
-              <Shield className="h-4 w-4" />
-              Admin
-            </Link>
+            <NavLink href="/admin" label="Admin" icon={Shield} location={location} onClick={onNavigate} />
           )}
-          
-          <Link
-            href="/settings"
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${
-              location === "/settings" ? "bg-muted text-primary" : "text-muted-foreground"
-            }`}
-          >
-            <Settings className="h-4 w-4" />
-            Ajustes
-          </Link>
+          <NavLink href="/settings" label="Ajustes" icon={Settings} location={location} onClick={onNavigate} />
         </nav>
       </div>
     </div>
   );
+}
+
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const { theme, setTheme } = useTheme();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const initials = [user?.firstName?.charAt(0), user?.lastName?.charAt(0)]
+    .filter(Boolean).join("") || "U";
 
   return (
-    <div className="grid min-h-[100dvh] w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
-      <div className="hidden border-r bg-muted/40 md:block">
+    <div className="flex min-h-[100dvh] w-full">
+      <aside className="hidden md:flex w-[240px] lg:w-[260px] flex-col shrink-0 sticky top-0 h-screen">
         <SidebarContent />
-      </div>
-      <div className="flex flex-col">
-        <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
-          <Sheet>
+      </aside>
+
+      <div className="flex flex-1 flex-col min-w-0">
+        <header className="flex h-[60px] items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 lg:px-6 shrink-0 sticky top-0 z-10">
+          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
             <SheetTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="shrink-0 md:hidden"
-              >
+              <Button variant="outline" size="icon" className="shrink-0 md:hidden">
                 <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle navigation menu</span>
+                <span className="sr-only">Menú</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="flex flex-col">
-              <SidebarContent />
+            <SheetContent side="left" className="p-0 w-[260px]">
+              <SidebarContent onNavigate={() => setSheetOpen(false)} />
             </SheetContent>
           </Sheet>
-          
-          <div className="w-full flex-1">
-            <form>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Buscar..."
-                  className="w-full appearance-none bg-background pl-8 shadow-none md:w-2/3 lg:w-1/3"
-                />
-              </div>
-            </form>
-          </div>
-          
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-          >
-            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Toggle theme</span>
-          </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="icon" className="rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user?.imageUrl} />
-                  <AvatarFallback>{user?.firstName?.charAt(0) || "U"}</AvatarFallback>
-                </Avatar>
-                <span className="sr-only">Toggle user menu</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => signOut()}>
-                <LogOut className="mr-2 h-4 w-4" />
-                Cerrar Sesión
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Buscar..."
+              className="pl-9 h-8 text-sm bg-muted/50 border-transparent focus:border-border focus:bg-background"
+            />
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg"
+              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            >
+              <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Tema</span>
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full p-0">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user?.imageUrl} />
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col">
+                    <span>{user?.fullName || "Mi Cuenta"}</span>
+                    <span className="text-xs font-normal text-muted-foreground truncate">
+                      {user?.primaryEmailAddress?.emailAddress}
+                    </span>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => signOut()} className="text-destructive focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Cerrar Sesión
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 bg-muted/20">
+
+        <main className="flex-1 p-4 lg:p-6 bg-muted/30">
           {children}
         </main>
       </div>
