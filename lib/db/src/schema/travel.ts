@@ -17,6 +17,9 @@ export const travelOffersTable = pgTable("travel_offers", {
   link: text("link").notNull(),
   validUntil: text("valid_until"),
   isValid: boolean("is_valid").notNull().default(true),
+  qualityScore: integer("quality_score").notNull().default(70),
+  qualityIssues: text("quality_issues"),
+  needsReview: boolean("needs_review").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +17,10 @@ export const fiscalUpdatesTable = pgTable("fiscal_updates", {
   fingerprint: text("fingerprint"),
   tags: text("tags"),
   isNormative: boolean("is_normative").notNull().default(false),
+  qualityScore: integer("quality_score").notNull().default(70),
+  qualityIssues: text("quality_issues"),
+  needsReview: boolean("needs_review").notNull().default(false),
+  isHidden: boolean("is_hidden").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

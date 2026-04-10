@@ -2,6 +2,7 @@ import { db, fiscalUpdatesTable, syncLogsTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
 import { fetchRssSource } from "../adapters/rss.adapter.js";
 import { withSyncLog } from "./sync.service.js";
+import { scoreFiscalItem, logDiscard } from "./data-quality.service.js";
 import { logger } from "../lib/logger.js";
 
 const CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
@@ -94,6 +95,7 @@ async function getLastFetchTime(): Promise<Date | null> {
 export async function refreshFiscalSources(): Promise<number> {
   return withSyncLog("fiscal", async () => {
     let totalNew = 0;
+    let totalDiscarded = 0;
 
     const existing = await db.select({ fingerprint: fiscalUpdatesTable.fingerprint }).from(fiscalUpdatesTable);
     const existingFingerprints = new Set(existing.map(r => r.fingerprint).filter(Boolean));
@@ -108,7 +110,31 @@ export async function refreshFiscalSources(): Promise<number> {
         for (const item of items) {
           const fp = makeFingerprint(item.title, item.link);
           const titleKey = item.title.slice(0, 80);
+
+          // Dedup check
           if (existingFingerprints.has(fp) || existingTitles.has(titleKey)) continue;
+
+          // Quality scoring
+          const quality = scoreFiscalItem({
+            title: item.title,
+            summary: item.summary,
+            date: new Date(item.pubDate).toISOString().split("T")[0] ?? "",
+            sourceUrl: item.link,
+            organism: source.organism,
+          });
+
+          if (quality.discard) {
+            totalDiscarded++;
+            await logDiscard({
+              module: "fiscal",
+              source: source.name,
+              title: item.title,
+              sourceUrl: item.link,
+              reason: quality.discardReason ?? "Calidad insuficiente",
+            });
+            logger.debug({ title: item.title.slice(0, 60), reason: quality.discardReason }, "Fiscal item discarded");
+            continue;
+          }
 
           const category = detectCategory(item.title, item.summary, source.category);
           const impact = detectImpact(item.title, item.summary);
@@ -128,6 +154,10 @@ export async function refreshFiscalSources(): Promise<number> {
             sourceUrl: item.link,
             fingerprint: fp,
             isSaved: false,
+            qualityScore: quality.score,
+            qualityIssues: quality.issues.length > 0 ? JSON.stringify(quality.issues) : null,
+            needsReview: quality.needsReview,
+            isHidden: false,
           });
 
           existingFingerprints.add(fp);
@@ -139,7 +169,7 @@ export async function refreshFiscalSources(): Promise<number> {
       }
     }
 
-    logger.info({ totalNew }, "Fiscal refresh completed");
+    logger.info({ totalNew, totalDiscarded }, "Fiscal refresh completed");
     return { count: totalNew, result: totalNew };
   });
 }

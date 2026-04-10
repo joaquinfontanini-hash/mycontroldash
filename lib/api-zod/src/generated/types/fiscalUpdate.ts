@@ -21,5 +21,9 @@ export interface FiscalUpdate {
   sourceUrl?: string | null;
   tags?: string | null;
   fingerprint?: string | null;
+  qualityScore?: number;
+  qualityIssues?: string | null;
+  needsReview?: boolean;
+  isHidden?: boolean;
   createdAt: string;
 }

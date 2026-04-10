@@ -8,3 +8,4 @@ export * from "./news";
 export * from "./weather";
 export * from "./sync-logs";
 export * from "./email-connections";
+export * from "./discard-logs";

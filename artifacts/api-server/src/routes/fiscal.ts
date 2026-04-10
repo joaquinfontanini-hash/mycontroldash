@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, fiscalUpdatesTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
+import { db, fiscalUpdatesTable, discardLogsTable } from "@workspace/db";
 import {
   GetFiscalUpdateParams,
   ToggleFiscalSavedParams,
@@ -8,17 +8,24 @@ import {
 } from "@workspace/api-zod";
 import { refreshFiscalSources, ensureFiscalUpToDate, FISCAL_RSS_SOURCES } from "../services/fiscal.service.js";
 import { getLastSync } from "../services/sync.service.js";
+import { DEFAULT_QUALITY_THRESHOLD } from "../services/data-quality.service.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
 router.get("/fiscal/metrics", async (_req, res): Promise<void> => {
   const all = await db.select().from(fiscalUpdatesTable);
+  const visible = all.filter(f => !f.isHidden && (f.qualityScore ?? 70) >= DEFAULT_QUALITY_THRESHOLD);
   res.json({
-    total: all.length,
-    highImpact: all.filter(f => f.impact === "high").length,
-    requiresAction: all.filter(f => f.requiresAction).length,
-    normative: all.filter(f => (f as any).isNormative).length,
+    total: visible.length,
+    highImpact: visible.filter(f => f.impact === "high").length,
+    requiresAction: visible.filter(f => f.requiresAction).length,
+    normative: visible.filter(f => f.isNormative).length,
+    needsReview: all.filter(f => f.needsReview).length,
+    discarded: all.filter(f => (f.qualityScore ?? 70) < DEFAULT_QUALITY_THRESHOLD).length,
+    avgQualityScore: visible.length
+      ? Math.round(visible.reduce((acc, f) => acc + (f.qualityScore ?? 70), 0) / visible.length)
+      : 0,
   });
 });
 
@@ -36,12 +43,35 @@ router.get("/fiscal/sources", async (_req, res): Promise<void> => {
   })));
 });
 
+router.get("/fiscal/discards", async (req, res): Promise<void> => {
+  try {
+    const module = typeof req.query.module === "string" ? req.query.module : undefined;
+    let logs = await db.select().from(discardLogsTable).orderBy(desc(discardLogsTable.discardedAt));
+    if (module) logs = logs.filter(l => l.module === module);
+    res.json(logs.slice(0, 100));
+  } catch (err) {
+    logger.error({ err }, "Discard logs fetch error");
+    res.status(500).json({ error: "Error al obtener logs de descarte" });
+  }
+});
+
 router.get("/fiscal", async (req, res): Promise<void> => {
   try {
     ensureFiscalUpToDate().catch(() => {});
 
     const query = ListFiscalUpdatesQueryParams.safeParse(req.query);
+    const rawThreshold = req.query.qualityMin;
+    const qualityMin = rawThreshold != null && !isNaN(Number(rawThreshold))
+      ? Number(rawThreshold)
+      : DEFAULT_QUALITY_THRESHOLD;
+
     let items = await db.select().from(fiscalUpdatesTable).orderBy(fiscalUpdatesTable.createdAt);
+
+    // Always filter hidden
+    items = items.filter(f => !f.isHidden);
+
+    // Quality threshold
+    items = items.filter(f => (f.qualityScore ?? 70) >= qualityMin);
 
     if (query.success) {
       const { jurisdiction, category, impact, requiresAction, search } = query.data;

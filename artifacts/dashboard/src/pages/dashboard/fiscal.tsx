@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Briefcase, AlertTriangle, Bookmark, BookmarkCheck, RefreshCw,
-  Search, X, SlidersHorizontal,
+  Search, X, SlidersHorizontal, ShieldCheck, Info,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,8 +32,29 @@ type FiscalItem = {
   isNormative?: boolean;
   sourceUrl?: string | null;
   tags?: string | null;
+  qualityScore?: number;
+  qualityIssues?: string | null;
+  needsReview?: boolean;
+  isHidden?: boolean;
   createdAt: string;
 };
+
+function qualityColor(score: number) {
+  if (score >= 80) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
+  if (score >= 60) return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
+  return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+}
+
+function qualityLabel(score: number) {
+  if (score >= 80) return "Verificado";
+  if (score >= 60) return "Aceptable";
+  return "Revisar";
+}
+
+function parseIssues(raw?: string | null): string[] {
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
 
 const IMPACT_COLORS = {
   high: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
@@ -65,6 +86,7 @@ export default function FiscalPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
+  const [qualityMin, setQualityMin] = useState(40);
 
   const { data: updates, isLoading: updatesLoading, error } = useListFiscalUpdates({
     impact: quickFilter === "high" ? "high" : undefined,
@@ -94,6 +116,9 @@ export default function FiscalPage() {
 
   const displayed = useMemo(() => {
     let items = (updates ?? []) as FiscalItem[];
+
+    // Quality threshold
+    items = items.filter(u => (u.qualityScore ?? 70) >= qualityMin);
 
     if (quickFilter === "saved") items = items.filter(u => u.isSaved);
     if (quickFilter === "normative") items = items.filter(u => u.isNormative);
@@ -131,12 +156,13 @@ export default function FiscalPage() {
 
   const isLoading = updatesLoading || metricsLoading;
 
-  const hasActiveFilters = categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "";
+  const hasActiveFilters = categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "" || qualityMin > 40;
 
   const clearFilters = () => {
     setCategoryFilter("all");
     setDateRange("all");
     setSearchQuery("");
+    setQualityMin(40);
   };
 
   if (isLoading) {
@@ -185,10 +211,10 @@ export default function FiscalPage() {
       {metrics && (
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
           {[
-            { label: "Total", value: metrics.total, color: "text-foreground", bg: "bg-muted/60" },
+            { label: "Total visible", value: metrics.total, color: "text-foreground", bg: "bg-muted/60" },
             { label: "Alto Impacto", value: metrics.highImpact, color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-900/20" },
             { label: "Requiere Acción", value: metrics.requiresAction, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
-            { label: "Normativas", value: metrics.normative, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20" },
+            { label: "Calidad promedio", value: metrics.avgQualityScore != null ? `${metrics.avgQualityScore}` : "–", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
           ].map(m => (
             <Card key={m.label} className={`${m.bg} border-0`}>
               <CardContent className="p-4">
@@ -197,6 +223,16 @@ export default function FiscalPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {metrics && (metrics.needsReview ?? 0) > 0 && (
+        <div className="flex items-center gap-2.5 text-sm rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-4 py-2.5">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span className="text-amber-800 dark:text-amber-300">
+            {metrics.needsReview} {metrics.needsReview === 1 ? "registro requiere" : "registros requieren"} revisión manual de fuente.
+            {(metrics.discarded ?? 0) > 0 && ` ${metrics.discarded} fueron descartados automáticamente por calidad insuficiente.`}
+          </span>
         </div>
       )}
 
@@ -286,6 +322,22 @@ export default function FiscalPage() {
               </Select>
             </div>
 
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Calidad mínima: <span className="text-foreground normal-case">{qualityMin}</span>
+              </p>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={qualityMin}
+                onChange={e => setQualityMin(Number(e.target.value))}
+                className="w-full accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">Oculta registros con puntuación por debajo de este valor</p>
+            </div>
+
             {hasActiveFilters && (
               <div className="sm:col-span-3 flex justify-end">
                 <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground">
@@ -320,75 +372,98 @@ export default function FiscalPage() {
             )}
           </Empty>
         ) : (
-          displayed.map(update => (
-            <Card
-              key={update.id}
-              className={`card-hover ${update.requiresAction ? "border-l-4 border-l-amber-500" : ""}`}
-            >
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <Badge variant="outline" className="text-xs">{update.organism}</Badge>
-                      <Badge variant="secondary" className="text-xs">{update.jurisdiction}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(update.date).toLocaleDateString("es-AR", {
-                          day: "numeric", month: "short", year: "numeric",
-                        })}
-                      </span>
+          displayed.map(update => {
+            const score = update.qualityScore ?? 70;
+            const issues = parseIssues(update.qualityIssues);
+            return (
+              <Card
+                key={update.id}
+                className={`card-hover ${update.needsReview ? "border-l-4 border-l-amber-400" : update.requiresAction ? "border-l-4 border-l-amber-500" : ""}`}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs">{update.organism}</Badge>
+                        <Badge variant="secondary" className="text-xs">{update.jurisdiction}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(update.date).toLocaleDateString("es-AR", {
+                            day: "numeric", month: "short", year: "numeric",
+                          })}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${qualityColor(score)}`}>
+                          <ShieldCheck className="h-2.5 w-2.5" />
+                          {score} · {qualityLabel(score)}
+                        </span>
+                      </div>
+                      <CardTitle className="text-base leading-snug">{update.title}</CardTitle>
                     </div>
-                    <CardTitle className="text-base leading-snug">{update.title}</CardTitle>
-                  </div>
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${IMPACT_COLORS[update.impact as keyof typeof IMPACT_COLORS] ?? ""}`}>
-                      Impacto {IMPACT_LABELS[update.impact as keyof typeof IMPACT_LABELS] ?? update.impact}
-                    </span>
-                    {update.requiresAction && (
-                      <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
-                        <AlertTriangle className="h-3 w-3" />
-                        Acción requerida
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${IMPACT_COLORS[update.impact as keyof typeof IMPACT_COLORS] ?? ""}`}>
+                        Impacto {IMPACT_LABELS[update.impact as keyof typeof IMPACT_LABELS] ?? update.impact}
                       </span>
-                    )}
+                      {update.needsReview && (
+                        <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                          <AlertTriangle className="h-3 w-3" />
+                          Requiere revisión
+                        </span>
+                      )}
+                      {update.requiresAction && (
+                        <span className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 font-medium">
+                          <AlertTriangle className="h-3 w-3" />
+                          Acción requerida
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="bg-muted/60 p-3.5 rounded-lg text-sm text-muted-foreground mb-3 leading-relaxed">
-                  {update.summary}
-                </div>
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs capitalize">{update.category}</Badge>
-                    {update.isNormative && (
-                      <Badge variant="secondary" className="text-xs">Normativa</Badge>
-                    )}
-                    {update.sourceUrl && (
-                      <a
-                        href={update.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Ver fuente
-                      </a>
-                    )}
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-muted/60 p-3.5 rounded-lg text-sm text-muted-foreground mb-3 leading-relaxed">
+                    {update.summary}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`h-8 text-xs gap-1.5 ${update.isSaved ? "text-primary" : "text-muted-foreground"}`}
-                    onClick={() => handleToggleSave(update.id)}
-                    disabled={toggleSaved.isPending}
-                  >
-                    {update.isSaved
-                      ? <><BookmarkCheck className="h-3.5 w-3.5" /> Guardada</>
-                      : <><Bookmark className="h-3.5 w-3.5" /> Guardar</>
-                    }
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                  {issues.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {issues.map((issue, i) => (
+                        <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-muted/80 text-muted-foreground flex items-center gap-1">
+                          <Info className="h-2.5 w-2.5 shrink-0" /> {issue}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs capitalize">{update.category}</Badge>
+                      {update.isNormative && (
+                        <Badge variant="secondary" className="text-xs">Normativa</Badge>
+                      )}
+                      {update.sourceUrl && (
+                        <a
+                          href={update.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Ver fuente
+                        </a>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-8 text-xs gap-1.5 ${update.isSaved ? "text-primary" : "text-muted-foreground"}`}
+                      onClick={() => handleToggleSave(update.id)}
+                      disabled={toggleSaved.isPending}
+                    >
+                      {update.isSaved
+                        ? <><BookmarkCheck className="h-3.5 w-3.5" /> Guardada</>
+                        : <><Bookmark className="h-3.5 w-3.5" /> Guardar</>
+                      }
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
         )}
       </div>
 

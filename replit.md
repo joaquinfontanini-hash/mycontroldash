@@ -79,6 +79,18 @@ Uses Clerk authentication with support for Google OAuth. User roles: admin, edit
 - Admin can manage users (activate/deactivate, change roles)
 - All dashboard routes require authentication
 
+## Data Quality System (v3)
+
+Added quality scoring (0-100) to fiscal updates and travel offers:
+- **`data-quality.service.ts`**: scoring rules for both domains (URL validity, date validation, title length, price sanity, expiry check)
+- **Fiscal rules**: -30 missing source URL, -20 invalid URL format, -30 invalid date, -20 short title, -15 duplicate/short summary
+- **Travel rules**: -40 zero/null price, -30 invalid URL, -20 expired offer, -20 invalid duration
+- **Discard threshold**: 40 (configurable via `DEFAULT_QUALITY_THRESHOLD`)
+- **DB columns added**: `qualityScore integer`, `qualityIssues text (JSON)`, `needsReview boolean`, `isHidden boolean` on both tables
+- **`discard_logs` table**: stores every auto-discarded item with module, source, title, URL, and reason
+- **New endpoints**: `GET /api/fiscal/discards`, `GET /api/travel/quality`, `POST /api/travel/score-all`
+- **UI**: quality score badge (green/amber/red) on each fiscal card and travel card; needsReview warning indicator; issues list; quality threshold slider in advanced filters; warning strip showing counts; discard log in Admin → Sincronización tab
+
 ## Connecting Real APIs (Future)
 
 - **News**: Replace mock data in `artifacts/api-server/src/routes/news.ts` with RSS/API fetch

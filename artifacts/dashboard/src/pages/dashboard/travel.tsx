@@ -2,9 +2,26 @@ import { useState } from "react";
 import { useListTravelOffers } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Plane, MapPin, Calendar, Building, ExternalLink, SlidersHorizontal } from "lucide-react";
+import { Plane, MapPin, Calendar, Building, ExternalLink, SlidersHorizontal, ShieldCheck, AlertTriangle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+
+function qualityColor(score: number) {
+  if (score >= 80) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
+  if (score >= 60) return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
+  return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+}
+
+function qualityLabel(score: number) {
+  if (score >= 80) return "Verificado";
+  if (score >= 60) return "Aceptable";
+  return "Revisar";
+}
+
+function parseIssues(raw?: string | null): string[] {
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
 
 const TYPE_FILTERS = [
   { value: "", label: "Todos" },
@@ -117,59 +134,97 @@ export default function TravelPage() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {offers?.map(offer => (
-            <Card key={offer.id} className="flex flex-col card-hover hover:border-primary/50">
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start mb-3">
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${TYPE_COLORS[offer.travelType ?? ""] ?? "bg-muted text-muted-foreground"}`}>
-                    {offer.travelType ?? offer.offerType}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{offer.provider}</span>
-                </div>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-primary shrink-0" />
-                  <span className="leading-tight">{offer.destination}</span>
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">{offer.region}</p>
-              </CardHeader>
-
-              <CardContent className="flex-1 space-y-4">
-                <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-center">
-                  <p className="text-xs text-muted-foreground mb-1">Precio desde</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {offer.currency} {Number(offer.price).toLocaleString("es-AR")}
-                  </p>
-                </div>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4 shrink-0" />
-                    <span>{offer.duration} días de duración</span>
+          {offers?.map(offer => {
+            const score = offer.qualityScore ?? 70;
+            const issues = parseIssues(offer.qualityIssues);
+            const priceNum = Number(offer.price);
+            const priceInvalid = isNaN(priceNum) || priceNum <= 0;
+            const isExpired = offer.validUntil ? new Date(offer.validUntil) < new Date() : false;
+            return (
+              <Card key={offer.id} className={`flex flex-col card-hover ${offer.needsReview ? "border-amber-300 dark:border-amber-700" : "hover:border-primary/50"}`}>
+                <CardHeader className="pb-3">
+                  <div className="flex justify-between items-start mb-3">
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${TYPE_COLORS[offer.travelType ?? ""] ?? "bg-muted text-muted-foreground"}`}>
+                      {offer.travelType ?? offer.offerType}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {offer.needsReview && (
+                        <span className="flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                          <AlertTriangle className="h-3 w-3" /> Revisar
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground">{offer.provider}</span>
+                    </div>
                   </div>
-                  {offer.hotel && (
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-primary shrink-0" />
+                    <span className="leading-tight">{offer.destination}</span>
+                  </CardTitle>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-sm text-muted-foreground">{offer.region}</p>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full flex items-center gap-0.5 ${qualityColor(score)}`}>
+                      <ShieldCheck className="h-2.5 w-2.5" /> {score}
+                    </span>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="flex-1 space-y-4">
+                  <div className={`rounded-lg p-3 text-center ${priceInvalid ? "bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-800" : "bg-primary/5 border border-primary/10"}`}>
+                    {priceInvalid ? (
+                      <p className="text-sm text-red-600 dark:text-red-400 font-medium flex items-center justify-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Precio no disponible
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-muted-foreground mb-1">Precio desde</p>
+                        <p className="text-2xl font-bold text-primary">
+                          {offer.currency} {priceNum.toLocaleString("es-AR")}
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Building className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{offer.hotel} {offer.hotelCategory ? `· ${offer.hotelCategory}★` : ""}</span>
+                      <Calendar className="h-4 w-4 shrink-0" />
+                      <span>{offer.duration} días de duración</span>
+                    </div>
+                    {offer.hotel && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Building className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{offer.hotel} {offer.hotelCategory ? `· ${offer.hotelCategory}★` : ""}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {offer.validUntil && (
+                    <p className={`text-xs border-t pt-3 ${isExpired ? "text-red-500 dark:text-red-400 line-through" : "text-muted-foreground"}`}>
+                      {isExpired ? "Oferta vencida: " : "Válido hasta: "}
+                      {new Date(offer.validUntil).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })}
+                    </p>
+                  )}
+
+                  {issues.length > 0 && (
+                    <div className="flex flex-wrap gap-1 border-t pt-3">
+                      {issues.map((issue, i) => (
+                        <span key={i} className="text-xs px-1.5 py-0.5 rounded-full bg-muted/80 text-muted-foreground flex items-center gap-0.5">
+                          <Info className="h-2.5 w-2.5 shrink-0" /> {issue}
+                        </span>
+                      ))}
                     </div>
                   )}
-                </div>
+                </CardContent>
 
-                {offer.validUntil && (
-                  <p className="text-xs text-muted-foreground border-t pt-3">
-                    Válido hasta: {new Date(offer.validUntil).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })}
-                  </p>
-                )}
-              </CardContent>
-
-              <CardFooter className="pt-0">
-                <Button asChild className="w-full" variant="outline">
-                  <a href={offer.link} target="_blank" rel="noopener noreferrer">
-                    Ver oferta completa <ExternalLink className="ml-2 h-3.5 w-3.5" />
-                  </a>
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
+                <CardFooter className="pt-0">
+                  <Button asChild className="w-full" variant="outline">
+                    <a href={offer.link} target="_blank" rel="noopener noreferrer">
+                      Ver oferta completa <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                    </a>
+                  </Button>
+                </CardFooter>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

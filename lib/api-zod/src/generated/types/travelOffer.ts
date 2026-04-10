@@ -24,5 +24,8 @@ export interface TravelOffer {
   /** @nullable */
   validUntil?: string | null;
   isValid: boolean;
+  qualityScore?: number;
+  qualityIssues?: string | null;
+  needsReview?: boolean;
   createdAt: string;
 }

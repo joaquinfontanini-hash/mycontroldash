@@ -11,4 +11,7 @@ export interface FiscalMetrics {
   highImpact: number;
   requiresAction: number;
   normative: number;
+  needsReview?: number;
+  discarded?: number;
+  avgQualityScore?: number;
 }

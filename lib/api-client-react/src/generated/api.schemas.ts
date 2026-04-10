@@ -95,6 +95,14 @@ export interface FiscalUpdate {
   summary: string;
   requiresAction: boolean;
   isSaved: boolean;
+  isNormative?: boolean;
+  sourceUrl?: string | null;
+  tags?: string | null;
+  fingerprint?: string | null;
+  qualityScore?: number;
+  qualityIssues?: string | null;
+  needsReview?: boolean;
+  isHidden?: boolean;
   createdAt: string;
 }
 
@@ -103,6 +111,9 @@ export interface FiscalMetrics {
   highImpact: number;
   requiresAction: number;
   normative: number;
+  needsReview?: number;
+  discarded?: number;
+  avgQualityScore?: number;
 }
 
 export interface TravelOffer {
@@ -123,6 +134,9 @@ export interface TravelOffer {
   /** @nullable */
   validUntil?: string | null;
   isValid: boolean;
+  qualityScore?: number;
+  qualityIssues?: string | null;
+  needsReview?: boolean;
   createdAt: string;
 }
 

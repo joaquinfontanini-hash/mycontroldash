@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Shield, Users, CheckCircle2, XCircle, Activity,
-  Mail, CloudSun, Newspaper, Briefcase, MoreHorizontal, Clock,
+  Mail, CloudSun, Newspaper, Briefcase, MoreHorizontal, Clock, Trash2,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -38,6 +38,16 @@ interface SyncLog {
   durationMs: number;
   createdAt: string;
   errorMessage?: string;
+}
+
+interface DiscardLog {
+  id: number;
+  module: string;
+  source: string;
+  title: string;
+  sourceUrl?: string | null;
+  reason: string;
+  discardedAt: string;
 }
 
 function StatusDot({ ok }: { ok: boolean }) {
@@ -79,6 +89,16 @@ export default function AdminPage() {
       return res.json();
     },
     refetchInterval: 60_000,
+  });
+
+  const { data: discardLogs } = useQuery<DiscardLog[]>({
+    queryKey: ["discard-logs"],
+    queryFn: async () => {
+      const res = await fetch("/api/fiscal/discards");
+      if (!res.ok) throw new Error("discard logs failed");
+      return res.json();
+    },
+    refetchInterval: 300_000,
   });
 
   const { data: gmailStatus } = useQuery<{ connected: boolean; email?: string }>({
@@ -319,7 +339,7 @@ export default function AdminPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="sync" className="mt-0">
+        <TabsContent value="sync" className="mt-0 space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -367,6 +387,48 @@ export default function AdminPage() {
                       )}
                       <span className="text-xs text-muted-foreground ml-auto shrink-0">
                         {timeAgo(log.createdAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Trash2 className="h-4 w-4" />
+                Registros de Descarte
+              </CardTitle>
+              <CardDescription>
+                Ítems descartados automáticamente por calidad insuficiente.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!discardLogs ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+                </div>
+              ) : discardLogs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <CheckCircle2 className="h-9 w-9 text-emerald-500 mb-3" />
+                  <p className="font-medium">Sin descartes</p>
+                  <p className="text-sm text-muted-foreground">Todos los ítems ingresados superaron el umbral de calidad.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {discardLogs.slice(0, 50).map(log => (
+                    <div
+                      key={log.id}
+                      className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 rounded-lg border bg-muted/20 text-sm"
+                    >
+                      <Badge variant="outline" className="text-[10px] shrink-0 capitalize w-fit">{log.module}</Badge>
+                      <span className="text-xs text-muted-foreground shrink-0">{log.source}</span>
+                      <span className="text-xs flex-1 truncate font-medium" title={log.title}>{log.title || "—"}</span>
+                      <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0">{log.reason}</span>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-auto">
+                        {timeAgo(log.discardedAt)}
                       </span>
                     </div>
                   ))}
