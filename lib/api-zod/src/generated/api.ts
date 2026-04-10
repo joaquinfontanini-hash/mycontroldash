@@ -188,6 +188,10 @@ export const ListFiscalUpdatesResponseItem = zod.object({
   summary: zod.string(),
   requiresAction: zod.boolean(),
   isSaved: zod.boolean(),
+  isNormative: zod.boolean().optional(),
+  sourceUrl: zod.string().nullable().optional(),
+  tags: zod.string().nullable().optional(),
+  fingerprint: zod.string().nullable().optional(),
   createdAt: zod.string(),
 });
 export const ListFiscalUpdatesResponse = zod.array(

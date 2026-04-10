@@ -2,6 +2,7 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
 import { useTheme } from "@/components/theme-provider";
+import GlobalSearch, { useGlobalSearch } from "@/components/global-search";
 import {
   LayoutDashboard,
   CheckSquare,
@@ -18,11 +19,9 @@ import {
   Moon,
   Sun,
   Menu,
-  ChevronRight,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { Kbd } from "@/components/ui/kbd";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -43,11 +43,6 @@ const NAV_ITEMS = [
   { href: "/dashboard/weather", label: "Clima", icon: CloudSun },
   { href: "/dashboard/fiscal", label: "Monitor Fiscal", icon: Briefcase },
   { href: "/dashboard/travel", label: "Viajes", icon: Plane },
-];
-
-const BOTTOM_NAV = [
-  { href: "/admin", label: "Admin", icon: Shield },
-  { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
 function NavLink({ href, label, icon: Icon, location, onClick }: {
@@ -76,7 +71,6 @@ function NavLink({ href, label, icon: Icon, location, onClick }: {
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
-  const isAdmin = true;
 
   return (
     <div className="flex h-full flex-col bg-sidebar border-r border-sidebar-border">
@@ -110,9 +104,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           Sistema
         </p>
         <nav className="flex flex-col gap-0.5">
-          {isAdmin && (
-            <NavLink href="/admin" label="Admin" icon={Shield} location={location} onClick={onNavigate} />
-          )}
+          <NavLink href="/admin" label="Admin" icon={Shield} location={location} onClick={onNavigate} />
           <NavLink href="/settings" label="Ajustes" icon={Settings} location={location} onClick={onNavigate} />
         </nav>
       </div>
@@ -125,6 +117,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { signOut } = useClerk();
   const { theme, setTheme } = useTheme();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { open: searchOpen, setOpen: setSearchOpen } = useGlobalSearch();
 
   const initials = [user?.firstName?.charAt(0), user?.lastName?.charAt(0)]
     .filter(Boolean).join("") || "U";
@@ -149,14 +142,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </SheetContent>
           </Sheet>
 
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Buscar..."
-              className="pl-9 h-8 text-sm bg-muted/50 border-transparent focus:border-border focus:bg-background"
-            />
-          </div>
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex flex-1 max-w-xs items-center gap-2 h-8 px-3 rounded-md bg-muted/50 border border-transparent hover:border-border hover:bg-background text-sm text-muted-foreground transition-all duration-150"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 text-left">Buscar...</span>
+            <Kbd className="hidden sm:inline-flex text-[10px]">⌘K</Kbd>
+          </button>
 
           <div className="ml-auto flex items-center gap-2">
             <Button
@@ -164,6 +157,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               size="icon"
               className="h-8 w-8 rounded-lg"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+              title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
             >
               <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -191,7 +185,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut()} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Ajustes
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => signOut()}
+                  className="text-destructive focus:text-destructive"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   Cerrar Sesión
                 </DropdownMenuItem>
@@ -204,6 +208,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

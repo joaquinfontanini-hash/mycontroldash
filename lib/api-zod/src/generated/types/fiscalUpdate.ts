@@ -17,5 +17,9 @@ export interface FiscalUpdate {
   summary: string;
   requiresAction: boolean;
   isSaved: boolean;
+  isNormative?: boolean;
+  sourceUrl?: string | null;
+  tags?: string | null;
+  fingerprint?: string | null;
   createdAt: string;
 }
