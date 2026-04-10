@@ -136,11 +136,26 @@ Added quality scoring (0-100) to fiscal updates and travel offers:
 ## V5 Features (completed)
 
 - **Vencimientos module**: `due_dates` + `due_date_categories` tables; full CRUD API; page with urgency grouping (overdue/today/3d/week/future/done); category management dialog; priority coloring
-- **Dashboard sidebar**: VencimientosWidget in sticky right panel (lg:grid-cols-[1fr_288px]); urgency dots + critical badge
-- **News deduplication**: `normalizeTitle()` + `titleSimilarity()` (0.75 word overlap threshold); logs `skippedDup` and `skippedMediaSummary`
-- **News Tributum filter**: `isTributumMediaSummary()` filters "resumen de medios" digest summaries
+- **Dashboard layout**: `lg:grid-cols-[1fr_288px]`; VencimientosWidget sticky right panel with `self-start lg:sticky lg:top-[76px]` (sticky properly anchored below the 60px header)
+- **News deduplication**: `normalizeTitle()` + `titleSimilarity()` (0.75 word overlap); cross-batch dedup via unified `existingNormalizedTitles` Map; logs `skippedDup`/`skippedMediaSummary`
+- **Tributum full normative filter** (v5.1 fix): 3-layer filter — (1) resumen-de-medios patterns, (2) `(SourceAttribution)` regex at end of title, (3) `filterNormasNacionales` flag enforces normative markers (RG, Ley, Decreto, AFIP/ARCA/IGJ/BCRA/UIF). Only institutional/regulatory content passes.
+- **Widget management**: 6 configurable summary widgets (Emails, Tareas, Fiscal, Viajes, Noticias, Vencimientos); reorder ↑/↓ + show/hide Eye toggle; `Settings2` gear icon in dashboard header; persisted in localStorage key `dashboard-widget-config-v1`; empty-state prompt when all hidden
 - **News categories expanded**: 23 chips incl. Inflación, Política, Internacional, Tecnología; unified filter panel with source icon fixed-width layout
 - **External file sources**: `external_file_sources` table; full CRUD API; Settings page "Fuentes Externas" section with create/edit/delete dialog
-- **Seeding**: `seedDefaultCategories()` in `app.ts` on startup → 7 default due-date categories (Impuestos, Cargas Sociales, Proveedores, Honorarios, Alquileres, Vencimientos AFIP, Otros)
+- **Seeding**: `seedDefaultCategories()` in `app.ts` on startup → 7 default due-date categories
 - **API server**: Manual validation in all routes (no Zod dependency — Zod only in api-zod lib)
-- **Due-dates sidebar**: "Vencimientos" added to sidebar nav (CalendarClock icon)
+- **Due-dates sidebar nav**: "Vencimientos" added (CalendarClock icon)
+
+## External Excel Cloud — Foundation Checklist
+
+Ready:
+- `external_file_sources` table: id, name, type (excel/google_sheets/csv/other), url, identifier, status, notes, userId, createdAt, updatedAt
+- Full CRUD API at `/api/external-sources`
+- UI management in Settings → "Fuentes Externas"
+
+Still needed for real Excel/Sheets reading:
+1. Google OAuth credentials (`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`) → already used for Gmail
+2. `googleapis` npm package for Sheets API: `pnpm --filter @workspace/api-server add googleapis`
+3. A `getGoogleSheetsClient(userId)` service that reads OAuth tokens from `email_connections` table
+4. A sync job that reads rows from Google Sheets and stores them in a new `imported_data` table
+5. For Excel files: `xlsx` or `exceljs` package + a file upload endpoint

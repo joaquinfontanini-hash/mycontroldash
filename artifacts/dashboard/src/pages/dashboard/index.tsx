@@ -1,42 +1,146 @@
 import { useQuery } from "@tanstack/react-query";
-import { useGetDashboardSummary, useGetWeather } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetWeather, type DashboardSummary } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Mail, CheckSquare, Briefcase, Plane, Newspaper, CloudSun,
   CloudRain, Sun, Cloud, ArrowRight, TrendingUp, RefreshCw,
-  DollarSign, AlertCircle, CalendarClock, Circle, CheckCircle2,
+  DollarSign, AlertCircle, CalendarClock, CheckCircle2,
+  Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { useState, useMemo } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useState, useMemo, useCallback, type ComponentType } from "react";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DolarRate {
-  type: string;
-  label: string;
-  buy: number | null;
-  sell: number | null;
-  avg: number | null;
-  source: string;
-  sourceUrl: string;
-  status: "ok" | "error" | "stale";
-  fetchedAt: string;
+  type: string; label: string;
+  buy: number | null; sell: number | null; avg: number | null;
+  source: string; sourceUrl: string;
+  status: "ok" | "error" | "stale"; fetchedAt: string;
 }
 
 interface DueDate {
-  id: number;
-  title: string;
-  category: string;
-  dueDate: string;
+  id: number; title: string; category: string; dueDate: string;
   description?: string | null;
   priority: "low" | "medium" | "high" | "critical";
-  status: "pending" | "done" | "cancelled";
-  alertEnabled: boolean;
+  status: "pending" | "done" | "cancelled"; alertEnabled: boolean;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Widget config ─────────────────────────────────────────────────────────────
+
+const LS_KEY = "dashboard-widget-config-v1";
+
+interface WidgetConfig { order: string[]; hidden: string[] }
+
+const DEFAULT_WIDGET_ORDER = ["emails", "tasks", "fiscal", "travel", "news", "vencimientos"];
+const DEFAULT_CONFIG: WidgetConfig = { order: DEFAULT_WIDGET_ORDER, hidden: [] };
+
+interface WidgetDef {
+  id: string;
+  title: string;
+  subtitle: (summary: DashboardSummary | undefined, dueDates: DueDate[]) => string | number;
+  value: (summary: DashboardSummary | undefined, dueDates: DueDate[]) => string | number;
+  href: string;
+  accent: string;
+  bg: string;
+  icon: ComponentType<{ className?: string }>;
+}
+
+const WIDGET_DEFS: WidgetDef[] = [
+  {
+    id: "emails",
+    title: "Emails recientes",
+    icon: Mail,
+    value: (s) => s?.emailCount24h ?? "—",
+    subtitle: () => "Últimas 24 horas",
+    href: "/dashboard/emails",
+    accent: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-50 dark:bg-blue-950/40",
+  },
+  {
+    id: "tasks",
+    title: "Tareas pendientes",
+    icon: CheckSquare,
+    value: (s) => s?.pendingTasks ?? "—",
+    subtitle: () => "Requieren atención",
+    href: "/dashboard/tasks",
+    accent: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-950/40",
+  },
+  {
+    id: "fiscal",
+    title: "Monitor Fiscal",
+    icon: Briefcase,
+    value: (s) => s?.fiscalUpdatesCount ?? "—",
+    subtitle: (s) => `${s?.fiscalRequireAction ?? 0} requieren acción`,
+    href: "/dashboard/fiscal",
+    accent: "text-red-600 dark:text-red-400",
+    bg: "bg-red-50 dark:bg-red-950/40",
+  },
+  {
+    id: "travel",
+    title: "Ofertas de viaje",
+    icon: Plane,
+    value: (s) => s?.travelOffersCount ?? "—",
+    subtitle: () => "Disponibles hoy",
+    href: "/dashboard/travel",
+    accent: "text-emerald-600 dark:text-emerald-400",
+    bg: "bg-emerald-50 dark:bg-emerald-950/40",
+  },
+  {
+    id: "news",
+    title: "Noticias",
+    icon: Newspaper,
+    value: (s) => s?.newsCount ?? "—",
+    subtitle: () => "Artículos relevantes",
+    href: "/dashboard/news",
+    accent: "text-violet-600 dark:text-violet-400",
+    bg: "bg-violet-50 dark:bg-violet-950/40",
+  },
+  {
+    id: "vencimientos",
+    title: "Vencimientos",
+    icon: CalendarClock,
+    value: (_s, dd) => dd.filter(d => d.status === "pending").length,
+    subtitle: (_s, dd) => {
+      const critical = dd.filter(d => {
+        if (d.status !== "pending") return false;
+        const diff = Math.floor((new Date(d.dueDate + "T00:00:00").getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+        return diff <= 0;
+      }).length;
+      return critical > 0 ? `${critical} crítico${critical > 1 ? "s" : ""}` : "Pendientes";
+    },
+    href: "/dashboard/due-dates",
+    accent: "text-rose-600 dark:text-rose-400",
+    bg: "bg-rose-50 dark:bg-rose-950/40",
+  },
+];
+
+function loadWidgetConfig(): WidgetConfig {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return DEFAULT_CONFIG;
+    const parsed = JSON.parse(raw) as WidgetConfig;
+    // Ensure all widget IDs are present in order (add new ones at end)
+    const allIds = DEFAULT_WIDGET_ORDER;
+    const order = [
+      ...parsed.order.filter(id => allIds.includes(id)),
+      ...allIds.filter(id => !parsed.order.includes(id)),
+    ];
+    return { order, hidden: parsed.hidden.filter(id => allIds.includes(id)) };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+function saveWidgetConfig(cfg: WidgetConfig) {
+  localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function fetchCurrency(): Promise<DolarRate[]> {
   const res = await fetch("/api/currency");
@@ -96,9 +200,7 @@ function DollarWidget() {
     try {
       await fetch("/api/currency/refresh", { method: "POST" });
       refetch();
-    } finally {
-      setRefreshing(false);
-    }
+    } finally { setRefreshing(false); }
   };
 
   const lastUpdate = rates?.[0]?.fetchedAt
@@ -180,24 +282,110 @@ function DollarWidget() {
   );
 }
 
+// ── Widget Personalización Dialog ─────────────────────────────────────────────
+
+function WidgetConfigDialog({
+  open,
+  onOpenChange,
+  config,
+  onChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  config: WidgetConfig;
+  onChange: (cfg: WidgetConfig) => void;
+}) {
+  const move = (id: string, dir: -1 | 1) => {
+    const arr = [...config.order];
+    const i = arr.indexOf(id);
+    if (i < 0) return;
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    onChange({ ...config, order: arr });
+  };
+
+  const toggle = (id: string) => {
+    const hidden = config.hidden.includes(id)
+      ? config.hidden.filter(h => h !== id)
+      : [...config.hidden, id];
+    onChange({ ...config, hidden });
+  };
+
+  const reset = () => onChange(DEFAULT_CONFIG);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Personalizar widgets</DialogTitle>
+          <DialogDescription className="text-xs">
+            Activá, desactivá y reordenás los widgets del panel principal. Los cambios se guardan automáticamente.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5 py-2">
+          {config.order.map((id, idx) => {
+            const def = WIDGET_DEFS.find(w => w.id === id);
+            if (!def) return null;
+            const isHidden = config.hidden.includes(id);
+            return (
+              <div
+                key={id}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${isHidden ? "border-border/30 bg-muted/20 opacity-50" : "border-border/60 bg-muted/10"}`}
+              >
+                <def.icon className={`h-4 w-4 shrink-0 ${isHidden ? "text-muted-foreground/40" : def.accent}`} />
+                <span className={`flex-1 text-sm font-medium ${isHidden ? "text-muted-foreground" : ""}`}>{def.title}</span>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => move(id, -1)}
+                    disabled={idx === 0}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-25 disabled:pointer-events-none"
+                  >
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => move(id, 1)}
+                    disabled={idx === config.order.length - 1}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-25 disabled:pointer-events-none"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => toggle(id)}
+                    className={`p-1 rounded transition-colors ${isHidden ? "text-muted-foreground/40 hover:text-foreground hover:bg-muted/60" : "text-primary hover:text-muted-foreground hover:bg-muted/60"}`}
+                  >
+                    {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-between pt-1">
+          <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground gap-1" onClick={reset}>
+            <RotateCcw className="h-3 w-3" /> Restablecer
+          </Button>
+          <Button size="sm" className="text-xs h-7" onClick={() => onOpenChange(false)}>
+            Listo
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Vencimientos Sidebar Widget ───────────────────────────────────────────────
 
 const URGENCY_CFG = {
-  overdue: { dot: "bg-red-500",    label: "Vencido",      text: "text-red-600 dark:text-red-400",    badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
-  today:   { dot: "bg-orange-500", label: "Hoy",          text: "text-orange-600 dark:text-orange-400", badge: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" },
-  soon:    { dot: "bg-amber-500",  label: "3 días",       text: "text-amber-600 dark:text-amber-400", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
-  week:    { dot: "bg-blue-500",   label: "Esta semana",  text: "text-blue-600 dark:text-blue-400",   badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
-  future:  { dot: "bg-muted-foreground/30", label: "Próximo", text: "text-muted-foreground",         badge: "bg-muted text-muted-foreground" },
-  done:    { dot: "bg-muted-foreground/20", label: "Listo",   text: "text-muted-foreground",         badge: "bg-muted text-muted-foreground" },
+  overdue: { dot: "bg-red-500",    label: "Vencido",      text: "text-red-600 dark:text-red-400" },
+  today:   { dot: "bg-orange-500", label: "Hoy",          text: "text-orange-600 dark:text-orange-400" },
+  soon:    { dot: "bg-amber-500",  label: "3 días",       text: "text-amber-600 dark:text-amber-400" },
+  week:    { dot: "bg-blue-500",   label: "Esta semana",  text: "text-blue-600 dark:text-blue-400" },
+  future:  { dot: "bg-muted-foreground/30", label: "Próximo", text: "text-muted-foreground" },
+  done:    { dot: "bg-muted-foreground/20", label: "Listo",   text: "text-muted-foreground" },
 };
 
-function VencimientosWidget() {
-  const { data: dueDates = [], isLoading } = useQuery<DueDate[]>({
-    queryKey: ["due-dates"],
-    queryFn: fetchDueDates,
-    staleTime: 2 * 60 * 1000,
-  });
-
+function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLoading: boolean }) {
   const pending = useMemo(() =>
     dueDates
       .filter(d => d.status === "pending")
@@ -207,19 +395,23 @@ function VencimientosWidget() {
   );
 
   const critical = useMemo(() =>
-    dueDates.filter(d => d.status === "pending" && ["overdue", "today"].includes(getUrgency(d.dueDate, d.status))).length,
+    dueDates.filter(d => {
+      if (d.status !== "pending") return false;
+      const u = getUrgency(d.dueDate, d.status);
+      return u === "overdue" || u === "today";
+    }).length,
     [dueDates]
   );
 
   return (
-    <Card className="border-border/60 sticky top-4">
+    <Card className="border-border/60">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <CalendarClock className="h-4 w-4 text-primary shrink-0" />
             Vencimientos
             {critical > 0 && (
-              <span className="inline-flex items-center justify-center h-4.5 min-w-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold">
+              <span className="inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
                 {critical}
               </span>
             )}
@@ -292,6 +484,19 @@ function VencimientosWidget() {
 export default function DashboardSummary() {
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary();
   const { data: weather, isLoading: weatherLoading } = useGetWeather();
+  const { data: dueDates = [], isLoading: dueDatesLoading } = useQuery<DueDate[]>({
+    queryKey: ["due-dates"],
+    queryFn: fetchDueDates,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const [widgetConfig, setWidgetConfig] = useState<WidgetConfig>(loadWidgetConfig);
+  const [configOpen, setConfigOpen] = useState(false);
+
+  const handleWidgetChange = useCallback((cfg: WidgetConfig) => {
+    setWidgetConfig(cfg);
+    saveWidgetConfig(cfg);
+  }, []);
 
   const isLoading = summaryLoading || weatherLoading;
 
@@ -306,20 +511,15 @@ export default function DashboardSummary() {
           <Skeleton className="h-24 rounded-xl" />
           <Skeleton className="h-32 rounded-xl" />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[...Array(5)].map((_, i) => (
+            {[...Array(6)].map((_, i) => (
               <Card key={i}>
-                <CardHeader className="pb-2">
-                  <Skeleton className="h-4 w-1/3" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-1/2 mb-2" />
-                  <Skeleton className="h-4 w-2/3" />
-                </CardContent>
+                <CardHeader className="pb-2"><Skeleton className="h-4 w-1/3" /></CardHeader>
+                <CardContent><Skeleton className="h-8 w-1/2 mb-2" /><Skeleton className="h-4 w-2/3" /></CardContent>
               </Card>
             ))}
           </div>
         </div>
-        <Skeleton className="h-80 rounded-xl" />
+        <Skeleton className="hidden lg:block h-80 rounded-xl" />
       </div>
     );
   }
@@ -327,139 +527,129 @@ export default function DashboardSummary() {
   const today = weather && Array.isArray(weather) ? weather[0] : null;
   const tomorrow = weather && Array.isArray(weather) ? weather[1] : null;
 
-  const widgets = [
-    {
-      title: "Emails recientes",
-      icon: Mail,
-      value: summary?.emailCount24h ?? "—",
-      subtitle: "Últimas 24 horas",
-      href: "/dashboard/emails",
-      accent: "text-blue-600 dark:text-blue-400",
-      bg: "bg-blue-50 dark:bg-blue-950/40",
-    },
-    {
-      title: "Tareas pendientes",
-      icon: CheckSquare,
-      value: summary?.pendingTasks ?? "—",
-      subtitle: "Requieren atención",
-      href: "/dashboard/tasks",
-      accent: "text-amber-600 dark:text-amber-400",
-      bg: "bg-amber-50 dark:bg-amber-950/40",
-    },
-    {
-      title: "Monitor Fiscal",
-      icon: Briefcase,
-      value: summary?.fiscalUpdatesCount ?? "—",
-      subtitle: `${summary?.fiscalRequireAction ?? 0} requieren acción`,
-      href: "/dashboard/fiscal",
-      accent: "text-red-600 dark:text-red-400",
-      bg: "bg-red-50 dark:bg-red-950/40",
-    },
-    {
-      title: "Ofertas de viaje",
-      icon: Plane,
-      value: summary?.travelOffersCount ?? "—",
-      subtitle: "Disponibles hoy",
-      href: "/dashboard/travel",
-      accent: "text-emerald-600 dark:text-emerald-400",
-      bg: "bg-emerald-50 dark:bg-emerald-950/40",
-    },
-    {
-      title: "Noticias",
-      icon: Newspaper,
-      value: summary?.newsCount ?? "—",
-      subtitle: "Artículos relevantes",
-      href: "/dashboard/news",
-      accent: "text-violet-600 dark:text-violet-400",
-      bg: "bg-violet-50 dark:bg-violet-950/40",
-    },
-  ];
+  const visibleWidgets = widgetConfig.order
+    .filter(id => !widgetConfig.hidden.includes(id))
+    .map(id => WIDGET_DEFS.find(w => w.id === id))
+    .filter(Boolean) as WidgetDef[];
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_288px] max-w-6xl">
-      {/* ── Left column ──────────────────────────────────────── */}
-      <div className="space-y-5 min-w-0">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
-            <p className="text-muted-foreground mt-1 text-sm">
-              {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-            </p>
-          </div>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
-            <TrendingUp className="h-3.5 w-3.5 text-primary" />
-            Panel activo
-          </div>
-        </div>
+    <>
+      <WidgetConfigDialog
+        open={configOpen}
+        onOpenChange={setConfigOpen}
+        config={widgetConfig}
+        onChange={handleWidgetChange}
+      />
 
-        {today && (
-          <Card className="border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <WeatherIcon icon={today.conditionIcon} className="h-10 w-10 text-amber-500" />
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Clima Neuquén — Hoy</p>
-                    <p className="font-semibold">{today.condition}</p>
-                    <div className="flex items-center gap-2 text-sm mt-0.5">
-                      <span className="text-blue-500 font-medium">{today.tempMin}°</span>
-                      <span className="text-muted-foreground">/</span>
-                      <span className="text-red-500 font-medium">{today.tempMax}°C</span>
-                      <span className="text-muted-foreground ml-2">Lluvia: {today.rainProbability}%</span>
-                    </div>
-                  </div>
-                </div>
-                {tomorrow && (
-                  <div className="hidden sm:flex items-center gap-3 text-sm text-muted-foreground">
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-wide font-medium">Mañana</p>
-                      <p className="text-foreground font-medium">{tomorrow.condition}</p>
-                      <p className="text-xs">{tomorrow.tempMin}° / {tomorrow.tempMax}°C</p>
-                    </div>
-                    <WeatherIcon icon={tomorrow.conditionIcon} className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                )}
-                <Button asChild variant="ghost" size="sm" className="shrink-0">
-                  <Link href="/dashboard/weather">
-                    Ver pronóstico <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                  </Link>
-                </Button>
+      <div className="grid gap-5 lg:grid-cols-[1fr_288px] max-w-6xl">
+        {/* ── Left column ──────────────────────────────────────── */}
+        <div className="space-y-5 min-w-0">
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
+              <p className="text-muted-foreground mt-1 text-sm">
+                {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
+                <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                Panel activo
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => setConfigOpen(true)}
+                title="Personalizar widgets"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
 
-        <DollarWidget />
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {widgets.map((widget, idx) => (
-            <Card key={idx} className="card-hover group">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {widget.title}
-                </CardTitle>
-                <div className={`h-8 w-8 rounded-lg ${widget.bg} flex items-center justify-center`}>
-                  <widget.icon className={`h-4 w-4 ${widget.accent}`} />
+          {today && (
+            <Card className="border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <WeatherIcon icon={today.conditionIcon} className="h-10 w-10 text-amber-500" />
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Clima Neuquén — Hoy</p>
+                      <p className="font-semibold">{today.condition}</p>
+                      <div className="flex items-center gap-2 text-sm mt-0.5">
+                        <span className="text-blue-500 font-medium">{today.tempMin}°</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="text-red-500 font-medium">{today.tempMax}°C</span>
+                        <span className="text-muted-foreground ml-2">Lluvia: {today.rainProbability}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  {tomorrow && (
+                    <div className="hidden sm:flex items-center gap-3 text-sm text-muted-foreground">
+                      <div className="text-right">
+                        <p className="text-xs uppercase tracking-wide font-medium">Mañana</p>
+                        <p className="text-foreground font-medium">{tomorrow.condition}</p>
+                        <p className="text-xs">{tomorrow.tempMin}° / {tomorrow.tempMax}°C</p>
+                      </div>
+                      <WeatherIcon icon={tomorrow.conditionIcon} className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )}
+                  <Button asChild variant="ghost" size="sm" className="shrink-0">
+                    <Link href="/dashboard/weather">
+                      Ver pronóstico <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className={`text-3xl font-bold ${widget.accent} mb-0.5`}>{widget.value}</div>
-                <p className="text-xs text-muted-foreground mb-4">{widget.subtitle}</p>
-                <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
-                  <Link href={widget.href}>
-                    Ver detalle <ArrowRight className="ml-1 h-3 w-3" />
-                  </Link>
-                </Button>
               </CardContent>
             </Card>
-          ))}
+          )}
+
+          <DollarWidget />
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleWidgets.map(def => {
+              const val = def.value(summary, dueDates);
+              const sub = def.subtitle(summary, dueDates);
+              return (
+                <Card key={def.id} className="card-hover group">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {def.title}
+                    </CardTitle>
+                    <div className={`h-8 w-8 rounded-lg ${def.bg} flex items-center justify-center`}>
+                      <def.icon className={`h-4 w-4 ${def.accent}`} />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className={`text-3xl font-bold ${def.accent} mb-0.5`}>{val}</div>
+                    <p className="text-xs text-muted-foreground mb-4">{sub}</p>
+                    <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
+                      <Link href={def.href}>
+                        Ver detalle <ArrowRight className="ml-1 h-3 w-3" />
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {visibleWidgets.length === 0 && (
+              <div className="col-span-3 py-10 text-center border-2 border-dashed border-border/40 rounded-xl">
+                <p className="text-sm text-muted-foreground mb-3">Todos los widgets están ocultos.</p>
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setConfigOpen(true)}>
+                  <Settings2 className="h-3.5 w-3.5 mr-1.5" /> Configurar widgets
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Right sidebar: Vencimientos ─────────────────────── */}
+        <div className="self-start lg:sticky lg:top-[76px]">
+          <VencimientosWidget dueDates={dueDates} isLoading={dueDatesLoading} />
         </div>
       </div>
-
-      {/* ── Right sidebar: Vencimientos ─────────────────────── */}
-      <div className="lg:pt-0">
-        <VencimientosWidget />
-      </div>
-    </div>
+    </>
   );
 }

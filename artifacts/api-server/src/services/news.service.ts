@@ -49,12 +49,59 @@ const MEDIA_BRAND_NAMES = [
   "perfil", "télam", "telam",
 ];
 
+/**
+ * Regex: detects "(MediaSource)" attribution at end of Tributum titles.
+ * Tributum aggregates articles from other outlets and appends the source
+ * in parentheses: "Título del artículo (Iprofesional)", "(Abogados.com.ar)", etc.
+ * These are NOT original Tributum normative content.
+ */
+const TRIBUTUM_EXTERNAL_ATTRIBUTION_RE = /\s*\([A-Za-záéíóúÁÉÍÓÚñÑ][A-Za-záéíóúÁÉÍÓÚñÑ0-9 .,\-]{2,}\)\s*$/;
+
+/**
+ * Normative/institutional keywords that identify genuine regulatory content.
+ * Used when filterNormasNacionales: true to double-check ambiguous cases.
+ */
+const NORMATIVE_MARKERS = [
+  /\bRG\s+\d+/i,
+  /\bR\.G\.\s+\d+/i,
+  /\bDecreto\s+\d+/i,
+  /\bLey\s+\d+/i,
+  /\bDisposici[oó]n\s+\d+/i,
+  /\bResoluci[oó]n\s+\d+/i,
+  /\bBolet[ií]n\s+Oficial/i,
+  /\bConvenio\b.{0,40}(fiscal|imposici[oó]n)/i,
+  /\bhomoLog[oó]\b/i,
+  /\bacuerdo\s+salarial/i,
+  /\bconvenio\s+colectivo/i,
+  /\bIGJ\b/i,
+  /\bBCRA\b/i,
+  /\bUIF\b/i,
+  /\bARCA\b/i,
+  /\bAFIP\b/i,
+  /\bFallo\b.{0,30}(Corte|C[aá]mara|Tribunal)/i,
+  /\bSentencia/i,
+];
+
 function isTributumMediaSummary(title: string, summary: string): boolean {
   const text = `${title} ${summary}`.toLowerCase();
+  // 1. Explicit "resumen de medios" patterns
   if (TRIBUTUM_MEDIA_SUMMARY_PATTERNS.some(p => p.test(text))) return true;
-  // If title contains 3+ media brand names it's almost certainly a media roundup
+  // 2. Title contains 3+ media brand names → media roundup
   const brandCount = MEDIA_BRAND_NAMES.filter(b => text.includes(b)).length;
-  return brandCount >= 3;
+  if (brandCount >= 3) return true;
+  // 3. External media attribution "(SourceName)" at end of title → aggregated article
+  if (TRIBUTUM_EXTERNAL_ATTRIBUTION_RE.test(title.trim())) return true;
+  return false;
+}
+
+/**
+ * When filterNormasNacionales: true, only allow items that contain at least one
+ * normative/institutional marker OR that look like original Tributum reporting.
+ * This rejects generic consumer-advice articles without normative anchors.
+ */
+function isTributumNormativeContent(title: string, summary: string): boolean {
+  const text = `${title} ${summary}`;
+  return NORMATIVE_MARKERS.some(p => p.test(text));
 }
 
 function scoreImportance(item: { title: string; summary: string; sourceName: string }): number {
@@ -118,6 +165,9 @@ export async function refreshNews(): Promise<number> {
     let skippedDup = 0;
     let skippedMediaSummary = 0;
 
+    // Build source config lookup by name for flag access during processing
+    const sourceConfigByName = new Map(RSS_SOURCES.map(s => [s.name, s]));
+
     const results = await Promise.allSettled(
       RSS_SOURCES.filter(s => s.enabled).map(source =>
         fetchRssSource(source.url, source.name, source.category, 15)
@@ -132,13 +182,22 @@ export async function refreshNews(): Promise<number> {
       .from(newsItemsTable);
 
     const existingUrls = new Set(existingRows.map(r => r.url));
+    // existingNormalizedTitles tracks ALL seen titles (DB + current batch) for cross-batch dedup
     const existingNormalizedTitles = new Map<string, string>(
       existingRows.map(r => [normalizeTitle(r.title), r.url])
     );
 
     for (const item of allItems) {
-      // ── 1. Tributum: skip "resumen de medios" entries ──────────────
+      const srcConfig = sourceConfigByName.get(item.sourceName);
+
+      // ── 1. Tributum: skip "resumen de medios" and media attribution entries ──
       if (item.sourceName === "Tributum" && isTributumMediaSummary(item.title, item.summary)) {
+        skippedMediaSummary++;
+        continue;
+      }
+
+      // ── 1b. filterNormasNacionales: skip non-normative content from flagged sources ──
+      if (srcConfig?.filterNormasNacionales && !isTributumNormativeContent(item.title, item.summary)) {
         skippedMediaSummary++;
         continue;
       }
@@ -146,7 +205,7 @@ export async function refreshNews(): Promise<number> {
       // ── 2. URL dedup ────────────────────────────────────────────────
       if (existingUrls.has(item.link)) continue;
 
-      // ── 3. Title similarity dedup (≥ 0.75 word overlap = duplicate) ─
+      // ── 3. Title similarity dedup ≥ 0.75 (covers DB rows AND current batch) ─
       const normTitle = normalizeTitle(item.title);
       let isDuplicate = false;
       for (const [existNorm] of existingNormalizedTitles) {
