@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Truck, Plus, Trash2, ChevronDown, ChevronUp, CalendarClock,
-  DollarSign, FileText, Package, X, AlertCircle,
+  DollarSign, FileText, Package, X, AlertCircle, Upload,
 } from "lucide-react";
 import {
   Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
@@ -174,9 +174,29 @@ interface BatchForm {
   items: BatchItem[];
 }
 
+function parseCSVItems(text: string): BatchItem[] {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const result: BatchItem[] = [];
+  const skipHeader = lines[0]?.toLowerCase().includes("proveedor") || lines[0]?.toLowerCase().includes("supplier");
+  const start = skipHeader ? 1 : 0;
+  for (let i = start; i < lines.length; i++) {
+    const parts = lines[i]!.split(/[,;\t]/).map(p => p.trim().replace(/^"|"$/g, ""));
+    if (parts.length < 2) continue;
+    result.push({
+      supplier: parts[0] ?? "",
+      amount: parts[1] ?? "",
+      document: parts[2] ?? "",
+      originalDueDate: parts[3] ?? "",
+      notes: parts[4] ?? "",
+    });
+  }
+  return result;
+}
+
 export default function SupplierBatchesPage() {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<BatchForm>({
     fileName: "",
     weekStart: "",
@@ -231,6 +251,25 @@ export default function SupplierBatchesPage() {
   const removeItem = (i: number) => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
   const setItem = (i: number, key: keyof BatchItem, value: string) =>
     setForm(f => ({ ...f, items: f.items.map((it, idx) => idx === i ? { ...it, [key]: value } : it) }));
+
+  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = ev.target?.result as string;
+      const parsed = parseCSVItems(text);
+      if (parsed.length > 0) {
+        setForm(f => ({
+          ...f,
+          fileName: f.fileName || file.name.replace(/\.[^.]+$/, ""),
+          items: parsed,
+        }));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   const totalForm = form.items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
 
@@ -380,15 +419,37 @@ export default function SupplierBatchesPage() {
 
             {/* Items section */}
             <div className="space-y-2 pt-1 border-t border-border/40">
+              <input
+                ref={csvInputRef}
+                type="file"
+                accept=".csv,.txt,.tsv"
+                className="hidden"
+                onChange={handleCSVImport}
+              />
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Comprobantes
                 </Label>
-                <Button type="button" variant="ghost" size="sm" onClick={addItem} className="h-7 text-xs text-primary px-2">
-                  <Plus className="h-3 w-3 mr-1" />
-                  Agregar
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => csvInputRef.current?.click()}
+                    className="h-7 text-xs px-2 border-dashed text-muted-foreground hover:text-foreground"
+                  >
+                    <Upload className="h-3 w-3 mr-1" />
+                    Importar CSV
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={addItem} className="h-7 text-xs text-primary px-2">
+                    <Plus className="h-3 w-3 mr-1" />
+                    Fila
+                  </Button>
+                </div>
               </div>
+              <p className="text-[10px] text-muted-foreground">
+                CSV: <code className="font-mono bg-muted px-0.5 rounded text-[9px]">proveedor, importe, N°doc, venc_original, notas</code>
+              </p>
               <div className="space-y-2">
                 {form.items.map((item, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 p-2 rounded-lg border border-border/40 bg-muted/20">

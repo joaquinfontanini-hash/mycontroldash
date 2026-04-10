@@ -186,6 +186,10 @@ export default function FiscalPage() {
     return cats.sort();
   }, [updates]);
 
+  const availableSources = useMemo(() => {
+    return new Set(((updates ?? []) as FiscalItem[]).map(u => u.source).filter(Boolean));
+  }, [updates]);
+
   const isLoading = updatesLoading || metricsLoading;
 
   const hasActiveFilters = categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "" || qualityMin > 40 || activeSources.length > 0;
@@ -313,7 +317,7 @@ export default function FiscalPage() {
             Filtros avanzados
             {hasActiveFilters && (
               <span className="h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                {(categoryFilter !== "all" ? 1 : 0) + (dateRange !== "all" ? 1 : 0) + (searchQuery ? 1 : 0)}
+                {(categoryFilter !== "all" ? 1 : 0) + (dateRange !== "all" ? 1 : 0) + (searchQuery ? 1 : 0) + activeSources.length}
               </span>
             )}
           </button>
@@ -342,17 +346,20 @@ export default function FiscalPage() {
               <div className="flex gap-2 overflow-x-auto scrollbar-none pb-0.5">
                 {FISCAL_SOURCE_CATALOG.map(entry => {
                   const active = activeSources.includes(entry.name);
+                  const hasContent = availableSources.has(entry.name);
                   return (
                     <button
                       key={entry.name}
-                      onClick={() => toggleSource(entry.name)}
-                      title={entry.name}
+                      onClick={() => hasContent ? toggleSource(entry.name) : undefined}
+                      title={hasContent ? entry.name : `${entry.name} — sin contenido indexado aún`}
                       className={`
                         shrink-0 flex flex-col items-center gap-1 w-[68px] pt-2 pb-1.5 px-1 rounded-xl
                         border transition-all duration-150 group
                         ${active
                           ? "border-primary/40 bg-primary/5 shadow-sm"
-                          : "border-transparent hover:border-border/60 hover:bg-muted/30"
+                          : hasContent
+                            ? "border-transparent hover:border-border/60 hover:bg-muted/30 cursor-pointer"
+                            : "border-transparent opacity-35 cursor-not-allowed"
                         }
                       `}
                     >
@@ -360,17 +367,20 @@ export default function FiscalPage() {
                         h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0
                         transition-all duration-150
                         ${entry.avatarBg} ${entry.avatarText}
-                        ${active ? `ring-2 ${entry.ringColor}` : "group-hover:ring-1 group-hover:ring-border/60"}
+                        ${active ? `ring-2 ${entry.ringColor}` : hasContent ? "group-hover:ring-1 group-hover:ring-border/60" : ""}
                       `}>
                         {entry.initials}
                       </div>
                       <span className={`
                         text-[9px] font-medium leading-tight text-center w-full px-0.5 line-clamp-2
                         transition-colors duration-150
-                        ${active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground/80"}
+                        ${active ? "text-foreground" : "text-muted-foreground"}
                       `}>
                         {entry.shortName}
                       </span>
+                      {!hasContent && !updatesLoading && (
+                        <span className="text-[7px] text-muted-foreground/60 leading-tight">pronto</span>
+                      )}
                     </button>
                   );
                 })}

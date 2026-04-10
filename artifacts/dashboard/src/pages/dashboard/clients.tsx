@@ -41,6 +41,13 @@ function validateCuit(cuit: string): string | null {
   if (clean.length !== 11) return "El CUIT debe tener 11 dígitos";
   const validPrefixes = ["20", "23", "24", "25", "26", "27", "30", "33", "34"];
   if (!validPrefixes.includes(clean.slice(0, 2))) return "Prefijo de CUIT inválido";
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  let sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(clean[i]!) * weights[i]!;
+  const remainder = sum % 11;
+  if (remainder === 1) return "CUIT inválido (dígito verificador incorrecto)";
+  const expectedCheck = remainder === 0 ? 0 : 11 - remainder;
+  if (parseInt(clean[10]!) !== expectedCheck) return "Dígito verificador de CUIT inválido";
   return null;
 }
 

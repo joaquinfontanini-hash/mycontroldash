@@ -5,6 +5,7 @@ import {
   annualDueCalendarNotesTable, uploadedDueFilesTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
 
@@ -35,7 +36,7 @@ router.get("/annual-calendars/:id", async (req, res): Promise<void> => {
 
 router.post("/annual-calendars", async (req, res): Promise<void> => {
   try {
-    const userId = req.auth?.userId;
+    const userId = getAuth(req)?.userId;
     const { name, year, notes } = req.body;
     if (!name || !year) { res.status(400).json({ error: "Nombre y año son requeridos" }); return; }
     const [cal] = await db.insert(annualDueCalendarsTable).values({
@@ -133,7 +134,7 @@ router.get("/uploaded-due-files", async (_req, res): Promise<void> => {
 
 router.post("/uploaded-due-files", async (req, res): Promise<void> => {
   try {
-    const userId = req.auth?.userId;
+    const userId = getAuth(req)?.userId;
     const { fileName, fileType, year, calendarId } = req.body;
     if (!fileName) { res.status(400).json({ error: "fileName es requerido" }); return; }
     const [file] = await db.insert(uploadedDueFilesTable).values({

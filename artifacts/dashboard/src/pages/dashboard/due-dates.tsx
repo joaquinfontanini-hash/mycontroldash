@@ -557,7 +557,12 @@ export default function DueDatesPage() {
 
             {/* Recurrence section */}
             <div className="space-y-2 pt-1 border-t border-border/40">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Periodicidad</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Periodicidad</Label>
+                {form.recurrenceType !== "none" && (
+                  <span className="text-[9px] text-muted-foreground/70 italic">Guarda el tipo; las instancias futuras se pueden generar desde la vista de vencimientos.</span>
+                )}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {RECURRENCE_TYPES.map(rt => (
                   <button

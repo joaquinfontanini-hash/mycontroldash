@@ -3,12 +3,13 @@ import { eq, desc } from "drizzle-orm";
 import { db, clientsTable, clientTaxAssignmentsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { generateDueDatesForClient, regenerateAllDueDatesForClient } from "../services/afip-engine.js";
+import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
 
 router.get("/clients", async (req, res): Promise<void> => {
   try {
-    const userId = req.auth?.userId;
+    const userId = getAuth(req)?.userId;
     const clients = await db.select().from(clientsTable)
       .where(userId ? eq(clientsTable.userId, userId) : undefined)
       .orderBy(desc(clientsTable.createdAt));
@@ -41,7 +42,7 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
 
 router.post("/clients", async (req, res): Promise<void> => {
   try {
-    const userId = req.auth?.userId;
+    const userId = getAuth(req)?.userId;
     const { name, cuit, email, phone, status, notes, taxTypes } = req.body;
     if (!name || !cuit) { res.status(400).json({ error: "Nombre y CUIT son requeridos" }); return; }
     const cleanCuit = cuit.replace(/[-\s]/g, "");

@@ -7,7 +7,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { startScheduler } from "./jobs/scheduler";
 import { seedDefaultCategories } from "./lib/seed.js";
-import { seedCalendar2026 } from "./lib/seed-calendar-2026.js";
+import { seedCalendar2026, patchGanancias2026 } from "./lib/seed-calendar-2026.js";
 
 const app: Express = express();
 
@@ -43,6 +43,6 @@ app.use("/api", router);
 
 startScheduler();
 seedDefaultCategories();
-seedCalendar2026();
+seedCalendar2026().then(() => patchGanancias2026());
 
 export default app;

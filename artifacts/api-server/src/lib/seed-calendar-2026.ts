@@ -1,5 +1,5 @@
 import { db, annualDueCalendarsTable, annualDueCalendarRulesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 const IVA_RULES: Array<{ month: number; cuitTermination: string; dueDay: number }> = [
@@ -43,8 +43,16 @@ const CARGAS_SOCIALES_RULES: Array<{ month: number; cuitTermination: string; due
 ];
 
 const GANANCIAS_RULES: Array<{ month: number; cuitTermination: string; dueDay: number }> = [
-  { month: 6, cuitTermination: "any", dueDay: 26 },
-  { month: 7, cuitTermination: "any", dueDay: 3 },
+  { month: 6, cuitTermination: "0", dueDay: 22 },
+  { month: 6, cuitTermination: "1", dueDay: 23 },
+  { month: 6, cuitTermination: "2", dueDay: 24 },
+  { month: 6, cuitTermination: "3", dueDay: 25 },
+  { month: 6, cuitTermination: "4", dueDay: 26 },
+  { month: 6, cuitTermination: "5", dueDay: 29 },
+  { month: 6, cuitTermination: "6", dueDay: 30 },
+  { month: 7, cuitTermination: "7", dueDay: 1  },
+  { month: 7, cuitTermination: "8", dueDay: 2  },
+  { month: 7, cuitTermination: "9", dueDay: 3  },
 ];
 
 const IIBB_NQN_RULES: Array<{ month: number; cuitTermination: string; dueDay: number }> = [
@@ -52,6 +60,45 @@ const IIBB_NQN_RULES: Array<{ month: number; cuitTermination: string; dueDay: nu
     month, cuitTermination: "any", dueDay: 15,
   })),
 ];
+
+export async function patchGanancias2026() {
+  try {
+    const [cal] = await db.select().from(annualDueCalendarsTable)
+      .where(eq(annualDueCalendarsTable.year, 2026));
+    if (!cal) return;
+
+    const existing = await db.select().from(annualDueCalendarRulesTable)
+      .where(and(
+        eq(annualDueCalendarRulesTable.calendarId, cal.id),
+        eq(annualDueCalendarRulesTable.taxType, "ganancias"),
+      ));
+
+    const hasAnyTermination = existing.some(r => r.cuitTermination === "any");
+    if (!hasAnyTermination) {
+      logger.info("Ganancias 2026 rules already patched, skipping");
+      return;
+    }
+
+    for (const r of existing) {
+      await db.delete(annualDueCalendarRulesTable)
+        .where(eq(annualDueCalendarRulesTable.id, r.id));
+    }
+
+    for (const rule of GANANCIAS_RULES) {
+      await db.insert(annualDueCalendarRulesTable).values({
+        calendarId: cal.id,
+        taxType: "ganancias",
+        month: rule.month,
+        cuitTermination: rule.cuitTermination,
+        dueDay: rule.dueDay,
+        notes: "Seed 2026 - ganancias (patched: terminación correcta)",
+      });
+    }
+    logger.info({ calendarId: cal.id, rules: GANANCIAS_RULES.length }, "Ganancias 2026 rules patched successfully");
+  } catch (err) {
+    logger.error({ err }, "Failed to patch Ganancias 2026 rules");
+  }
+}
 
 export async function seedCalendar2026() {
   try {

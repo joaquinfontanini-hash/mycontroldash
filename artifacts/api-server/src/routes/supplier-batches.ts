@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db, supplierPaymentBatchesTable, supplierPaymentBatchItemsTable, dueDatesTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ function getPreviousSaturday(fromDate?: string): string {
 
 router.get("/supplier-batches", async (req, res): Promise<void> => {
   try {
-    const userId = req.auth?.userId;
+    const userId = getAuth(req)?.userId;
     const batches = await db.select().from(supplierPaymentBatchesTable)
       .where(userId ? eq(supplierPaymentBatchesTable.userId, userId) : undefined)
       .orderBy(desc(supplierPaymentBatchesTable.createdAt));
@@ -54,7 +55,7 @@ router.get("/supplier-batches/:id", async (req, res): Promise<void> => {
 
 router.post("/supplier-batches", async (req, res): Promise<void> => {
   try {
-    const userId = req.auth?.userId;
+    const userId = getAuth(req)?.userId;
     const { fileName, items, weekStart, weekEnd, notes } = req.body;
     if (!fileName) { res.status(400).json({ error: "fileName es requerido" }); return; }
 
