@@ -4,8 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Newspaper, ExternalLink, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface CategoryDef {
@@ -23,98 +21,94 @@ const CATEGORIES: CategoryDef[] = [
   { value: "rionegro", label: "Río Negro", keywords: ["río negro", "rio negro", "rionegrino", "bariloche", "cipolletti", "general roca", "viedma"] },
   { value: "economia", label: "Economía", dbCategory: "economia" },
   { value: "impuestos", label: "Impuestos", dbCategory: "impuestos" },
-  { value: "negocios", label: "Negocios", dbCategory: "negocios", keywords: ["empresa", "pyme", "negocio", "emprendimiento", "startup", "inversión", "inversion", "economía de negocios"] },
-  { value: "finanzas", label: "Finanzas", keywords: ["finanzas", "financiero", "fintech", "banca", "crédito", "deuda"] },
-  { value: "mercados", label: "Mercados", keywords: ["merval", "bolsa", "acciones", "bonos", "renta fija", "cedear", "s&p", "nasdaq", "dow"] },
-  { value: "dolar", label: "Dólar", keywords: ["dólar", "dolar", "divisas", "blue", "oficial", "mep", "ccl", "cripto", "brecha"] },
-  { value: "legislacion", label: "Legislación", keywords: ["ley", "decreto", "resolución", "resolucion", "normativa", "reglamento", "legislación", "ordenanza"] },
-  { value: "laboral", label: "Laboral", keywords: ["empleo", "trabajo", "sueldo", "salario", "convenio", "sindicato", "laboral", "rrhh", "indemnización"] },
-  { value: "energia", label: "Energía", keywords: ["energía", "energia", "petróleo", "petroleo", "gas", "vaca muerta", "ypf", "combustible", "nafta", "gasoil"] },
-  { value: "agro", label: "Agro", keywords: ["agro", "campo", "soja", "cereal", "cosecha", "trigo", "maíz", "maiz", "agroindustria", "productor"] },
-  { value: "contabilidad", label: "Contabilidad", keywords: ["contador", "contabilidad", "balance", "auditoría", "auditoria", "estados contables", "factura", "facturación"] },
   { value: "afip_arca", label: "ARCA / AFIP", keywords: ["afip", "arca", "monotributo", "iva", "ganancias", "bienes personales", "moratorio", "regularización fiscal"] },
   { value: "rentas", label: "Rentas", keywords: ["rentas", "ingresos brutos", "rentas provinciales", "rentas neuquén"] },
+  { value: "contabilidad", label: "Contabilidad", keywords: ["contador", "contabilidad", "balance", "auditoría", "auditoria", "estados contables", "factura", "facturación"] },
+  { value: "dolar", label: "Dólar", keywords: ["dólar", "dolar", "divisas", "blue", "oficial", "mep", "ccl", "cripto", "brecha cambiaria"] },
+  { value: "inflacion", label: "Inflación", keywords: ["inflación", "inflacion", "ipc", "cpi", "precios", "canasta básica", "tarifas"] },
+  { value: "mercados", label: "Mercados", keywords: ["merval", "bolsa", "acciones", "bonos", "renta fija", "cedear", "s&p", "nasdaq", "dow jones"] },
+  { value: "finanzas", label: "Finanzas", keywords: ["finanzas", "financiero", "banca", "crédito", "deuda", "fmi", "banco central", "bcra"] },
+  { value: "negocios", label: "Negocios", dbCategory: "negocios", keywords: ["empresa", "pyme", "negocio", "emprendimiento", "inversión", "inversion"] },
+  { value: "energia", label: "Energía", keywords: ["energía", "energia", "petróleo", "petroleo", "gas", "vaca muerta", "ypf", "combustible", "nafta", "gasoil"] },
+  { value: "agro", label: "Agro", keywords: ["agro", "campo", "soja", "cereal", "cosecha", "trigo", "maíz", "maiz", "agroindustria"] },
+  { value: "politica", label: "Política", keywords: ["política", "politica", "gobierno", "congreso", "diputados", "senado", "elecciones", "ejecutivo"] },
+  { value: "internacional", label: "Internacional", keywords: ["internacional", "exterior", "mundo", "eeuu", "estados unidos", "brasil", "china", "fmi", "banco mundial"] },
+  { value: "tecnologia", label: "Tecnología", keywords: ["tecnología", "tecnologia", "tech", "ia", "inteligencia artificial", "digital", "software", "innovación"] },
+  { value: "laboral", label: "Laboral", keywords: ["empleo", "trabajo", "sueldo", "salario", "convenio", "sindicato", "laboral", "indemnización"] },
+  { value: "legislacion", label: "Legislación", keywords: ["ley", "decreto", "resolución", "resolucion", "normativa", "reglamento", "legislación", "ordenanza"] },
   { value: "boletines", label: "Boletines", keywords: ["boletín oficial", "boletin oficial", "registro oficial", "publicación oficial"] },
-  { value: "empresas", label: "Empresas", keywords: ["empresa", "empresarial", "corporativo", "pyme", "startup", "inversión", "inversion"] },
 ];
 
 interface SourceEntry {
   name: string;
+  shortName: string;
   initials: string;
-  bg: string;
-  text: string;
-  ring: string;
+  avatarBg: string;
+  avatarText: string;
+  ringColor: string;
+  badgeBg: string;
 }
 
 const SOURCE_CATALOG: SourceEntry[] = [
-  { name: "Ámbito",            initials: "ÁM", bg: "bg-orange-100 dark:bg-orange-900/40",  text: "text-orange-700 dark:text-orange-300", ring: "ring-orange-400" },
-  { name: "La Nación",         initials: "LN", bg: "bg-purple-100 dark:bg-purple-900/40",  text: "text-purple-700 dark:text-purple-300", ring: "ring-purple-400" },
-  { name: "Diario Río Negro",  initials: "RN", bg: "bg-emerald-100 dark:bg-emerald-900/40",text: "text-emerald-700 dark:text-emerald-300",ring: "ring-emerald-400" },
-  { name: "Clarín",            initials: "CL", bg: "bg-red-100 dark:bg-red-900/40",        text: "text-red-700 dark:text-red-300",      ring: "ring-red-400" },
-  { name: "Tributum",          initials: "TR", bg: "bg-teal-100 dark:bg-teal-900/40",      text: "text-teal-700 dark:text-teal-300",    ring: "ring-teal-400" },
-  { name: "Contadores en Red", initials: "CR", bg: "bg-lime-100 dark:bg-lime-900/40",      text: "text-lime-700 dark:text-lime-300",    ring: "ring-lime-400" },
+  {
+    name: "Ámbito",
+    shortName: "Ámbito",
+    initials: "ÁM",
+    avatarBg: "bg-orange-500/15",
+    avatarText: "text-orange-600 dark:text-orange-400",
+    ringColor: "ring-orange-500/50",
+    badgeBg: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
+  },
+  {
+    name: "La Nación",
+    shortName: "La Nación",
+    initials: "LN",
+    avatarBg: "bg-violet-500/15",
+    avatarText: "text-violet-600 dark:text-violet-400",
+    ringColor: "ring-violet-500/50",
+    badgeBg: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
+  },
+  {
+    name: "Diario Río Negro",
+    shortName: "Río Negro",
+    initials: "RN",
+    avatarBg: "bg-emerald-500/15",
+    avatarText: "text-emerald-600 dark:text-emerald-400",
+    ringColor: "ring-emerald-500/50",
+    badgeBg: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  },
+  {
+    name: "Clarín",
+    shortName: "Clarín",
+    initials: "CL",
+    avatarBg: "bg-rose-500/15",
+    avatarText: "text-rose-600 dark:text-rose-400",
+    ringColor: "ring-rose-500/50",
+    badgeBg: "bg-rose-500/10 text-rose-700 dark:text-rose-400",
+  },
+  {
+    name: "Tributum",
+    shortName: "Tributum",
+    initials: "TR",
+    avatarBg: "bg-cyan-500/15",
+    avatarText: "text-cyan-600 dark:text-cyan-400",
+    ringColor: "ring-cyan-500/50",
+    badgeBg: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400",
+  },
+  {
+    name: "Contadores en Red",
+    shortName: "Cont. en Red",
+    initials: "CR",
+    avatarBg: "bg-lime-500/15",
+    avatarText: "text-lime-600 dark:text-lime-500",
+    ringColor: "ring-lime-500/50",
+    badgeBg: "bg-lime-500/10 text-lime-700 dark:text-lime-400",
+  },
 ];
 
-const SOURCE_COLOR_MAP: Record<string, string> = {
-  "Ámbito":            "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  "La Nación":         "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  "Diario Río Negro":  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-  "Clarín":            "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  "Tributum":          "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
-  "Contadores en Red": "bg-lime-100 text-lime-700 dark:bg-lime-900/30 dark:text-lime-400",
-};
-
-function getSourceBadgeColor(source: string) {
-  return SOURCE_COLOR_MAP[source] ?? "bg-muted text-muted-foreground";
-}
-
-function CategoryChip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 border whitespace-nowrap
-        ${active
-          ? "bg-primary text-primary-foreground border-primary shadow-sm scale-[1.02]"
-          : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground hover:bg-muted/50"
-        }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function SourceIcon({ entry, active, onClick }: { entry: SourceEntry; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title={entry.name}
-      className={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all duration-150 group min-w-[60px]
-        ${active
-          ? "bg-primary/8 ring-2 ring-primary/30 shadow-sm"
-          : "hover:bg-muted/60"
-        }`}
-    >
-      <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-150 shrink-0
-        ${entry.bg} ${entry.text}
-        ${active ? `ring-2 ${entry.ring} ring-offset-1 ring-offset-background` : "group-hover:ring-1 group-hover:ring-border"}`}
-      >
-        {entry.initials}
-      </div>
-      <span className={`text-[10px] font-medium leading-tight text-center line-clamp-2 max-w-[56px] transition-colors
-        ${active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"}`}>
-        {entry.name.length > 12 ? entry.name.split(" ").slice(0, 2).join(" ") : entry.name}
-      </span>
-    </button>
-  );
-}
-
-function buildFilterSummary(categoryLabel: string, sources: string[], search: string): string | null {
-  const parts: string[] = [];
-  if (categoryLabel && categoryLabel !== "Todas") parts.push(categoryLabel);
-  if (sources.length > 0) parts.push(sources.join(", "));
-  if (search.trim()) parts.push(`"${search.trim()}"`);
-  if (parts.length === 0) return null;
-  return "Filtrando por: " + parts.join(" · ");
+function getSourceStyle(sourceName: string): string {
+  const entry = SOURCE_CATALOG.find(s => s.name === sourceName);
+  return entry?.badgeBg ?? "bg-muted text-muted-foreground";
 }
 
 export default function NewsPage() {
@@ -185,22 +179,27 @@ export default function NewsPage() {
 
   const activeFilterCount =
     (selectedCategory ? 1 : 0) + activeSources.length + (search.trim() ? 1 : 0);
-
-  const categoryLabel = CATEGORIES.find(c => c.value === selectedCategory)?.label ?? "Todas";
-  const filterSummary = buildFilterSummary(categoryLabel, activeSources, search);
+  const categoryLabel = CATEGORIES.find(c => c.value === selectedCategory)?.label;
 
   if (isLoading) {
     return (
-      <div className="space-y-5 max-w-6xl">
-        <Skeleton className="h-9 w-40" />
+      <div className="space-y-6 max-w-6xl">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-8 w-28 rounded-lg" />
+        </div>
+        <Skeleton className="h-9 w-full rounded-lg" />
         <div className="flex gap-2">
-          {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8 w-20 rounded-full" />)}
+          {[...Array(10)].map((_, i) => <Skeleton key={i} className="h-8 w-20 rounded-full shrink-0" />)}
         </div>
         <div className="flex gap-3">
-          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-20 w-16 rounded-xl" />)}
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-[72px] w-[76px] rounded-xl shrink-0" />)}
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-52 rounded-xl" />)}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[...Array(9)].map((_, i) => <Skeleton key={i} className="h-52 rounded-xl" />)}
         </div>
       </div>
     );
@@ -208,23 +207,27 @@ export default function NewsPage() {
 
   if (error) {
     return (
-      <div className="text-destructive p-4 rounded-lg border border-destructive/20 bg-destructive/5">
-        Error al cargar noticias.
+      <div className="max-w-6xl text-destructive p-4 rounded-xl border border-destructive/20 bg-destructive/5 text-sm">
+        Error al cargar noticias. Verificá la conexión e intentá de nuevo.
       </div>
     );
   }
 
   return (
-    <div className="space-y-0 max-w-6xl">
-      <div className="flex items-start justify-between gap-4 pb-5">
+    <div className="max-w-6xl space-y-0">
+
+      {/* ── Header ─────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4 pb-6">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Noticias</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Actualidad económica, fiscal y regional.{" "}
-            <span className="font-medium text-foreground">{filteredNews.length}</span> artículos
+            Actualidad económica, fiscal y regional
+            {" · "}
+            <span className="font-semibold text-foreground">{filteredNews.length}</span>
+            {" artículos"}
             {lastRefreshed && (
               <span className="ml-2 text-emerald-600 dark:text-emerald-400">
-                · Actualizado a las {lastRefreshed}
+                · Actualizado {lastRefreshed}
               </span>
             )}
           </p>
@@ -234,108 +237,182 @@ export default function NewsPage() {
           size="sm"
           onClick={handleRefresh}
           disabled={refreshing}
-          className="shrink-0"
+          className="shrink-0 h-8 text-xs"
         >
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Actualizando..." : "Actualizar"}
+          {refreshing ? "Actualizando…" : "Actualizar"}
         </Button>
       </div>
 
-      <div className="space-y-4 pb-5">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar en noticias..."
-            className="pl-9 pr-9 h-9 text-sm"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+      {/* ── Filter panel ───────────────────────────────────── */}
+      <div className="rounded-xl border border-border/60 bg-card/50 divide-y divide-border/60 mb-6">
+
+        {/* Search */}
+        <div className="px-4 py-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar en noticias…"
+              className="w-full h-8 pl-8 pr-8 text-sm rounded-lg bg-background border border-border/60 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Categoría</span>
+        {/* Category chips */}
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">Categoría</span>
             {selectedCategory && (
               <button
                 onClick={() => setSelectedCategory("")}
-                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                className="text-[10px] text-primary/70 hover:text-primary underline underline-offset-2 transition-colors"
               >
                 limpiar
               </button>
             )}
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {CATEGORIES.map(cat => (
-              <CategoryChip
-                key={cat.value}
-                active={selectedCategory === cat.value}
-                label={cat.label}
-                onClick={() => setSelectedCategory(cat.value)}
-              />
-            ))}
+          <div className="relative">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+              {CATEGORIES.map(cat => {
+                const active = selectedCategory === cat.value;
+                return (
+                  <button
+                    key={cat.value}
+                    onClick={() => setSelectedCategory(cat.value)}
+                    className={`
+                      shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium
+                      border whitespace-nowrap transition-all duration-150
+                      ${active
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground hover:bg-muted/40"
+                      }
+                    `}
+                  >
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-card/80 to-transparent" />
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Medios</span>
+        {/* Source icons */}
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">Medios</span>
             {activeSources.length > 0 && (
-              <button
-                onClick={() => setActiveSources([])}
-                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-              >
-                limpiar
-              </button>
-            )}
-            {activeSources.length > 0 && (
-              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                {activeSources.length}
-              </Badge>
+              <>
+                <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
+                  {activeSources.length}
+                </span>
+                <button
+                  onClick={() => setActiveSources([])}
+                  className="text-[10px] text-primary/70 hover:text-primary underline underline-offset-2 transition-colors"
+                >
+                  limpiar
+                </button>
+              </>
             )}
           </div>
-          <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
-            {SOURCE_CATALOG.map(entry => (
-              <SourceIcon
-                key={entry.name}
-                entry={entry}
-                active={activeSources.includes(entry.name)}
-                onClick={() => toggleSource(entry.name)}
-              />
-            ))}
+          <div className="relative">
+            <div className="flex gap-2 overflow-x-auto scrollbar-none pb-0.5">
+              {SOURCE_CATALOG.map(entry => {
+                const active = activeSources.includes(entry.name);
+                return (
+                  <button
+                    key={entry.name}
+                    onClick={() => toggleSource(entry.name)}
+                    title={entry.name}
+                    className={`
+                      shrink-0 flex flex-col items-center gap-1.5 w-[76px] pt-2.5 pb-2 px-1 rounded-xl
+                      border transition-all duration-150 group
+                      ${active
+                        ? "border-primary/40 bg-primary/5 shadow-sm"
+                        : "border-transparent hover:border-border/60 hover:bg-muted/30"
+                      }
+                    `}
+                  >
+                    <div className={`
+                      h-9 w-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0
+                      transition-all duration-150
+                      ${entry.avatarBg} ${entry.avatarText}
+                      ${active ? `ring-2 ${entry.ringColor}` : "group-hover:ring-1 group-hover:ring-border/60"}
+                    `}>
+                      {entry.initials}
+                    </div>
+                    <span className={`
+                      text-[10px] font-medium leading-tight text-center w-full px-0.5
+                      transition-colors duration-150 line-clamp-2
+                      ${active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground/80"}
+                    `}>
+                      {entry.shortName}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-card/80 to-transparent" />
           </div>
         </div>
 
-        {(activeFilterCount > 0) && (
-          <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-primary/5 border border-primary/10">
-            <p className="text-xs text-muted-foreground leading-relaxed flex-1 min-w-0">
-              {filterSummary}
-            </p>
+        {/* Active filter pills */}
+        {activeFilterCount > 0 && (
+          <div className="px-4 py-2.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground mr-0.5">Filtrando:</span>
+            {categoryLabel && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
+                {categoryLabel}
+                <button onClick={() => setSelectedCategory("")} className="ml-0.5 hover:text-primary/60 transition-colors">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+            {activeSources.map(s => (
+              <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted border border-border/60 text-[11px] font-medium text-foreground/80">
+                {s}
+                <button onClick={() => toggleSource(s)} className="ml-0.5 hover:text-muted-foreground transition-colors">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+            {search.trim() && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted border border-border/60 text-[11px] font-medium text-foreground/80">
+                "{search.trim()}"
+                <button onClick={() => setSearch("")} className="ml-0.5 hover:text-muted-foreground transition-colors">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
             <button
               onClick={clearAllFilters}
-              className="flex items-center gap-1 shrink-0 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+              className="ml-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
             >
-              <X className="h-3 w-3" />
-              Limpiar todo
+              limpiar todo
             </button>
           </div>
         )}
       </div>
 
+      {/* ── News grid ──────────────────────────────────────── */}
       {filteredNews.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-16 text-center border-2 border-dashed rounded-xl">
-          <Newspaper className="h-12 w-12 text-muted-foreground/40 mb-4" />
-          <h3 className="text-lg font-semibold mb-1">Sin resultados</h3>
+        <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-border/50 rounded-xl">
+          <Newspaper className="h-10 w-10 text-muted-foreground/25 mb-4" />
+          <h3 className="text-base font-semibold mb-1">Sin resultados</h3>
           <p className="text-muted-foreground text-sm mb-5 max-w-xs">
             {activeFilterCount > 0
-              ? "No hay artículos para los filtros seleccionados. Probá combinaciones diferentes."
+              ? "No hay artículos para los filtros seleccionados."
               : "No hay artículos en la base de datos todavía."}
           </p>
           {activeFilterCount > 0 ? (
@@ -345,34 +422,48 @@ export default function NewsPage() {
             </Button>
           ) : (
             <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-              <RefreshCw className={`h-3.5 w-3.5 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-              Cargar noticias ahora
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+              Cargar noticias
             </Button>
           )}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredNews.map(article => (
-            <a key={article.id} href={article.url} target="_blank" rel="noopener noreferrer" className="block group">
-              <Card className="h-full card-hover hover:border-primary/40 transition-all duration-200 hover:shadow-sm">
-                <CardHeader className="pb-3">
+            <a
+              key={article.id}
+              href={article.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block group"
+            >
+              <Card className="h-full flex flex-col border-border/60 hover:border-primary/30 transition-all duration-200 hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/20">
+                <CardHeader className="pb-2 flex-none">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${getSourceBadgeColor(article.source)}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${getSourceStyle(article.source)}`}>
                       {article.source}
                     </span>
-                    <span className="text-[11px] text-muted-foreground truncate">
-                      {new Date(article.date).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })}
+                    <span className="text-[11px] text-muted-foreground/70 truncate">
+                      {new Date(article.date).toLocaleDateString("es-AR", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
                     </span>
                   </div>
-                  <CardTitle className="text-base leading-snug line-clamp-2 group-hover:text-primary transition-colors duration-150">
+                  <CardTitle className="text-[15px] font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors duration-150">
                     {article.title}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="pt-0">
-                  <p className="text-sm text-muted-foreground line-clamp-3 mb-3">{article.summary}</p>
+                <CardContent className="pt-0 flex-1 flex flex-col justify-between">
+                  <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3 mb-3">
+                    {article.summary}
+                  </p>
                   <div className="flex items-center justify-between">
-                    <Badge variant="outline" className="text-[10px] capitalize">{article.category}</Badge>
-                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary transition-colors duration-150" />
+                    <span className="text-[10px] font-medium text-muted-foreground/60 capitalize border border-border/50 rounded px-1.5 py-0.5">
+                      {article.category}
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary/60 transition-colors duration-150 shrink-0" />
                   </div>
                 </CardContent>
               </Card>
