@@ -4,3 +4,7 @@ export * from "./shortcuts";
 export * from "./fiscal";
 export * from "./travel";
 export * from "./settings";
+export * from "./news";
+export * from "./weather";
+export * from "./sync-logs";
+export * from "./email-connections";

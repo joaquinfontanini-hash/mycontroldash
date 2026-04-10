@@ -1,107 +1,123 @@
 import { Router, type IRouter } from "express";
+import { getAuth } from "@clerk/express";
+import {
+  fetchGmailMessages,
+  getGmailAuthUrl,
+  handleGmailCallback,
+  disconnectEmail,
+  getEmailConnection,
+  isGmailConfigured,
+} from "../services/email.service.js";
 import { ListEmailsQueryParams } from "@workspace/api-zod";
-
-const MOCK_EMAILS = [
-  {
-    id: 1,
-    sender: "Carlos Mendoza",
-    senderEmail: "carlos.mendoza@consultora.com.ar",
-    subject: "Informe anual de auditoría - Revisión final",
-    preview: "Adjunto el borrador final del informe de auditoría para su revisión. Por favor confirme si hay observaciones antes del viernes.",
-    date: new Date(Date.now() - 1800000).toISOString(),
-    isRead: false,
-    category: "trabajo",
-  },
-  {
-    id: 2,
-    sender: "AFIP Notificaciones",
-    senderEmail: "notificaciones@afip.gob.ar",
-    subject: "Notificación: Vencimiento declaración jurada IVA",
-    preview: "Le informamos que el próximo vencimiento para la presentación de la declaración jurada de IVA es el 18 del corriente mes.",
-    date: new Date(Date.now() - 3600000).toISOString(),
-    isRead: false,
-    category: "impuestos",
-  },
-  {
-    id: 3,
-    sender: "Lucía Rodríguez",
-    senderEmail: "lucia@clienteempresa.com",
-    subject: "Re: Propuesta de servicios profesionales",
-    preview: "Muchas gracias por la propuesta. Nos pareció interesante y quisiera coordinar una reunión para discutir los detalles del alcance.",
-    date: new Date(Date.now() - 7200000).toISOString(),
-    isRead: true,
-    category: "clientes",
-  },
-  {
-    id: 4,
-    sender: "Banco Nación Argentina",
-    senderEmail: "alertas@bna.com.ar",
-    subject: "Alerta: Transferencia recibida por $450.000",
-    preview: "Se acreditó en su cuenta una transferencia de $450.000 proveniente de EMPRESA SA. Saldo actualizado disponible en homebanking.",
-    date: new Date(Date.now() - 10800000).toISOString(),
-    isRead: true,
-    category: "finanzas",
-  },
-  {
-    id: 5,
-    sender: "Marcos Villanueva",
-    senderEmail: "marcos.v@proveedor.com",
-    subject: "Factura B 0001-00003412 - Servicios Marzo",
-    preview: "Estimado cliente, le remitimos la factura correspondiente a los servicios de marzo. El importe total es de $185.000 con vencimiento el 30 del corriente.",
-    date: new Date(Date.now() - 14400000).toISOString(),
-    isRead: false,
-    category: "facturacion",
-  },
-  {
-    id: 6,
-    sender: "Consejo Profesional de CABA",
-    senderEmail: "info@cgce.org.ar",
-    subject: "Capacitación: Nuevas resoluciones técnicas - Inscripción abierta",
-    preview: "Le informamos que se encuentran abiertas las inscripciones para el curso de actualización sobre las últimas resoluciones técnicas aprobadas.",
-    date: new Date(Date.now() - 18000000).toISOString(),
-    isRead: true,
-    category: "capacitacion",
-  },
-  {
-    id: 7,
-    sender: "Ana García",
-    senderEmail: "ana.garcia@socio.com.ar",
-    subject: "Reunión de socios - Agenda para el lunes",
-    preview: "Les comparto la agenda propuesta para la reunión del lunes 14. Los puntos principales son la aprobación del presupuesto y la incorporación de nuevos clientes.",
-    date: new Date(Date.now() - 21600000).toISOString(),
-    isRead: false,
-    category: "trabajo",
-  },
-  {
-    id: 8,
-    sender: "Rentas Neuquén",
-    senderEmail: "notificaciones@rentas.neuquen.gov.ar",
-    subject: "Recordatorio: Vencimiento Ingresos Brutos",
-    preview: "Se le recuerda que el vencimiento para el pago del anticipo mensual de Ingresos Brutos correspondiente al período actual opera el próximo día 20.",
-    date: new Date(Date.now() - 25200000).toISOString(),
-    isRead: true,
-    category: "impuestos",
-  },
-];
+import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
-router.get("/emails", async (req, res): Promise<void> => {
-  const query = ListEmailsQueryParams.safeParse(req.query);
-  let emails = [...MOCK_EMAILS];
+router.get("/emails/oauth/status", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  const clerkId = auth?.userId ?? "anonymous";
+  const configured = isGmailConfigured();
 
-  if (query.success && query.data.limit) {
-    emails = emails.slice(0, query.data.limit);
+  if (!configured) {
+    res.json({
+      configured: false,
+      connected: false,
+      message: "Gmail no configurado. Agregar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET.",
+    });
+    return;
   }
 
-  res.json(emails);
+  const conn = await getEmailConnection(clerkId);
+  res.json({
+    configured: true,
+    connected: conn?.isActive ?? false,
+    email: conn?.email ?? null,
+    lastSyncAt: conn?.lastSyncAt ?? null,
+  });
 });
 
-router.get("/emails/stats", async (_req, res): Promise<void> => {
-  const total24h = MOCK_EMAILS.length;
-  const unread = MOCK_EMAILS.filter((e) => !e.isRead).length;
-  const important = MOCK_EMAILS.filter((e) => e.category === "impuestos" || e.category === "finanzas").length;
-  res.json({ total24h, unread, important });
+router.get("/emails/oauth/connect", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  const clerkId = auth?.userId ?? "anonymous";
+
+  if (!isGmailConfigured()) {
+    res.status(400).json({ error: "Gmail OAuth no configurado. Ver variables de entorno." });
+    return;
+  }
+
+  try {
+    const url = getGmailAuthUrl(clerkId);
+    res.redirect(url);
+  } catch (err) {
+    logger.error({ err }, "Gmail auth URL error");
+    res.status(500).json({ error: "Error al generar URL de autenticación" });
+  }
+});
+
+router.get("/emails/oauth/callback", async (req, res): Promise<void> => {
+  const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
+
+  if (error) {
+    logger.warn({ error }, "Gmail OAuth error from Google");
+    res.redirect("/?error=gmail_denied");
+    return;
+  }
+
+  if (!code || !state) {
+    res.status(400).json({ error: "Missing code or state" });
+    return;
+  }
+
+  try {
+    await handleGmailCallback(code, state);
+    res.redirect("/dashboard/emails?connected=1");
+  } catch (err) {
+    logger.error({ err }, "Gmail callback error");
+    res.redirect("/dashboard/emails?error=oauth_failed");
+  }
+});
+
+router.post("/emails/oauth/disconnect", async (req, res): Promise<void> => {
+  const auth = getAuth(req);
+  const clerkId = auth?.userId ?? "anonymous";
+  await disconnectEmail(clerkId);
+  res.json({ ok: true });
+});
+
+router.get("/emails", async (req, res): Promise<void> => {
+  try {
+    const auth = getAuth(req);
+    const clerkId = auth?.userId ?? "anonymous";
+    const query = ListEmailsQueryParams.safeParse(req.query);
+    const limit = query.success ? (query.data.limit ?? 20) : 20;
+
+    const { messages, unread, status } = await fetchGmailMessages(clerkId, limit);
+
+    res.json(messages.slice(0, limit));
+  } catch (err) {
+    logger.error({ err }, "Emails route error");
+    res.status(500).json({ error: "Error al cargar emails", messages: [] });
+  }
+});
+
+router.get("/emails/stats", async (req, res): Promise<void> => {
+  try {
+    const auth = getAuth(req);
+    const clerkId = auth?.userId ?? "anonymous";
+    const { messages, unread, status } = await fetchGmailMessages(clerkId, 20);
+    const important = messages.filter(e => ["impuestos", "finanzas"].includes(e.category)).length;
+
+    res.json({
+      total24h: messages.length,
+      unread,
+      important,
+      status,
+      configured: isGmailConfigured(),
+    });
+  } catch (err) {
+    logger.error({ err }, "Email stats error");
+    res.status(500).json({ error: "Error al cargar estadísticas" });
+  }
 });
 
 export default router;

@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { useGetWeather } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CloudSun, CloudRain, Sun, Cloud, Wind, Droplets, Thermometer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CloudSun, CloudRain, Sun, Cloud, Wind, Droplets, Thermometer, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetWeatherQueryKey } from "@workspace/api-client-react";
 
 function WeatherIcon({ icon, size = "lg" }: { icon: string; size?: "sm" | "lg" }) {
   const cls = size === "lg" ? "h-16 w-16" : "h-8 w-8";
@@ -19,7 +23,22 @@ function WindDirection({ deg }: { deg: string }) {
 }
 
 export default function WeatherPage() {
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const { data: weather, isLoading, error } = useGetWeather();
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/weather/refresh", { method: "POST" });
+      if (res.ok) {
+        setLastRefreshed(new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }));
+        queryClient.invalidateQueries({ queryKey: getGetWeatherQueryKey() });
+      }
+    } catch {}
+    setRefreshing(false);
+  };
 
   if (isLoading) {
     return (
@@ -33,7 +52,11 @@ export default function WeatherPage() {
   }
 
   if (error) {
-    return <div className="text-destructive p-4 rounded-lg border border-destructive/20 bg-destructive/5">Error al cargar clima.</div>;
+    return (
+      <div className="text-destructive p-4 rounded-lg border border-destructive/20 bg-destructive/5">
+        Error al cargar clima.
+      </div>
+    );
   }
 
   const days = Array.isArray(weather) ? weather : [];
@@ -43,18 +66,37 @@ export default function WeatherPage() {
       <div className="flex flex-col items-center justify-center p-16 text-center border-2 border-dashed rounded-xl max-w-xl">
         <CloudSun className="h-12 w-12 text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-1">Datos no disponibles</h3>
-        <p className="text-muted-foreground text-sm">No se pudo cargar el pronóstico.</p>
+        <p className="text-muted-foreground text-sm mb-4">No se pudo cargar el pronóstico.</p>
+        <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+          Actualizar ahora
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-3xl font-serif font-bold tracking-tight">Clima</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Pronóstico extendido para <strong>Neuquén Capital</strong> — actualizado hoy.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-serif font-bold tracking-tight">Clima</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Pronóstico extendido para <strong>Neuquén Capital</strong>.
+            {lastRefreshed && (
+              <span className="ml-1 text-green-600 dark:text-green-400">Actualizado a las {lastRefreshed}.</span>
+            )}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="shrink-0"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Actualizando..." : "Actualizar"}
+        </Button>
       </div>
 
       {days[0] && (
@@ -101,7 +143,7 @@ export default function WeatherPage() {
                 <div>
                   <CardTitle className="text-base">{day.dayName}</CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(day.date).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}
+                    {new Date(day.date + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}
                   </p>
                 </div>
                 <WeatherIcon icon={day.conditionIcon} size="sm" />

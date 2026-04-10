@@ -1,27 +1,155 @@
+import { useEffect, useState } from "react";
 import { useListEmails, useGetEmailStats } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { Mail, Clock, User, Star } from "lucide-react";
+import { Mail, Clock, User, Star, RefreshCw, LinkIcon, Unlink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+import { getListEmailsQueryKey, getGetEmailStatsQueryKey } from "@workspace/api-client-react";
 
 const CATEGORY_COLORS: Record<string, string> = {
   trabajo: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   impuestos: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   clientes: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
   finanzas: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  facturacion: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  capacitacion: "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400",
+  facturación: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  capacitación: "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400",
 };
 
 const IMPORTANT = ["impuestos", "finanzas"];
 
+interface GmailStatus {
+  configured: boolean;
+  connected: boolean;
+  email?: string | null;
+  lastSyncAt?: string | null;
+}
+
+function GmailConnectionBanner({
+  status,
+  onConnect,
+  onDisconnect,
+  loading,
+}: {
+  status: GmailStatus | null;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  loading: boolean;
+}) {
+  if (!status) return null;
+
+  if (!status.configured) {
+    return (
+      <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-start gap-3">
+        <Mail className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Gmail no configurado</p>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+            Agrega las variables GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET para conectar Gmail real.
+            Mientras tanto se muestra una bandeja de ejemplo.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status.connected) {
+    return (
+      <div className="rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-4 flex items-center gap-3">
+        <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center shrink-0">
+          <Mail className="h-4 w-4 text-green-600 dark:text-green-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-green-900 dark:text-green-200">Gmail conectado</p>
+          <p className="text-xs text-green-700 dark:text-green-400 truncate">
+            {status.email}
+            {status.lastSyncAt && (
+              <span className="ml-1 opacity-70">
+                — sincronizado {new Date(status.lastSyncAt).toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDisconnect}
+          disabled={loading}
+          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
+        >
+          <UnlinkIcon className="h-3.5 w-3.5 mr-1.5" />
+          Desconectar
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex items-center gap-3">
+      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+        <LinkIcon className="h-4 w-4 text-primary" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium">Conectar Gmail</p>
+        <p className="text-xs text-muted-foreground">
+          Conecta tu cuenta de Gmail para ver tu bandeja real. Se muestra una bandeja de ejemplo.
+        </p>
+      </div>
+      <Button
+        size="sm"
+        onClick={onConnect}
+        disabled={loading}
+        className="shrink-0"
+      >
+        <LinkIcon className="h-3.5 w-3.5 mr-1.5" />
+        Conectar
+      </Button>
+    </div>
+  );
+}
+
 export default function EmailsPage() {
   const [filter, setFilter] = useState("all");
+  const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
+
   const { data: emails, isLoading: emailsLoading, error } = useListEmails();
   const { data: stats, isLoading: statsLoading } = useGetEmailStats();
 
   const isLoading = emailsLoading || statsLoading;
+
+  useEffect(() => {
+    fetch("/api/emails/oauth/status")
+      .then(r => r.json())
+      .then(data => setGmailStatus(data))
+      .catch(() => {});
+  }, []);
+
+  const handleConnect = () => {
+    window.location.href = "/api/emails/oauth/connect";
+  };
+
+  const handleDisconnect = async () => {
+    setStatusLoading(true);
+    try {
+      await fetch("/api/emails/oauth/disconnect", { method: "POST" });
+      setGmailStatus(s => s ? { ...s, connected: false, email: null } : s);
+      queryClient.invalidateQueries({ queryKey: getListEmailsQueryKey() });
+    } catch {}
+    setStatusLoading(false);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      queryClient.invalidateQueries({ queryKey: getListEmailsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetEmailStatsQueryKey() });
+    } catch {}
+    setRefreshing(false);
+  };
 
   if (isLoading) {
     return (
@@ -38,7 +166,11 @@ export default function EmailsPage() {
   }
 
   if (error) {
-    return <div className="text-destructive p-4 rounded-lg border border-destructive/20 bg-destructive/5">Error al cargar emails.</div>;
+    return (
+      <div className="text-destructive p-4 rounded-lg border border-destructive/20 bg-destructive/5">
+        Error al cargar emails.
+      </div>
+    );
   }
 
   const filtered = (emails ?? []).filter(e => {
@@ -58,10 +190,29 @@ export default function EmailsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-3xl font-serif font-bold tracking-tight">Emails</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Bandeja de entrada ejecutiva.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-serif font-bold tracking-tight">Emails</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Bandeja de entrada ejecutiva.</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="shrink-0"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+          Actualizar
+        </Button>
       </div>
+
+      <GmailConnectionBanner
+        status={gmailStatus}
+        onConnect={handleConnect}
+        onDisconnect={handleDisconnect}
+        loading={statusLoading}
+      />
 
       {stats && (
         <div className="grid gap-3 grid-cols-3">

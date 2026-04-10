@@ -5,7 +5,7 @@ import {
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Briefcase, AlertTriangle, Bookmark, BookmarkCheck, SlidersHorizontal } from "lucide-react";
+import { Briefcase, AlertTriangle, Bookmark, BookmarkCheck, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,6 +27,8 @@ const FILTERS = [
 
 export default function FiscalPage() {
   const [activeFilter, setActiveFilter] = useState("all");
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const { data: updates, isLoading: updatesLoading, error } = useListFiscalUpdates({
     impact: activeFilter === "high" ? "high" : undefined,
     requiresAction: activeFilter === "requiresAction" ? "true" : undefined,
@@ -34,6 +36,18 @@ export default function FiscalPage() {
   const { data: metrics, isLoading: metricsLoading } = useGetFiscalMetrics();
   const toggleSaved = useToggleFiscalSaved();
   const queryClient = useQueryClient();
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/fiscal/refresh", { method: "POST" });
+      if (res.ok) {
+        setLastRefreshed(new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }));
+        queryClient.invalidateQueries({ queryKey: getListFiscalUpdatesQueryKey() });
+      }
+    } catch {}
+    setRefreshing(false);
+  };
 
   const isLoading = updatesLoading || metricsLoading;
 
@@ -69,17 +83,26 @@ export default function FiscalPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Monitor Fiscal</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Actualizaciones normativas e impositivas. AFIP, Rentas Neuquén y más.
+            {lastRefreshed && (
+              <span className="ml-1 text-green-600 dark:text-green-400">Actualizado a las {lastRefreshed}.</span>
+            )}
           </p>
         </div>
-        <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          {updates?.length ?? 0} actualizaciones
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="shrink-0"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Actualizando..." : "Actualizar"}
+        </Button>
       </div>
 
       {metrics && (

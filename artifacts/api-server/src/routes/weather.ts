@@ -1,48 +1,28 @@
 import { Router, type IRouter } from "express";
+import { getWeatherForecast, refreshWeather } from "../services/weather.service.js";
+import { getLastSync } from "../services/sync.service.js";
+import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
 router.get("/weather", async (_req, res): Promise<void> => {
-  const today = new Date();
-  const days = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  try {
+    const result = await getWeatherForecast();
+    res.json(result.forecast);
+  } catch (err) {
+    logger.error({ err }, "Weather route error");
+    res.status(500).json([]);
+  }
+});
 
-  const weather = [
-    {
-      date: today.toISOString().split("T")[0],
-      dayName: "Hoy",
-      condition: "Parcialmente nublado",
-      conditionIcon: "cloud-sun",
-      tempMin: 8,
-      tempMax: 18,
-      rainProbability: 20,
-      windSpeed: 25,
-      windDirection: "NO",
-    },
-    {
-      date: new Date(today.getTime() + 86400000).toISOString().split("T")[0],
-      dayName: days[(today.getDay() + 1) % 7],
-      condition: "Soleado",
-      conditionIcon: "sun",
-      tempMin: 10,
-      tempMax: 22,
-      rainProbability: 5,
-      windSpeed: 18,
-      windDirection: "O",
-    },
-    {
-      date: new Date(today.getTime() + 172800000).toISOString().split("T")[0],
-      dayName: days[(today.getDay() + 2) % 7],
-      condition: "Lluvioso",
-      conditionIcon: "cloud-rain",
-      tempMin: 6,
-      tempMax: 14,
-      rainProbability: 75,
-      windSpeed: 35,
-      windDirection: "S",
-    },
-  ];
-
-  res.json(weather);
+router.post("/weather/refresh", async (_req, res): Promise<void> => {
+  try {
+    const result = await refreshWeather();
+    res.json({ ok: true, fetchedAt: result.fetchedAt, count: result.forecast.length });
+  } catch (err) {
+    logger.error({ err }, "Weather refresh error");
+    res.status(500).json({ error: "Error al actualizar el clima" });
+  }
 });
 
 export default router;

@@ -10,6 +10,7 @@ import weatherRouter from "./weather";
 import settingsRouter from "./settings";
 import usersRouter from "./users";
 import dashboardRouter from "./dashboard";
+import syncRouter from "./sync";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(emailsRouter);
 router.use(weatherRouter);
 router.use(settingsRouter);
 router.use(usersRouter);
+router.use(syncRouter);
 
 export default router;

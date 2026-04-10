@@ -13,6 +13,10 @@ export const fiscalUpdatesTable = pgTable("fiscal_updates", {
   summary: text("summary").notNull(),
   requiresAction: boolean("requires_action").notNull().default(false),
   isSaved: boolean("is_saved").notNull().default(false),
+  sourceUrl: text("source_url"),
+  fingerprint: text("fingerprint"),
+  tags: text("tags"),
+  isNormative: boolean("is_normative").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
