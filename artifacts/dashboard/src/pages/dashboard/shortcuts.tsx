@@ -129,7 +129,7 @@ export default function ShortcutsPage() {
             </div>
           )}
 
-          {shortcuts?.filter(s => !s.category).length > 0 && categories.length > 0 && (
+          {(shortcuts?.filter(s => !s.category).length ?? 0) > 0 && categories.length > 0 && (
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">Otros</h2>
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">

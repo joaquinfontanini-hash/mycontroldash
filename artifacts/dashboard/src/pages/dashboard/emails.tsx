@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useListEmails, useGetEmailStats } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { Mail, Clock, User, Star, RefreshCw, LinkIcon, Unlink } from "lucide-react";
+import { Mail, Clock, User, Star, RefreshCw, LinkIcon, Link2Off } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
@@ -78,7 +78,7 @@ function GmailConnectionBanner({
           disabled={loading}
           className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
         >
-          <UnlinkIcon className="h-3.5 w-3.5 mr-1.5" />
+          <Link2Off className="h-3.5 w-3.5 mr-1.5" />
           Desconectar
         </Button>
       </div>

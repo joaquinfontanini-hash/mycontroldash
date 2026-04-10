@@ -2,7 +2,6 @@ import cron from "node-cron";
 import { refreshWeather } from "../services/weather.service.js";
 import { refreshNews } from "../services/news.service.js";
 import { refreshFiscalSources } from "../services/fiscal.service.js";
-import { db, appSettingsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
 let started = false;

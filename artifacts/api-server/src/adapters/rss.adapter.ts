@@ -78,7 +78,7 @@ export async function fetchRssSource(
         title: cleanText(item.title),
         link: item.link,
         pubDate: item.pubDate ?? new Date().toISOString(),
-        content: cleanText(item["content:encoded"] ?? item.content ?? ""),
+        content: cleanText((item as any)["content:encoded"] ?? item.content ?? ""),
         summary: summary || cleanText(item.title),
         imageUrl: extractImageUrl(item),
         sourceName,
