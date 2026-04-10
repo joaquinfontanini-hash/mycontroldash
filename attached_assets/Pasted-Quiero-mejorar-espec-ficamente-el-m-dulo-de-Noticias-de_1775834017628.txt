@@ -1,0 +1,196 @@
+Quiero mejorar específicamente el módulo de Noticias del proyecto actual, sin romper nada de lo ya implementado.
+
+OBJETIVO
+Hacer que la sección Noticias tenga muchos más filtros visuales, más control por tipo de contenido y un segundo nivel de filtrado por medio usando iconos/logos clickeables debajo de los filtros principales.
+
+IMPORTANTE
+- No rehacer el módulo desde cero
+- Trabajar sobre el componente actual de Noticias
+- Mantener la estética general del dashboard
+- Mejorar UX/UI sin romper responsive
+- Todo debe quedar validado, prolijo y consistente
+- Evitar truncados visuales, superposiciones o desbordes
+
+==================================================
+1) AMPLIAR FILTROS PRINCIPALES DE NOTICIAS
+==================================================
+
+Actualmente existen filtros tipo chips como:
+- Todas
+- Nacionales
+- Patagonia
+- Economía
+- Impuestos
+- Negocios
+
+Necesito expandirlos y hacerlos más útiles.
+
+Agregar filtros principales como chips interactivos, elegantes y responsivos para:
+- Todas
+- Nacionales
+- Provinciales
+- Patagonia
+- Neuquén
+- Río Negro
+- Economía
+- Impuestos
+- Negocios
+- Finanzas
+- Mercados
+- Dólar
+- Legislación
+- Laboral
+- Empresas
+- Agro
+- Energía
+- Contabilidad
+- ARCA / AFIP
+- Rentas provinciales
+- Boletines oficiales
+
+REQUISITOS
+- Que se vean como chips modernos
+- Que tengan estado activo/inactivo claro
+- Que se puedan scrollear horizontalmente si no entran todos
+- Que no rompan en mobile
+- Que al hacer click filtren correctamente
+- Que permitan combinarse con otros filtros si la arquitectura actual lo soporta
+- Si no lo soporta aún, implementarlo
+- Debe existir opción para limpiar filtros
+- Mostrar visualmente cuántos filtros están activos
+
+==================================================
+2) SEGUNDO NIVEL DE FILTRO POR MEDIO CON ICONOS
+==================================================
+
+Debajo de los filtros principales, quiero una segunda fila de filtros por medio usando iconos o logos clickeables.
+
+MEDIOS A INCLUIR
+- Ámbito
+- La Nación
+- iProfesional
+- Tributum.news
+- Contadores en Red
+- Ignacio Online
+- El Cronista
+- Infobae
+- Boletín Oficial
+- ARCA/AFIP si aplica como fuente
+- Rentas Neuquén si aplica
+- Rentas Río Negro si aplica
+
+REQUISITOS
+- Mostrar cada medio con:
+  - icono/logo si está disponible
+  - nombre corto debajo o al lado si hace falta
+- Si no se puede usar logo real por disponibilidad, crear avatar visual consistente con iniciales o ícono representativo
+- Los iconos deben ser clickeables
+- Deben tener estado:
+  - activo
+  - inactivo
+  - hover
+- Debe poder seleccionarse uno o varios medios
+- Debe existir opción “Todos los medios”
+- Debe filtrar las noticias por fuente real
+- Mantener consistencia visual con el resto del dashboard
+- Debe verse premium, moderno y limpio
+- Evitar que los iconos se deformen
+- Hacerlo responsive:
+  - desktop: fila visual cómoda
+  - mobile: scroll horizontal o wrap elegante
+
+==================================================
+3) COMPORTAMIENTO DE FILTROS
+==================================================
+
+Quiero que el filtrado de noticias funcione con lógica clara y robusta.
+
+REQUISITOS
+- Permitir filtrar por:
+  - categoría
+  - medio
+  - texto libre
+  - fecha si ya existe o si se puede agregar fácil
+- Permitir combinación de filtros
+- Agregar botón o acción clara para:
+  - limpiar filtros
+  - resetear selección de medios
+- Mostrar resumen visual del filtro activo, por ejemplo:
+  - "Mostrando noticias de Economía + Impuestos de Ámbito e iProfesional"
+- Si no hay resultados, mostrar empty state elegante y útil
+- No dejar espacios vacíos raros
+- Mantener performance razonable
+
+==================================================
+4) MEJORA VISUAL
+==================================================
+
+Quiero que esta parte de Noticias se vea mejor que ahora.
+
+REQUISITOS
+- Mejorar spacing entre título, subtítulo, chips y medios
+- Separar claramente:
+  - título y descripción
+  - filtros principales
+  - filtros por medios
+  - lista de noticias
+- Usar colores pasteles modernos coherentes con el resto del rediseño
+- Que los chips activos tengan una apariencia destacada pero sobria
+- Que los filtros de medios tengan diseño uniforme
+- Agregar microinteracciones suaves
+- No usar estilos toscos ni saturados
+- Mantener excelente legibilidad
+
+==================================================
+5) DATOS Y ESTRUCTURA
+==================================================
+
+Asegurate de que cada noticia tenga correctamente normalizados estos campos si no existen todavía:
+- id
+- title
+- source
+- category
+- jurisdiction
+- summary
+- publishedAt
+- url
+- image si aplica
+
+Si hace falta, adaptar el agregador o normalizador para asegurar que source y category estén siempre presentes y permitan filtrar bien.
+
+==================================================
+6) IMPLEMENTACIÓN TÉCNICA
+==================================================
+
+Quiero que:
+- actualices el componente frontend de Noticias
+- ajustes estado y lógica de filtros
+- adaptes backend si hace falta
+- valides que las fuentes tengan nombre consistente
+- manejes casos donde falte logo o icono
+- no hardcodees algo frágil si puede resolverse mejor con configuración
+- si conviene, crear un catálogo de medios configurable con:
+  - nombre
+  - slug
+  - logo
+  - color suave
+  - activo/inactivo
+
+==================================================
+7) AUDITORÍA FINAL
+==================================================
+
+Al terminar:
+- verificá que no haya errores de compilación
+- verificá que no haya desbordes visuales
+- verificá que los filtros funcionen
+- verificá que los iconos de medios filtren correctamente
+- verificá responsive
+- verificá empty states
+- dejá todo listo para ejecutar en Replit
+
+ENTREGAME
+- el cambio implementado sobre el proyecto actual
+- breve resumen de lo agregado
+- confirmación de qué medios quedaron filtrables
+- confirmación de si los logos son reales o placeholders visuales elegantes
