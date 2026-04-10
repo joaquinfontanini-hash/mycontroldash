@@ -6,6 +6,7 @@ import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxy
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startScheduler } from "./jobs/scheduler";
+import { seedDefaultCategories } from "./lib/seed.js";
 
 const app: Express = express();
 
@@ -40,5 +41,6 @@ app.use(clerkMiddleware());
 app.use("/api", router);
 
 startScheduler();
+seedDefaultCategories();
 
 export default app;

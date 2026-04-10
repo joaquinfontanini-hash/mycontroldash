@@ -2,7 +2,7 @@
 
 ## Overview
 
-A full-stack personal executive dashboard for an Argentine contador/consultor in Neuquén. Built with React + Vite + TypeScript on the frontend and Express + Node.js on the backend, using PostgreSQL via Drizzle ORM. At v4 with: dollar quotes widget (dolarapi.com), Kanban tasks board, news source filtering, fiscal table/card view toggle, data quality hardening, and expanded admin panel.
+A full-stack personal executive dashboard for an Argentine contador/consultor in Neuquén. Built with React + Vite + TypeScript on the frontend and Express + Node.js on the backend, using PostgreSQL via Drizzle ORM. At v5 with: dollar quotes widget (dolarapi.com), Kanban tasks board, news source filtering + deduplication + Tributum filtering, fiscal table/card view toggle, data quality hardening, Vencimientos (due dates) module, and external file sources registry.
 
 ## Stack
 
@@ -35,7 +35,8 @@ A full-stack personal executive dashboard for an Argentine contador/consultor in
 - `/dashboard/fiscal` — Monitor Fiscal with card/table view toggle + quality filters
 - `/dashboard/travel` — Travel offers browser (with quality scoring)
 - `/admin` — Admin panel (users, integrations, sync logs, discard logs)
-- `/settings` — Dashboard configuration
+- `/dashboard/due-dates` — Vencimientos: due dates tracker with urgency grouping (overdue/today/3d/week/future/done)
+- `/settings` — Dashboard configuration (incl. Fuentes Externas section)
 
 ### Backend (artifacts/api-server)
 
@@ -55,10 +56,13 @@ Routes under `/api`:
 - `/api/users` + `/api/users/me` — User management
 - `/api/currency` — Dollar quotes (dolarapi.com: Blue, MEP, Cripto, Oficial)
 - `/api/sync/status` + `/api/sync/logs` — Sync status and logs
+- `/api/due-dates` + `/api/due-dates/:id` — Vencimientos CRUD
+- `/api/due-date-categories` + `/api/due-date-categories/:id` — Category CRUD
+- `/api/external-sources` + `/api/external-sources/:id` — External file sources CRUD
 
 ### Database (lib/db)
 
-Tables: `users`, `tasks`, `shortcuts`, `fiscal_updates`, `travel_offers`, `app_settings`, `news_items`, `weather_snapshots`, `sync_logs`, `discard_logs`, `email_connections`, `currency_rates`, `data_sources`
+Tables: `users`, `tasks`, `shortcuts`, `fiscal_updates`, `travel_offers`, `app_settings`, `news_items`, `weather_snapshots`, `sync_logs`, `discard_logs`, `email_connections`, `currency_rates`, `data_sources`, **`due_dates`**, **`due_date_categories`**, **`external_file_sources`**
 
 ## Active RSS Sources
 
@@ -128,3 +132,15 @@ Added quality scoring (0-100) to fiscal updates and travel offers:
 - **News expansion**: 12 sources configured (6 active), source filter chips in UI, limit bypass for source filtering
 - **Fiscal table view**: card/table toggle with keyboard shortcut (`T`), same filters apply to both views
 - **`data_sources` table**: added to DB schema
+
+## V5 Features (completed)
+
+- **Vencimientos module**: `due_dates` + `due_date_categories` tables; full CRUD API; page with urgency grouping (overdue/today/3d/week/future/done); category management dialog; priority coloring
+- **Dashboard sidebar**: VencimientosWidget in sticky right panel (lg:grid-cols-[1fr_288px]); urgency dots + critical badge
+- **News deduplication**: `normalizeTitle()` + `titleSimilarity()` (0.75 word overlap threshold); logs `skippedDup` and `skippedMediaSummary`
+- **News Tributum filter**: `isTributumMediaSummary()` filters "resumen de medios" digest summaries
+- **News categories expanded**: 23 chips incl. Inflación, Política, Internacional, Tecnología; unified filter panel with source icon fixed-width layout
+- **External file sources**: `external_file_sources` table; full CRUD API; Settings page "Fuentes Externas" section with create/edit/delete dialog
+- **Seeding**: `seedDefaultCategories()` in `app.ts` on startup → 7 default due-date categories (Impuestos, Cargas Sociales, Proveedores, Honorarios, Alquileres, Vencimientos AFIP, Otros)
+- **API server**: Manual validation in all routes (no Zod dependency — Zod only in api-zod lib)
+- **Due-dates sidebar**: "Vencimientos" added to sidebar nav (CalendarClock icon)

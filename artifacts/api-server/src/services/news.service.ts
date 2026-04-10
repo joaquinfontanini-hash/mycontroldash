@@ -1,5 +1,5 @@
 import { db, newsItemsTable, appSettingsTable, syncLogsTable } from "@workspace/db";
-import { desc, eq, and, gte } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { fetchRssSource } from "../adapters/rss.adapter.js";
 import { withSyncLog } from "./sync.service.js";
 import { logger } from "../lib/logger.js";
@@ -7,78 +7,18 @@ import { logger } from "../lib/logger.js";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export const RSS_SOURCES = [
-  {
-    url: "https://www.ambito.com/rss/pages/home.xml",
-    name: "Ámbito",
-    category: "economia",
-    enabled: true,
-  },
-  {
-    url: "https://www.cronista.com/rss/",
-    name: "El Cronista",
-    category: "negocios",
-    enabled: false,
-  },
-  {
-    url: "https://www.infobae.com/feeds/rss/economia/",
-    name: "Infobae",
-    category: "economia",
-    enabled: false,
-  },
-  {
-    url: "https://www.lanacion.com.ar/arc/outboundfeeds/rss/",
-    name: "La Nación",
-    category: "nacionales",
-    enabled: true,
-  },
-  {
-    url: "https://www.rionegro.com.ar/feed/",
-    name: "Diario Río Negro",
-    category: "provinciales",
-    enabled: true,
-  },
-  {
-    url: "https://www.lmneuquen.com/servicios/rss.php",
-    name: "LM Neuquén",
-    category: "provinciales",
-    enabled: false,
-  },
-  {
-    url: "https://www.afip.gob.ar/afip/rss/novedades.rss",
-    name: "AFIP",
-    category: "impuestos",
-    enabled: false,
-  },
-  {
-    url: "https://www.iprofesional.com/rss/",
-    name: "iProfesional",
-    category: "negocios",
-    enabled: false,
-  },
-  {
-    url: "https://www.clarin.com/rss/economia/",
-    name: "Clarín",
-    category: "economia",
-    enabled: true,
-  },
-  {
-    url: "https://www.pagina12.com.ar/rss/secciones/economia/notas",
-    name: "Página 12",
-    category: "economia",
-    enabled: false,
-  },
-  {
-    url: "https://tributum.news/feed/",
-    name: "Tributum",
-    category: "impuestos",
-    enabled: true,
-  },
-  {
-    url: "https://contadoresenred.com/feed/",
-    name: "Contadores en Red",
-    category: "impuestos",
-    enabled: true,
-  },
+  { url: "https://www.ambito.com/rss/pages/home.xml",       name: "Ámbito",            category: "economia",    enabled: true },
+  { url: "https://www.cronista.com/rss/",                   name: "El Cronista",       category: "negocios",    enabled: false },
+  { url: "https://www.infobae.com/feeds/rss/economia/",     name: "Infobae",           category: "economia",    enabled: false },
+  { url: "https://www.lanacion.com.ar/arc/outboundfeeds/rss/", name: "La Nación",      category: "nacionales",  enabled: true },
+  { url: "https://www.rionegro.com.ar/feed/",               name: "Diario Río Negro",  category: "provinciales",enabled: true },
+  { url: "https://www.lmneuquen.com/servicios/rss.php",     name: "LM Neuquén",        category: "provinciales",enabled: false },
+  { url: "https://www.afip.gob.ar/afip/rss/novedades.rss", name: "AFIP",              category: "impuestos",   enabled: false },
+  { url: "https://www.iprofesional.com/rss/",               name: "iProfesional",      category: "negocios",    enabled: false },
+  { url: "https://www.clarin.com/rss/economia/",            name: "Clarín",            category: "economia",    enabled: true },
+  { url: "https://www.pagina12.com.ar/rss/secciones/economia/notas", name: "Página 12",category: "economia",   enabled: false },
+  { url: "https://tributum.news/feed/",                     name: "Tributum",          category: "impuestos",   enabled: true, filterNormasNacionales: true },
+  { url: "https://contadoresenred.com/feed/",               name: "Contadores en Red", category: "impuestos",   enabled: true },
 ];
 
 const FISCAL_KEYWORDS = [
@@ -91,6 +31,31 @@ const REQUIRES_ACTION_KEYWORDS = [
   "vence", "vencimiento", "obligación", "presentar", "prórroga",
   "implementación", "nuevo régimen", "desde el", "a partir del", "plazo",
 ];
+
+// Tributum: these patterns identify "resumen de medios" entries to exclude
+const TRIBUTUM_MEDIA_SUMMARY_PATTERNS = [
+  /resumen de medios/i,
+  /resumen de prensa/i,
+  /tapa(s)? de diarios/i,
+  /lo que dicen los medios/i,
+  /minuto a minuto/i,
+  /breaking news/i,
+];
+
+// Known media brand names that appear in Tributum "resumen de medios" titles
+const MEDIA_BRAND_NAMES = [
+  "clarín", "clarin", "la nación", "la nacion", "infobae", "cronista",
+  "iprofesional", "ámbito", "ambito", "página 12", "pagina 12",
+  "perfil", "télam", "telam",
+];
+
+function isTributumMediaSummary(title: string, summary: string): boolean {
+  const text = `${title} ${summary}`.toLowerCase();
+  if (TRIBUTUM_MEDIA_SUMMARY_PATTERNS.some(p => p.test(text))) return true;
+  // If title contains 3+ media brand names it's almost certainly a media roundup
+  const brandCount = MEDIA_BRAND_NAMES.filter(b => text.includes(b)).length;
+  return brandCount >= 3;
+}
 
 function scoreImportance(item: { title: string; summary: string; sourceName: string }): number {
   let score = 50;
@@ -113,6 +78,34 @@ function normalizeCategory(category: string, title: string, summary: string): st
   return category;
 }
 
+/**
+ * Normalize a title for deduplication comparison.
+ * Strips punctuation, lowercases, removes common stop words.
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")  // strip accents
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\b(el|la|los|las|un|una|de|del|al|y|e|o|u|que|en|con|por|para|se|su|sus|es|son|fue|sera|sera|como|mas|pero|si|no)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Simple word-overlap similarity between two normalized titles.
+ * Returns 0..1 where 1 = identical.
+ */
+function titleSimilarity(a: string, b: string): number {
+  const setA = new Set(a.split(" ").filter(w => w.length > 3));
+  const setB = new Set(b.split(" ").filter(w => w.length > 3));
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let intersection = 0;
+  setA.forEach(w => { if (setB.has(w)) intersection++; });
+  return intersection / Math.max(setA.size, setB.size);
+}
+
 async function getLastFetchTime(): Promise<Date | null> {
   const logs = await db.select().from(syncLogsTable).orderBy(desc(syncLogsTable.startedAt)).limit(50);
   const last = logs.find(l => l.module === "news" && l.status === "success");
@@ -122,21 +115,50 @@ async function getLastFetchTime(): Promise<Date | null> {
 export async function refreshNews(): Promise<number> {
   return withSyncLog("news", async () => {
     let totalNew = 0;
+    let skippedDup = 0;
+    let skippedMediaSummary = 0;
 
     const results = await Promise.allSettled(
       RSS_SOURCES.filter(s => s.enabled).map(source =>
-        fetchRssSource(source.url, source.name, source.category, 12)
+        fetchRssSource(source.url, source.name, source.category, 15)
       )
     );
 
     const allItems = results.flatMap(r => r.status === "fulfilled" ? r.value : []);
 
-    const existingUrls = new Set(
-      (await db.select({ url: newsItemsTable.url }).from(newsItemsTable)).map(r => r.url)
+    // Load existing items for dedup (URL + normalized title)
+    const existingRows = await db
+      .select({ url: newsItemsTable.url, title: newsItemsTable.title })
+      .from(newsItemsTable);
+
+    const existingUrls = new Set(existingRows.map(r => r.url));
+    const existingNormalizedTitles = new Map<string, string>(
+      existingRows.map(r => [normalizeTitle(r.title), r.url])
     );
 
     for (const item of allItems) {
+      // ── 1. Tributum: skip "resumen de medios" entries ──────────────
+      if (item.sourceName === "Tributum" && isTributumMediaSummary(item.title, item.summary)) {
+        skippedMediaSummary++;
+        continue;
+      }
+
+      // ── 2. URL dedup ────────────────────────────────────────────────
       if (existingUrls.has(item.link)) continue;
+
+      // ── 3. Title similarity dedup (≥ 0.75 word overlap = duplicate) ─
+      const normTitle = normalizeTitle(item.title);
+      let isDuplicate = false;
+      for (const [existNorm] of existingNormalizedTitles) {
+        if (titleSimilarity(normTitle, existNorm) >= 0.75) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (isDuplicate) {
+        skippedDup++;
+        continue;
+      }
 
       const category = normalizeCategory(item.category, item.title, item.summary);
       const score = scoreImportance({ title: item.title, summary: item.summary, sourceName: item.sourceName });
@@ -157,12 +179,13 @@ export async function refreshNews(): Promise<number> {
         });
         totalNew++;
         existingUrls.add(item.link);
+        existingNormalizedTitles.set(normTitle, item.link);
       } catch {
-        // skip on conflict
+        // skip on conflict (unique URL constraint)
       }
     }
 
-    logger.info({ totalNew }, "News refresh completed");
+    logger.info({ totalNew, skippedDup, skippedMediaSummary }, "News refresh completed");
     return { count: totalNew, result: totalNew };
   });
 }
@@ -197,8 +220,6 @@ export async function ensureNewsUpToDate() {
   const lastFetch = await getLastFetchTime();
   const age = lastFetch ? Date.now() - lastFetch.getTime() : Infinity;
   const shouldRefresh = age > CACHE_TTL_MS;
-
-  const [settings] = await db.select().from(appSettingsTable).limit(1);
   const count = await db.select().from(newsItemsTable).then(r => r.length);
 
   if (shouldRefresh || count === 0) {

@@ -1,0 +1,292 @@
+Quiero que sigas evolucionando el proyecto actual del dashboard web y monitor fiscal, trabajando sobre la base existente, sin romper nada de lo ya implementado.
+
+IMPORTANTE
+- No rehagas la app desde cero
+- Trabajá sobre la arquitectura actual
+- Mantené la lógica modular existente
+- Todo cambio debe ser robusto, validado, auditado y consistente
+- Priorizá calidad de datos, buena UX y persistencia correcta
+- Evitá duplicados, visualizaciones truncas, layouts rotos y lógica frágil
+
+==================================================
+1) AJUSTE EN TRIBUTUM: TOMAR NORMAS NACIONALES Y NO RESUMEN DE MEDIOS
+==================================================
+
+En la integración de Tributum necesito un ajuste específico.
+
+REQUISITO
+- Cuando tomes información de Tributum, priorizá y extraé la sección correspondiente a “Normas Nacionales” o la sección normativa equivalente
+- No tomar la parte de “resumen de medios”, “resumen de noticias” o cualquier bloque que vuelva a replicar noticias ya levantadas de otras fuentes
+- La idea es evitar duplicación de contenido y priorizar normativa real
+
+IMPLEMENTACIÓN
+- Ajustar el parser, extractor, adapter o normalizador correspondiente a Tributum
+- Identificar claramente qué bloque del sitio corresponde a normativa y cuál corresponde a resumen periodístico
+- Guardar la fuente con clasificación consistente
+- Etiquetar correctamente ese contenido como normativa/normas nacionales
+- Si alguna entrada de Tributum corresponde a resumen de medios, excluirla o marcarla para no ingerirla en el agregador principal
+
+==================================================
+2) REVISIÓN GLOBAL DE DUPLICADOS DE NOTICIAS
+==================================================
+
+Necesito que revises de forma general que no haya noticias duplicadas.
+
+REQUISITOS
+- Implementar o mejorar una estrategia de deduplicación
+- Detectar duplicados por:
+  - título exacto
+  - título muy similar
+  - misma URL
+  - misma fecha + misma fuente + contenido muy parecido
+- Aplicar esta deduplicación tanto en Noticias como en Monitor Fiscal cuando corresponda
+- Evitar duplicados entre medios y también entre integraciones que cruzan contenido parecido
+- Si hay dos items parecidos pero no iguales, priorizar:
+  - el de mejor fuente
+  - el más completo
+  - el más reciente
+- Registrar criterio de deduplicación en backend de forma clara y mantenible
+
+RESULTADO ESPERADO
+- Que no se vean dos o más noticias prácticamente iguales en la UI
+- Que el sistema conserve integridad y consistencia al refrescar
+
+==================================================
+3) USUARIO ADMINISTRADOR CON CONTROL DE LAYOUT Y WIDGETS
+==================================================
+
+Necesito que exista un usuario administrador que pueda interactuar con los filtros y widgets de forma avanzada.
+
+REQUISITOS
+- Crear o dejar creado un usuario administrador inicial de prueba, claramente documentado
+- El admin debe poder:
+  - reordenar widgets
+  - mover widgets de lugar
+  - modificar configuración de widgets
+  - activar y desactivar widgets
+  - fijarlos al dashboard inicial
+  - editar filtros por defecto si aplica
+- El movimiento de widgets debe respetar:
+  - la grilla existente
+  - dimensiones permitidas
+  - lógica visual consistente
+  - responsive
+- No permitir que se superpongan
+- No permitir layouts rotos
+- Si implementás drag and drop, debe ser estable
+- Persistir layout y posiciones en base de datos por usuario o por configuración global admin
+
+IMPORTANTE
+- Mantener siempre la misma lógica y dimensiones del dashboard
+- No permitir que un widget se estire o rompa visualmente por movimientos inválidos
+- Validar posiciones antes de guardar
+
+==================================================
+4) CREACIÓN DE NUEVOS WIDGETS POR EL USUARIO
+==================================================
+
+Necesito ampliar el sistema para que el usuario pueda crear más widgets en el dashboard inicial.
+
+REQUISITOS
+- Agregar una funcionalidad de “Crear widget”
+- Permitir al usuario crear widgets simples vinculados a:
+  - links
+  - URLs externas
+  - informes
+  - páginas de referencia
+  - recursos internos
+- El usuario debe poder:
+  - crear
+  - editar
+  - eliminar
+  - duplicar
+  - mover
+  - ocultar
+  - fijar en inicio
+- Cada widget debe permitir configurar al menos:
+  - nombre
+  - descripción
+  - tipo
+  - ícono
+  - URL o vínculo
+  - categoría
+  - posición
+  - tamaño permitido dentro de la grilla
+  - visibilidad
+- Validar:
+  - URL correcta
+  - nombre no vacío
+  - tamaño compatible
+  - posición válida
+- Mantener el estilo visual del resto del dashboard
+- No generar widgets deformes ni inconsistentes
+
+TIPOS DE WIDGET A SOPORTAR EN ESTA ETAPA
+- Widget de link rápido
+- Widget de informe/reporte
+- Widget de acceso a URL externa
+- Widget de texto breve o nota
+- Widget placeholder preparado para futuras integraciones
+
+==================================================
+5) NUEVO WIDGET DE VENCIMIENTOS EN DASHBOARD INICIAL
+==================================================
+
+Necesito agregar en el dashboard inicial, del lado derecho, una columna vertical con un widget de alertas de vencimientos.
+
+UBICACIÓN
+- Debe estar visualmente del lado derecho
+- En formato vertical
+- Bien integrado con el resto del dashboard
+- Debe verse claro, ordenado y útil
+
+OBJETIVO
+Mostrar un listado de vencimientos clasificados.
+
+CATEGORÍAS INICIALES
+- Impuestos
+- Cargas sociales
+- Proveedores
+- Hematólogos
+- Alquileres
+
+Además, necesito que el sistema permita agregar nuevas clasificaciones manualmente más adelante.
+
+REQUISITOS
+- Mostrar próximos vencimientos
+- Poder clasificarlos por categoría
+- Poder agregar, editar y eliminar vencimientos
+- Poder definir:
+  - título
+  - categoría
+  - fecha de vencimiento
+  - descripción
+  - prioridad
+  - estado
+  - alerta activada o no
+- Mostrar alertas visuales según cercanía:
+  - hoy
+  - próximos 3 días
+  - próximos 7 días
+  - vencidos
+- Ordenar por fecha
+- Permitir filtros por categoría y estado
+- Permitir agregar nuevas categorías personalizadas
+- Persistir todo en base de datos
+- Diseño compacto, premium y legible
+- Evitar truncados en la columna derecha
+
+EXTRA
+- Si es posible, agregar badge con cantidad de vencimientos críticos
+- Mostrar color o indicador suave según urgencia
+
+==================================================
+6) VINCULACIÓN CON EXCEL EN LA NUBE
+==================================================
+
+Necesito dejar preparada una funcionalidad para vincular un Excel alojado en la nube y poder sacar información desde ese Excel.
+
+IMPORTANTE
+Esto es para seguir trabajando después, pero quiero la base preparada ahora.
+
+REQUISITOS
+- Crear una sección o módulo inicial para “Fuentes externas / Excel en la nube”
+- Permitir registrar una fuente de archivo Excel remota
+- Preparar arquitectura para soportar:
+  - link de archivo
+  - identificador del documento
+  - tipo de origen
+  - estado de conexión
+  - fecha de última sincronización
+- No hace falta terminar toda la integración ahora si requiere credenciales o complejidad extra, pero sí dejarla correctamente preparada
+
+OBJETIVO TÉCNICO
+- Diseñar una capa para futuras conexiones a hojas o archivos remotos
+- Permitir que luego se pueda leer información desde ese Excel para alimentar widgets o reportes
+- Dejar backend y base de datos preparados
+- Agregar UI mínima para:
+  - registrar fuente
+  - ver estado
+  - editar fuente
+  - eliminar fuente
+- Documentar claramente qué faltaría para completar la integración real
+
+SI ES POSIBLE EN ESTA ETAPA
+- Dejar preparado soporte inicial para archivos de tipo spreadsheet mediante URL o integración futura
+- No hardcodear nada
+- No exponer credenciales
+
+==================================================
+7) BASE DE DATOS Y MODELOS
+==================================================
+
+Actualizar la base de datos y modelos según haga falta para soportar:
+- admin user inicial
+- widget layouts persistentes
+- widget instances personalizadas
+- widget links/reports
+- due_dates / vencimientos
+- due_date_categories
+- external_file_sources
+- sync state de fuentes externas
+- reglas de deduplicación o metadatos de deduplicación si hacen falta
+
+Diseñá todo de forma simple, clara y extensible.
+
+==================================================
+8) FRONTEND Y UX
+==================================================
+
+REQUISITOS VISUALES
+- Mantener estética moderna, pastel, premium y limpia
+- Integrar bien el nuevo widget vertical de vencimientos
+- Hacer que la creación y edición de widgets sea simple
+- Mejorar feedback visual cuando un widget se mueve
+- Agregar estados vacíos elegantes
+- Evitar saturación visual
+- Mantener responsive
+- No romper el dashboard inicial
+
+==================================================
+9) PANEL ADMIN Y AJUSTES
+==================================================
+
+Expandir panel admin y ajustes para incluir:
+- gestión del usuario administrador inicial
+- gestión de widgets creados por usuarios
+- gestión de layout
+- gestión de categorías de vencimientos
+- gestión de fuentes externas
+- estado de integración de Excel en la nube
+- logs resumidos de sincronización y deduplicación
+
+==================================================
+10) AUDITORÍA FINAL OBLIGATORIA
+==================================================
+
+Al terminar:
+- revisá que no haya errores de compilación
+- revisá que no haya imports rotos
+- revisá que no haya duplicados visibles en noticias
+- verificá que Tributum esté tomando Normas Nacionales y no resumen de medios
+- verificá que el admin pueda mover widgets sin romper layout
+- verificá que la creación de widgets funcione
+- verificá que el widget de vencimientos aparezca correctamente a la derecha en vertical
+- verificá que los vencimientos persistan
+- verificá que la arquitectura para Excel en la nube quede preparada
+- verificá responsive
+- verificá que no haya componentes truncos
+
+==================================================
+11) ENTREGABLE
+==================================================
+
+Quiero que implementes esto sobre el proyecto actual y me entregues:
+- código actualizado
+- migraciones o cambios de base de datos
+- endpoints nuevos si hacen falta
+- componentes nuevos si hacen falta
+- resumen final de lo implementado
+- detalle de qué quedó 100% funcional
+- detalle de qué quedó preparado para seguir trabajando
+- instrucciones exactas para probarlo en Replit

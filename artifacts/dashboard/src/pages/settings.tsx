@@ -1,15 +1,252 @@
 import { useState, useEffect } from "react";
 import { useGetSettings, useUpdateSettings } from "@workspace/api-client-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings as SettingsIcon, Save, MapPin, Newspaper, Palette, Bell, Check, AlertCircle } from "lucide-react";
+import { Settings as SettingsIcon, Save, MapPin, Newspaper, Palette, Bell, Check, AlertCircle, FileSpreadsheet, Plus, Pencil, Trash2, X, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
+
+interface ExternalSource {
+  id: number;
+  name: string;
+  type: string;
+  url?: string | null;
+  identifier?: string | null;
+  status: string;
+  notes?: string | null;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+}
+
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  pending:   { label: "Pendiente",  color: "text-amber-600 dark:text-amber-400" },
+  connected: { label: "Conectado",  color: "text-emerald-600 dark:text-emerald-400" },
+  error:     { label: "Error",      color: "text-red-600 dark:text-red-400" },
+  paused:    { label: "Pausado",    color: "text-muted-foreground" },
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  excel: "Excel (.xlsx)",
+  google_sheets: "Google Sheets",
+  csv: "CSV",
+  other: "Otro",
+};
+
+const EMPTY_SOURCE_FORM = { name: "", type: "excel", url: "", identifier: "", status: "pending", notes: "" };
+
+function ExternalSourcesSection() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<ExternalSource | null>(null);
+  const [form, setForm] = useState({ ...EMPTY_SOURCE_FORM });
+
+  const { data: sources = [], isLoading } = useQuery<ExternalSource[]>({
+    queryKey: ["external-sources"],
+    queryFn: async () => {
+      const res = await fetch("/api/external-sources");
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: typeof EMPTY_SOURCE_FORM) => {
+      const res = await fetch("/api/external-sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["external-sources"] });
+      setOpen(false);
+      toast({ title: "Fuente creada", description: "La fuente externa fue registrada." });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: typeof EMPTY_SOURCE_FORM }) => {
+      const res = await fetch(`/api/external-sources/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["external-sources"] });
+      setOpen(false);
+      toast({ title: "Fuente actualizada" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/external-sources/${id}`, { method: "DELETE" });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["external-sources"] }),
+  });
+
+  const openNew = () => {
+    setEditing(null);
+    setForm({ ...EMPTY_SOURCE_FORM });
+    setOpen(true);
+  };
+
+  const openEdit = (s: ExternalSource) => {
+    setEditing(s);
+    setForm({
+      name: s.name,
+      type: s.type,
+      url: s.url ?? "",
+      identifier: s.identifier ?? "",
+      status: s.status,
+      notes: s.notes ?? "",
+    });
+    setOpen(true);
+  };
+
+  const handleSubmit = () => {
+    if (!form.name.trim()) return;
+    if (editing) {
+      updateMutation.mutate({ id: editing.id, data: form });
+    } else {
+      createMutation.mutate(form);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-base">Fuentes Externas</CardTitle>
+              <CardDescription className="text-xs mt-0.5">
+                Vinculá archivos Excel, Google Sheets o CSV para usarlos en el dashboard. La integración completa se activa en el futuro.
+              </CardDescription>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Nueva fuente
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+          </div>
+        ) : sources.length === 0 ? (
+          <div className="py-8 text-center border-2 border-dashed border-border/50 rounded-xl">
+            <FileSpreadsheet className="h-8 w-8 text-muted-foreground/25 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No hay fuentes externas registradas.</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Podés registrar archivos Excel, Google Sheets o CSV para uso futuro.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sources.map(s => {
+              const statusCfg = STATUS_LABELS[s.status] ?? STATUS_LABELS["pending"];
+              return (
+                <div key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border/60 hover:border-border transition-colors">
+                  <FileSpreadsheet className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{s.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground">{TYPE_LABELS[s.type] ?? s.type}</span>
+                      <span className="text-[10px] text-muted-foreground/40">·</span>
+                      <span className={`text-[10px] font-medium ${statusCfg.color}`}>{statusCfg.label}</span>
+                      {s.url && (
+                        <>
+                          <span className="text-[10px] text-muted-foreground/40">·</span>
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+                            <LinkIcon className="h-2.5 w-2.5" /> URL
+                          </a>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => openEdit(s)} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => deleteMutation.mutate(s.id)} className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400">
+          <strong>Nota:</strong> Esta sección registra la fuente para uso futuro. La lectura de datos desde Excel o Google Sheets se activará en una próxima versión con soporte de credenciales OAuth.
+        </div>
+      </CardContent>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar fuente" : "Nueva fuente externa"}</DialogTitle>
+            <DialogDescription>Registrá un archivo remoto para uso futuro en el dashboard.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Nombre *</Label>
+              <Input placeholder="Ej: Planilla de honorarios 2025" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Tipo</Label>
+                <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Estado</Label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>URL del archivo <span className="text-muted-foreground text-xs font-normal">(opcional)</span></Label>
+              <Input placeholder="https://docs.google.com/spreadsheets/..." value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Identificador <span className="text-muted-foreground text-xs font-normal">(opcional)</span></Label>
+              <Input placeholder="ID del documento o sheet" value={form.identifier} onChange={e => setForm(f => ({ ...f, identifier: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notas <span className="text-muted-foreground text-xs font-normal">(opcional)</span></Label>
+              <Input placeholder="Para qué se usa esta fuente..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSubmit} disabled={!form.name.trim() || createMutation.isPending || updateMutation.isPending}>
+              {createMutation.isPending || updateMutation.isPending ? "Guardando…" : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
 
 interface FormState {
   dashboardName: string;
@@ -288,6 +525,8 @@ export default function SettingsPage() {
           ))}
         </CardContent>
       </Card>
+
+      <ExternalSourcesSection />
 
       <div className="flex items-center justify-between pt-2">
         {updateSettings.isSuccess && (

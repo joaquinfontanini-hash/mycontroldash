@@ -12,6 +12,7 @@ import {
   CloudSun,
   Briefcase,
   Plane,
+  CalendarClock,
   Settings,
   Shield,
   Search,
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/weather", label: "Clima", icon: CloudSun },
   { href: "/dashboard/fiscal", label: "Monitor Fiscal", icon: Briefcase },
   { href: "/dashboard/travel", label: "Viajes", icon: Plane },
+  { href: "/dashboard/due-dates", label: "Vencimientos", icon: CalendarClock },
 ];
 
 function NavLink({ href, label, icon: Icon, location, onClick }: {

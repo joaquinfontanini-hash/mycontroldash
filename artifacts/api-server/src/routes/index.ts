@@ -12,6 +12,8 @@ import usersRouter from "./users";
 import dashboardRouter from "./dashboard";
 import syncRouter from "./sync";
 import currencyRouter from "./currency";
+import dueDatesRouter from "./due-dates";
+import externalSourcesRouter from "./external-sources";
 
 const router: IRouter = Router();
 
@@ -28,5 +30,7 @@ router.use(settingsRouter);
 router.use(usersRouter);
 router.use(syncRouter);
 router.use(currencyRouter);
+router.use(dueDatesRouter);
+router.use(externalSourcesRouter);
 
 export default router;

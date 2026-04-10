@@ -20,6 +20,7 @@ import EmailsPage from "@/pages/dashboard/emails";
 import WeatherPage from "@/pages/dashboard/weather";
 import FiscalPage from "@/pages/dashboard/fiscal";
 import TravelPage from "@/pages/dashboard/travel";
+import DueDatesPage from "@/pages/dashboard/due-dates";
 import AdminPage from "@/pages/admin";
 import SettingsPage from "@/pages/settings";
 
@@ -98,6 +99,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/dashboard/weather" component={() => <ProtectedRoute component={() => <DashboardLayout><WeatherPage /></DashboardLayout>} />} />
             <Route path="/dashboard/fiscal" component={() => <ProtectedRoute component={() => <DashboardLayout><FiscalPage /></DashboardLayout>} />} />
             <Route path="/dashboard/travel" component={() => <ProtectedRoute component={() => <DashboardLayout><TravelPage /></DashboardLayout>} />} />
+            <Route path="/dashboard/due-dates" component={() => <ProtectedRoute component={() => <DashboardLayout><DueDatesPage /></DashboardLayout>} />} />
             <Route path="/admin" component={() => <ProtectedRoute component={() => <DashboardLayout><AdminPage /></DashboardLayout>} />} />
             <Route path="/settings" component={() => <ProtectedRoute component={() => <DashboardLayout><SettingsPage /></DashboardLayout>} />} />
             

@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Mail, CheckSquare, Briefcase, Plane, Newspaper, CloudSun,
   CloudRain, Sun, Cloud, ArrowRight, TrendingUp, RefreshCw,
-  DollarSign, AlertCircle,
+  DollarSign, AlertCircle, CalendarClock, Circle, CheckCircle2,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface DolarRate {
   type: string;
@@ -23,9 +25,28 @@ interface DolarRate {
   fetchedAt: string;
 }
 
+interface DueDate {
+  id: number;
+  title: string;
+  category: string;
+  dueDate: string;
+  description?: string | null;
+  priority: "low" | "medium" | "high" | "critical";
+  status: "pending" | "done" | "cancelled";
+  alertEnabled: boolean;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 async function fetchCurrency(): Promise<DolarRate[]> {
   const res = await fetch("/api/currency");
   if (!res.ok) throw new Error("Error al cargar cotizaciones");
+  return res.json();
+}
+
+async function fetchDueDates(): Promise<DueDate[]> {
+  const res = await fetch("/api/due-dates");
+  if (!res.ok) throw new Error("Error al cargar vencimientos");
   return res.json();
 }
 
@@ -36,18 +57,31 @@ function WeatherIcon({ icon, className }: { icon: string; className?: string }) 
   return <CloudSun className={className} />;
 }
 
+function getUrgency(dueDate: string, status: string) {
+  if (status === "done" || status === "cancelled") return "done";
+  const due = new Date(dueDate + "T00:00:00");
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diff = Math.floor((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) return "overdue";
+  if (diff === 0) return "today";
+  if (diff <= 3) return "soon";
+  if (diff <= 7) return "week";
+  return "future";
+}
+
+const formatRate = (n: number | null) =>
+  n === null ? "—" : new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n);
+
+// ── Dollar Widget ─────────────────────────────────────────────────────────────
+
 const DOLAR_DISPLAY = ["oficial", "blue", "bolsa", "cripto"];
 const DOLAR_COLORS: Record<string, { accent: string; bg: string; border: string }> = {
-  oficial: { accent: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/40", border: "border-l-blue-500" },
+  oficial: { accent: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-50 dark:bg-blue-950/40",    border: "border-l-blue-500" },
   blue:    { accent: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40", border: "border-l-emerald-500" },
   bolsa:   { accent: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/40", border: "border-l-purple-500" },
   cripto:  { accent: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/40", border: "border-l-orange-500" },
 };
-
-function formatRate(n: number | null) {
-  if (n === null) return "—";
-  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n);
-}
 
 function DollarWidget() {
   const [refreshing, setRefreshing] = useState(false);
@@ -117,36 +151,26 @@ function DollarWidget() {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cotizaciones</p>
-              {lastUpdate && (
-                <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>
-              )}
+              {lastUpdate && <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>}
             </div>
           </div>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
         </div>
-
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {displayRates.map(rate => {
             const colors = DOLAR_COLORS[rate.type] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
             return (
-              <div
-                key={rate.type}
-                className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}
-              >
+              <div key={rate.type} className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}>
                 <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{rate.label}</p>
-                <p className={`text-lg font-bold ${colors.accent} leading-none`}>
-                  {formatRate(rate.sell ?? rate.avg)}
-                </p>
+                <p className={`text-lg font-bold ${colors.accent} leading-none`}>{formatRate(rate.sell ?? rate.avg)}</p>
                 {rate.buy !== null && rate.sell !== null && (
                   <p className="text-[10px] text-muted-foreground mt-1">
                     Cpr: {formatRate(rate.buy)} · Vta: {formatRate(rate.sell)}
                   </p>
                 )}
-                {rate.status === "error" && (
-                  <p className="text-[10px] text-destructive mt-1">Sin datos</p>
-                )}
+                {rate.status === "error" && <p className="text-[10px] text-destructive mt-1">Sin datos</p>}
               </div>
             );
           })}
@@ -156,6 +180,115 @@ function DollarWidget() {
   );
 }
 
+// ── Vencimientos Sidebar Widget ───────────────────────────────────────────────
+
+const URGENCY_CFG = {
+  overdue: { dot: "bg-red-500",    label: "Vencido",      text: "text-red-600 dark:text-red-400",    badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
+  today:   { dot: "bg-orange-500", label: "Hoy",          text: "text-orange-600 dark:text-orange-400", badge: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" },
+  soon:    { dot: "bg-amber-500",  label: "3 días",       text: "text-amber-600 dark:text-amber-400", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  week:    { dot: "bg-blue-500",   label: "Esta semana",  text: "text-blue-600 dark:text-blue-400",   badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  future:  { dot: "bg-muted-foreground/30", label: "Próximo", text: "text-muted-foreground",         badge: "bg-muted text-muted-foreground" },
+  done:    { dot: "bg-muted-foreground/20", label: "Listo",   text: "text-muted-foreground",         badge: "bg-muted text-muted-foreground" },
+};
+
+function VencimientosWidget() {
+  const { data: dueDates = [], isLoading } = useQuery<DueDate[]>({
+    queryKey: ["due-dates"],
+    queryFn: fetchDueDates,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const pending = useMemo(() =>
+    dueDates
+      .filter(d => d.status === "pending")
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+      .slice(0, 9),
+    [dueDates]
+  );
+
+  const critical = useMemo(() =>
+    dueDates.filter(d => d.status === "pending" && ["overdue", "today"].includes(getUrgency(d.dueDate, d.status))).length,
+    [dueDates]
+  );
+
+  return (
+    <Card className="border-border/60 sticky top-4">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-primary shrink-0" />
+            Vencimientos
+            {critical > 0 && (
+              <span className="inline-flex items-center justify-center h-4.5 min-w-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold">
+                {critical}
+              </span>
+            )}
+          </CardTitle>
+          <Button asChild variant="ghost" size="sm" className="h-6 text-[10px] text-muted-foreground px-1.5">
+            <Link href="/dashboard/due-dates">
+              Ver todos <ArrowRight className="ml-1 h-2.5 w-2.5" />
+            </Link>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 pb-3 px-4">
+        {isLoading ? (
+          <div className="space-y-2">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+          </div>
+        ) : pending.length === 0 ? (
+          <div className="py-6 text-center">
+            <CheckCircle2 className="h-8 w-8 text-emerald-500/40 mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground">Sin vencimientos pendientes</p>
+            <Button asChild variant="link" size="sm" className="text-[10px] h-6 mt-1">
+              <Link href="/dashboard/due-dates">Agregar vencimiento</Link>
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {pending.map(item => {
+              const urgency = getUrgency(item.dueDate, item.status);
+              const cfg = URGENCY_CFG[urgency as keyof typeof URGENCY_CFG] ?? URGENCY_CFG.future;
+              const date = new Date(item.dueDate + "T00:00:00").toLocaleDateString("es-AR", {
+                day: "numeric", month: "short",
+              });
+              return (
+                <Link key={item.id} href="/dashboard/due-dates" className="block">
+                  <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg hover:bg-muted/40 transition-colors group">
+                    <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium leading-snug truncate group-hover:text-primary transition-colors">
+                        {item.title}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-[9px] font-semibold uppercase tracking-wide ${cfg.text}`}>{cfg.label}</span>
+                        <span className="text-[9px] text-muted-foreground/60">·</span>
+                        <span className="text-[9px] text-muted-foreground">{date}</span>
+                      </div>
+                    </div>
+                    {item.priority === "critical" && (
+                      <AlertCircle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+            {dueDates.filter(d => d.status === "pending").length > 9 && (
+              <Button asChild variant="ghost" size="sm" className="w-full h-7 text-[10px] text-muted-foreground mt-1">
+                <Link href="/dashboard/due-dates">
+                  +{dueDates.filter(d => d.status === "pending").length - 9} más
+                </Link>
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main Dashboard ────────────────────────────────────────────────────────────
+
 export default function DashboardSummary() {
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary();
   const { data: weather, isLoading: weatherLoading } = useGetWeather();
@@ -164,26 +297,29 @@ export default function DashboardSummary() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div>
-          <Skeleton className="h-9 w-64 mb-2" />
-          <Skeleton className="h-4 w-44" />
+      <div className="grid gap-5 lg:grid-cols-[1fr_288px] max-w-6xl">
+        <div className="space-y-5">
+          <div>
+            <Skeleton className="h-9 w-64 mb-2" />
+            <Skeleton className="h-4 w-44" />
+          </div>
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[...Array(5)].map((_, i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2">
+                  <Skeleton className="h-4 w-1/3" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-1/2 mb-2" />
+                  <Skeleton className="h-4 w-2/3" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-        <Skeleton className="h-24 rounded-xl" />
-        <Skeleton className="h-32 rounded-xl" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(5)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <Skeleton className="h-4 w-1/3" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-1/2 mb-2" />
-                <Skeleton className="h-4 w-2/3" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Skeleton className="h-80 rounded-xl" />
       </div>
     );
   }
@@ -240,81 +376,89 @@ export default function DashboardSummary() {
   ];
 
   return (
-    <div className="space-y-5 max-w-6xl">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-          </p>
+    <div className="grid gap-5 lg:grid-cols-[1fr_288px] max-w-6xl">
+      {/* ── Left column ──────────────────────────────────────── */}
+      <div className="space-y-5 min-w-0">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </p>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            Panel activo
+          </div>
         </div>
-        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
-          <TrendingUp className="h-3.5 w-3.5 text-primary" />
-          Panel activo
+
+        {today && (
+          <Card className="border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <WeatherIcon icon={today.conditionIcon} className="h-10 w-10 text-amber-500" />
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Clima Neuquén — Hoy</p>
+                    <p className="font-semibold">{today.condition}</p>
+                    <div className="flex items-center gap-2 text-sm mt-0.5">
+                      <span className="text-blue-500 font-medium">{today.tempMin}°</span>
+                      <span className="text-muted-foreground">/</span>
+                      <span className="text-red-500 font-medium">{today.tempMax}°C</span>
+                      <span className="text-muted-foreground ml-2">Lluvia: {today.rainProbability}%</span>
+                    </div>
+                  </div>
+                </div>
+                {tomorrow && (
+                  <div className="hidden sm:flex items-center gap-3 text-sm text-muted-foreground">
+                    <div className="text-right">
+                      <p className="text-xs uppercase tracking-wide font-medium">Mañana</p>
+                      <p className="text-foreground font-medium">{tomorrow.condition}</p>
+                      <p className="text-xs">{tomorrow.tempMin}° / {tomorrow.tempMax}°C</p>
+                    </div>
+                    <WeatherIcon icon={tomorrow.conditionIcon} className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
+                <Button asChild variant="ghost" size="sm" className="shrink-0">
+                  <Link href="/dashboard/weather">
+                    Ver pronóstico <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <DollarWidget />
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {widgets.map((widget, idx) => (
+            <Card key={idx} className="card-hover group">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {widget.title}
+                </CardTitle>
+                <div className={`h-8 w-8 rounded-lg ${widget.bg} flex items-center justify-center`}>
+                  <widget.icon className={`h-4 w-4 ${widget.accent}`} />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className={`text-3xl font-bold ${widget.accent} mb-0.5`}>{widget.value}</div>
+                <p className="text-xs text-muted-foreground mb-4">{widget.subtitle}</p>
+                <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
+                  <Link href={widget.href}>
+                    Ver detalle <ArrowRight className="ml-1 h-3 w-3" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
 
-      {today && (
-        <Card className="border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <WeatherIcon icon={today.conditionIcon} className="h-10 w-10 text-amber-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Clima Neuquén — Hoy</p>
-                  <p className="font-semibold">{today.condition}</p>
-                  <div className="flex items-center gap-2 text-sm mt-0.5">
-                    <span className="text-blue-500 font-medium">{today.tempMin}°</span>
-                    <span className="text-muted-foreground">/</span>
-                    <span className="text-red-500 font-medium">{today.tempMax}°C</span>
-                    <span className="text-muted-foreground ml-2">Lluvia: {today.rainProbability}%</span>
-                  </div>
-                </div>
-              </div>
-              {tomorrow && (
-                <div className="hidden sm:flex items-center gap-3 text-sm text-muted-foreground">
-                  <div className="text-right">
-                    <p className="text-xs uppercase tracking-wide font-medium">Mañana</p>
-                    <p className="text-foreground font-medium">{tomorrow.condition}</p>
-                    <p className="text-xs">{tomorrow.tempMin}° / {tomorrow.tempMax}°C</p>
-                  </div>
-                  <WeatherIcon icon={tomorrow.conditionIcon} className="h-8 w-8 text-muted-foreground" />
-                </div>
-              )}
-              <Button asChild variant="ghost" size="sm" className="shrink-0">
-                <Link href="/dashboard/weather">
-                  Ver pronóstico <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <DollarWidget />
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {widgets.map((widget, idx) => (
-          <Card key={idx} className="card-hover group">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {widget.title}
-              </CardTitle>
-              <div className={`h-8 w-8 rounded-lg ${widget.bg} flex items-center justify-center`}>
-                <widget.icon className={`h-4 w-4 ${widget.accent}`} />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className={`text-3xl font-bold ${widget.accent} mb-0.5`}>{widget.value}</div>
-              <p className="text-xs text-muted-foreground mb-4">{widget.subtitle}</p>
-              <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
-                <Link href={widget.href}>
-                  Ver detalle <ArrowRight className="ml-1 h-3 w-3" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+      {/* ── Right sidebar: Vencimientos ─────────────────────── */}
+      <div className="lg:pt-0">
+        <VencimientosWidget />
       </div>
     </div>
   );
