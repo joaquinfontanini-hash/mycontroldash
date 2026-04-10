@@ -17,9 +17,7 @@ const CATEGORIES = [
 ];
 
 const ALL_SOURCES = [
-  "AFIP", "Ámbito", "El Cronista", "Infobae", "La Nación",
-  "Diario Río Negro", "LM Neuquén", "iProfesional", "Clarín",
-  "Página 12", "Tributum", "Contadores en Red",
+  "Ámbito", "La Nación", "Diario Río Negro", "Clarín", "Tributum", "Contadores en Red",
 ];
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -66,13 +64,11 @@ export default function NewsPage() {
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const queryParams: Record<string, string | undefined> = {
-    category: category || undefined,
-    source: activeSource || undefined,
-  };
-
   const { data: news, isLoading, error } = useListNews(
-    { category: category || undefined },
+    {
+      category: category || undefined,
+      limit: activeSource ? 200 : undefined,
+    },
   );
 
   const filteredNews = activeSource

@@ -14,16 +14,16 @@ export const RSS_SOURCES = [
     enabled: true,
   },
   {
-    url: "https://www.cronista.com/files/feed.xml",
+    url: "https://www.cronista.com/rss/",
     name: "El Cronista",
     category: "negocios",
-    enabled: true,
+    enabled: false,
   },
   {
     url: "https://www.infobae.com/feeds/rss/economia/",
     name: "Infobae",
     category: "economia",
-    enabled: true,
+    enabled: false,
   },
   {
     url: "https://www.lanacion.com.ar/arc/outboundfeeds/rss/",
@@ -41,19 +41,19 @@ export const RSS_SOURCES = [
     url: "https://www.lmneuquen.com/servicios/rss.php",
     name: "LM Neuquén",
     category: "provinciales",
-    enabled: true,
+    enabled: false,
   },
   {
     url: "https://www.afip.gob.ar/afip/rss/novedades.rss",
     name: "AFIP",
     category: "impuestos",
-    enabled: true,
+    enabled: false,
   },
   {
-    url: "https://www.iprofesional.com/rss/home.xml",
+    url: "https://www.iprofesional.com/rss/",
     name: "iProfesional",
     category: "negocios",
-    enabled: true,
+    enabled: false,
   },
   {
     url: "https://www.clarin.com/rss/economia/",
@@ -65,7 +65,7 @@ export const RSS_SOURCES = [
     url: "https://www.pagina12.com.ar/rss/secciones/economia/notas",
     name: "Página 12",
     category: "economia",
-    enabled: true,
+    enabled: false,
   },
   {
     url: "https://tributum.news/feed/",
@@ -190,7 +190,7 @@ export async function getNews(options: {
     items = items.filter(n => n.title.toLowerCase().includes(q) || n.summary.toLowerCase().includes(q));
   }
 
-  return items.slice(0, Math.min(limit, maxCount));
+  return items.slice(0, limit > 20 ? limit : Math.min(limit, maxCount));
 }
 
 export async function ensureNewsUpToDate() {

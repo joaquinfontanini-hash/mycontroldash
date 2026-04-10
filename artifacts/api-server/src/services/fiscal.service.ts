@@ -14,7 +14,7 @@ export const FISCAL_RSS_SOURCES = [
     jurisdiction: "Nacional",
     organism: "AFIP / ARCA",
     category: "impuestos",
-    enabled: true,
+    enabled: false,
   },
   {
     url: "https://www.boletinoficial.gob.ar/rss/noticias",
@@ -22,7 +22,7 @@ export const FISCAL_RSS_SOURCES = [
     jurisdiction: "Nacional",
     organism: "Boletín Oficial",
     category: "normativa",
-    enabled: true,
+    enabled: false,
   },
   {
     url: "https://www.ambito.com/rss/pages/home.xml",
@@ -33,11 +33,27 @@ export const FISCAL_RSS_SOURCES = [
     enabled: true,
   },
   {
-    url: "https://www.cronista.com/files/feed.xml",
+    url: "https://www.cronista.com/rss/",
     name: "El Cronista",
     jurisdiction: "Nacional",
     organism: "Prensa Especializada",
     category: "negocios",
+    enabled: false,
+  },
+  {
+    url: "https://tributum.news/feed/",
+    name: "Tributum",
+    jurisdiction: "Nacional",
+    organism: "Prensa Especializada",
+    category: "impuestos",
+    enabled: true,
+  },
+  {
+    url: "https://contadoresenred.com/feed/",
+    name: "Contadores en Red",
+    jurisdiction: "Nacional",
+    organism: "Prensa Especializada",
+    category: "facturación",
     enabled: true,
   },
 ];
