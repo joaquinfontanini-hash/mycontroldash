@@ -3,7 +3,8 @@ import { useGetSettings, useUpdateSettings } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings as SettingsIcon, Save, MapPin, Newspaper, Palette, Bell, Check, AlertCircle, FileSpreadsheet, Plus, Pencil, Trash2, X, Link as LinkIcon } from "lucide-react";
+import { Settings as SettingsIcon, Save, MapPin, Newspaper, Palette, Bell, Check, AlertCircle, FileSpreadsheet, Plus, Pencil, Trash2, X, Link as LinkIcon, Sliders, Brain } from "lucide-react";
+import { useUserSettings } from "@/hooks/use-user-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +41,97 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const EMPTY_SOURCE_FORM = { name: "", type: "excel", url: "", identifier: "", status: "pending", notes: "" };
+
+function AlertConfigSection() {
+  const { get, getBool, getInt, set, setBool, setInt } = useUserSettings();
+
+  const sensitivity = get("alert_sensitivity") || "medium";
+  const dueDateDays = getInt("alert_due_date_days", 7);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Sliders className="h-4 w-4" />
+          Alertas avanzadas
+        </CardTitle>
+        <CardDescription>Configurá la sensibilidad y los tipos de alertas del sistema.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Sensibilidad general</p>
+            <p className="text-xs text-muted-foreground">Define qué nivel de alertas se muestran en la campana y Modo HOY.</p>
+          </div>
+          <Select value={sensitivity} onValueChange={v => set("alert_sensitivity", v)}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="high">Alta — todo</SelectItem>
+              <SelectItem value="medium">Media — alta y crítica</SelectItem>
+              <SelectItem value="low">Baja — solo crítica</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Días de anticipación para vencimientos</p>
+            <p className="text-xs text-muted-foreground">Alertar cuando un vencimiento esté dentro de N días. Actual: {dueDateDays}d</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="range" min={1} max={14} value={dueDateDays}
+              onChange={e => setInt("alert_due_date_days", parseInt(e.target.value))}
+              className="w-24 accent-primary"
+            />
+            <span className="text-sm font-semibold tabular-nums w-6 text-right">{dueDateDays}</span>
+          </div>
+        </div>
+
+        <div className="space-y-3 pt-2 border-t">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tipos de alertas habilitados</p>
+          {[
+            { key: "alert_vencimientos_enabled", label: "Vencimientos impositivos", desc: "Vencimientos de AFIP, Rentas y obligaciones" },
+            { key: "alert_tareas_enabled", label: "Tareas críticas y altas", desc: "Tareas del board con prioridad alta o crítica" },
+            { key: "alert_finanzas_enabled", label: "Alertas financieras", desc: "Liquidez baja, deuda elevada y otros umbrales" },
+            { key: "alert_estrategia_enabled", label: "Objetivos estratégicos", desc: "Objetivos atrasados o en riesgo" },
+          ].map(item => (
+            <div key={item.key} className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{item.label}</p>
+                <p className="text-xs text-muted-foreground">{item.desc}</p>
+              </div>
+              <Switch
+                checked={getBool(item.key)}
+                onCheckedChange={v => setBool(item.key, v)}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-3 pt-2 border-t">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Motor de Decisiones</p>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Mostrar panel de reglas activas</p>
+              <p className="text-xs text-muted-foreground">Visible en el módulo Decisiones para transparencia del sistema</p>
+            </div>
+            <Switch
+              checked={getBool("decisions_show_rules")}
+              onCheckedChange={v => setBool("decisions_show_rules", v)}
+            />
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+          Los cambios se aplican instantáneamente y se guardan en tu perfil de usuario.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 function ExternalSourcesSection() {
   const qc = useQueryClient();
@@ -527,6 +619,8 @@ export default function SettingsPage() {
       </Card>
 
       <ExternalSourcesSection />
+
+      <AlertConfigSection />
 
       <div className="flex items-center justify-between pt-2">
         {updateSettings.isSuccess && (

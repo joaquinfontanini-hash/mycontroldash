@@ -1,0 +1,155 @@
+Quiero que avances con la ETAPA 4 del dashboard, sobre todo lo ya construido, sin romper ninguna etapa anterior.
+
+IMPORTANTE
+- Esta etapa es de consolidación, automatización, endurecimiento y preparación para escalar
+- Todo debe quedar auditado, verificado, integrado y orientado al usuario final
+- No quiero humo: solo mejoras reales, útiles y mantenibles
+
+OBJETIVO DE ESTA ETAPA
+Convertir el sistema en una base seria tipo SaaS personal, preparada para backend e integraciones futuras.
+
+==================================================
+1. MÓDULO AUTOMATIZACIONES Y ALERTAS AVANZADAS
+==================================================
+
+Expandir automatizaciones para detectar eventos importantes.
+
+Debe contemplar:
+- noticias relevantes
+- vencimientos críticos
+- cambios financieros
+- oportunidades
+- recordatorios estratégicos
+
+Configurable por:
+- sensibilidad
+- prioridad
+- tipo de alerta
+- umbrales
+
+==================================================
+2. SISTEMA DE CONFIGURACIÓN GLOBAL
+==================================================
+
+Crear una configuración más completa del sistema.
+
+Debe permitir:
+- preferencias del usuario
+- umbrales financieros
+- sensibilidad de alertas
+- parámetros de modo hoy
+- comportamiento de widgets
+- opciones visuales
+- preparación para múltiples usuarios
+
+==================================================
+3. PREPARACIÓN PARA BACKEND FUTURO
+==================================================
+
+Refactorizar donde haga falta para dejar claramente separadas:
+- capa UI
+- capa de estado
+- capa de persistencia
+- servicios
+- adaptadores
+
+Preparar el sistema para migrar de localStorage a backend real sin dolor.
+
+==================================================
+4. PREPARACIÓN DE SEGURIDAD FUTURA
+==================================================
+
+Mejorar base de seguridad para futura producción.
+
+Debe quedar preparado para:
+- JWT
+- OAuth
+- 2FA
+- manejo de sesiones reales
+- control de permisos más granular
+- auditoría más fuerte
+
+Sin romper la versión local existente.
+
+==================================================
+5. OPTIMIZACIÓN Y PERFORMANCE
+==================================================
+
+Revisar:
+- renders innecesarios
+- componentes demasiado pesados
+- lógica duplicada
+- almacenamiento redundante
+- reactividad excesiva
+- carga inicial
+
+Buscar una app rápida y limpia.
+
+==================================================
+6. PREPARACIÓN PARA WIDGETS E INTEGRACIONES FUTURAS
+==================================================
+
+Dejar una base extensible para agregar luego:
+- dólar
+- noticias
+- viajes
+- monitor fiscal
+- correos
+- archivos externos
+- dashboards especializados
+
+Sin implementarlos completos ahora, pero dejando estructura elegante y reusable.
+
+==================================================
+7. DOCUMENTACIÓN TÉCNICA Y DE USO
+==================================================
+
+Generar:
+- README claro
+- explicación de arquitectura
+- cómo correr el proyecto
+- cómo escalarlo a backend
+- cómo agregar un nuevo módulo
+- cómo agregar una nueva automatización
+- cómo agregar un nuevo widget
+
+==================================================
+8. ENTREGABLES DE ESTA ETAPA
+==================================================
+
+Quiero:
+- automatizaciones mejoradas
+- configuración global madura
+- arquitectura preparada para backend
+- seguridad futura preparada
+- optimización general
+- documentación clara
+- base extensible para integraciones y widgets
+
+==================================================
+9. AUDITORÍA OBLIGATORIA DE ETAPA 4
+==================================================
+
+Al terminar, auditá:
+
+1. que no se rompa nada de etapas 1, 2 y 3
+2. que la arquitectura esté más limpia y no más desordenada
+3. que la performance siga siendo buena
+4. que modo hoy siga funcionando correctamente
+5. que la configuración global persista bien
+6. que la base para backend futuro esté realmente preparada
+7. que no haya deuda técnica evitable
+8. que la documentación sea clara
+9. que la app siga siendo usable para usuario final
+10. que la experiencia visual siga siendo premium
+11. que no haya secretos ni malas prácticas expuestas
+12. que el sistema quede realmente listo para seguir creciendo
+
+Al final entregame:
+- resumen final integral
+- arquitectura resultante
+- mejoras realizadas
+- deudas técnicas remanentes
+- prioridades recomendadas para una etapa 5
+- checklist de prueba final de todo el sistema
+- y no avances más

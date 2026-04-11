@@ -1,4 +1,5 @@
-import { Bell, CalendarClock, CheckSquare, AlertTriangle, ArrowRight } from "lucide-react";
+import React from "react";
+import { Bell, CalendarClock, CheckSquare, AlertTriangle, ArrowRight, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,10 +11,11 @@ import { Link } from "wouter";
 import { useAlerts, type Alert } from "@/hooks/use-alerts";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-const ICONS = {
+const ICONS: Record<string, React.ElementType> = {
   vencimiento: CalendarClock,
   tarea: CheckSquare,
   fiscal: AlertTriangle,
+  financiero: DollarSign,
 };
 
 const LEVEL_STYLES: Record<Alert["level"], { dot: string; badge: string }> = {

@@ -21,6 +21,7 @@ import modulesRouter from "./modules";
 import securityLogsRouter from "./security-logs";
 import financeRouter from "./finance";
 import goalsRouter from "./goals";
+import userSettingsRouter from "./user-settings";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(modulesRouter);
 router.use(securityLogsRouter);
 router.use(financeRouter);
 router.use(goalsRouter);
+router.use(userSettingsRouter);
 
 export default router;

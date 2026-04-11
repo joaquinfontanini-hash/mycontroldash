@@ -19,3 +19,4 @@ export * from "./supplier-batches";
 export * from "./security";
 export * from "./finance";
 export * from "./goals";
+export * from "./user-settings";
