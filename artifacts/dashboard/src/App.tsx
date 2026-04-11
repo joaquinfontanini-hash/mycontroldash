@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/module-protected-route";
+import { useUserSync } from "@/hooks/use-user-sync";
 
 import Home from "@/pages/home";
 import SignInPage from "@/pages/sign-in";
@@ -94,6 +95,11 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+function UserSyncEffect() {
+  useUserSync();
+  return null;
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -106,6 +112,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <UserSyncEffect />
         <TooltipProvider>
           <Switch>
             <Route path="/" component={Home} />

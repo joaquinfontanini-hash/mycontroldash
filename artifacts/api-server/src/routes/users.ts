@@ -1,7 +1,7 @@
 import { Router, type IRouter, Request } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
-import { CreateUserBody, UpdateUserBody, UpdateUserParams } from "@workspace/api-zod";
+import { UpdateUserBody, UpdateUserParams } from "@workspace/api-zod";
 import { getAuth } from "@clerk/express";
 import { requireAdmin, requireSuperAdmin, AuthenticatedRequest } from "../middleware/require-auth.js";
 import { logSecurityEvent, getClientIp } from "../lib/security-logger.js";
@@ -35,27 +35,37 @@ router.get("/users", requireAdmin, async (_req, res): Promise<void> => {
 });
 
 router.post("/users", async (req, res): Promise<void> => {
-  const parsed = CreateUserBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  const { clerkId, email, name } = req.body ?? {};
+  if (!clerkId || typeof clerkId !== "string" || !email || typeof email !== "string") {
+    res.status(400).json({ error: "clerkId y email son requeridos" });
     return;
   }
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.clerkId, parsed.data.clerkId));
-  if (existing) {
-    res.json(existing);
-    return;
+  try {
+    const [existing] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkId));
+    if (existing) {
+      res.json(existing);
+      return;
+    }
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+    const role = (superAdminEmail && email === superAdminEmail) ? "super_admin" : "viewer";
+    const [user] = await db.insert(usersTable).values({
+      clerkId,
+      email,
+      name: typeof name === "string" ? name : null,
+      role,
+    }).returning();
+    await logSecurityEvent({
+      actorClerkId: clerkId,
+      actorEmail: email,
+      action: "user_registered",
+      result: "success",
+      metadata: { role },
+    });
+    res.status(201).json(user);
+  } catch (err) {
+    logger.error({ err }, "user registration error");
+    res.status(500).json({ error: "Error al registrar usuario" });
   }
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
-  const role = (superAdminEmail && parsed.data.email === superAdminEmail) ? "super_admin" : "viewer";
-  const [user] = await db.insert(usersTable).values({ ...parsed.data, role }).returning();
-  await logSecurityEvent({
-    actorClerkId: parsed.data.clerkId,
-    actorEmail: parsed.data.email,
-    action: "user_registered",
-    result: "success",
-    metadata: { role },
-  });
-  res.status(201).json(user);
 });
 
 router.patch("/users/:id", requireAdmin, async (req: Request, res): Promise<void> => {

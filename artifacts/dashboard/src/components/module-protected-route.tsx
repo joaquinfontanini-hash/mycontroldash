@@ -22,7 +22,7 @@ function useModules() {
 
 function Spinner() {
   return (
-    <div className="flex-1 flex items-center justify-center min-h-[40vh]">
+    <div className="flex-1 flex items-center justify-center min-h-screen">
       <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
     </div>
   );
@@ -46,7 +46,9 @@ function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: Rea
 
   if (meLoading || modulesLoading) return <Spinner />;
 
-  if (!me) return <Redirect to="/" />;
+  if (!me) {
+    return <Spinner />;
+  }
 
   if (me.isBlocked) {
     return (
