@@ -17,6 +17,8 @@ import externalSourcesRouter from "./external-sources";
 import clientsRouter from "./clients";
 import annualCalendarsRouter from "./annual-calendars";
 import supplierBatchesRouter from "./supplier-batches";
+import modulesRouter from "./modules";
+import securityLogsRouter from "./security-logs";
 
 const router: IRouter = Router();
 
@@ -38,5 +40,7 @@ router.use(externalSourcesRouter);
 router.use(clientsRouter);
 router.use(annualCalendarsRouter);
 router.use(supplierBatchesRouter);
+router.use(modulesRouter);
+router.use(securityLogsRouter);
 
 export default router;

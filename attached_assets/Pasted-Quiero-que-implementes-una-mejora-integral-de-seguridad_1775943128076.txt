@@ -1,0 +1,349 @@
+Quiero que implementes una mejora integral de seguridad, autenticación y administración de usuarios sobre el proyecto actual del dashboard web, sin romper nada de lo ya implementado.
+
+IMPORTANTE
+- No rehagas la app desde cero
+- Trabajá sobre la arquitectura actual
+- Mantené la lógica modular existente
+- Todo debe quedar auditado, validado, robusto y orientado a seguridad realista
+- Priorizá seguridad, control administrativo, trazabilidad, UX clara y mantenibilidad
+- No quiero una seguridad “de mentira” basada solo en localStorage
+- No expongas secretos al frontend
+- Todo lo sensible debe pasar por backend
+
+OBJETIVO GENERAL
+Quiero un sistema de acceso sólido, con autenticación fuerte, control de usuarios, roles claros, trazabilidad y capacidad de administración total por parte del superusuario.
+
+==================================================
+1) AUTENTICACIÓN FUERTE CON GOOGLE Y DOBLE FACTOR
+==================================================
+
+Quiero que el acceso al sistema sea mucho más seguro.
+
+REQUISITOS
+- Implementar autenticación con Google de forma correcta y segura
+- Aprovechar el acceso con cuenta Google como método principal de login
+- Diseñar el sistema para que el acceso sea compatible con cuentas que ya usan verificación en dos pasos de Google
+- Si es posible dentro de la arquitectura elegida, agregar una segunda capa propia de verificación para accesos sensibles o administrativos
+- Para áreas críticas, contemplar step-up authentication o revalidación de identidad
+- Mantener sesiones seguras
+- No guardar credenciales sensibles en frontend
+- Manejar backend session/token de manera segura
+- Implementar:
+  - expiración de sesión
+  - cierre de sesión seguro
+  - invalidación de sesiones
+  - protección contra acceso indebido
+- Evitar autenticación insegura basada solo en email sin validación real
+- Preparar la solución para producción, con variables de entorno y configuración robusta
+
+IMPORTANTE
+- No inventes seguridad ficticia
+- Si alguna capa depende de configuración externa, dejá el flujo implementado y documentado
+- Priorizar una solución razonable, mantenible y sólida
+
+==================================================
+2) CONTROL DE ROLES Y SUPERUSUARIO
+==================================================
+
+Necesito un esquema de roles bien definido.
+
+ROLES MÍNIMOS
+- super_admin
+- admin
+- editor
+- viewer
+
+REQUISITOS
+- El super_admin debe ser mi usuario principal
+- El super_admin debe tener acceso total a todo el sistema
+- El super_admin debe poder:
+  - ver todos los módulos
+  - habilitar o deshabilitar módulos
+  - bloquear usuarios
+  - desbloquear usuarios
+  - restablecer contraseñas o reinicios de acceso según el sistema implementado
+  - cambiar roles
+  - activar o desactivar cuentas
+  - cerrar sesiones activas de otros usuarios si hace falta
+  - ver logs de actividad
+  - gestionar permisos globales
+- El admin debe tener permisos altos pero no superiores al super_admin
+- El editor debe poder operar donde corresponda
+- El viewer solo debe ver lo habilitado
+
+==================================================
+3) DEFINICIÓN DE MÓDULOS COMO UNIDADES DE PERMISO
+==================================================
+
+Necesito que el sistema considere como “módulos” todas las opciones laterales del dashboard.
+
+EJEMPLOS DE MÓDULOS
+- Inicio
+- Noticias
+- Monitor Fiscal
+- Viajes
+- Tareas
+- Vencimientos
+- Emails
+- Clima
+- Cotizaciones
+- Usuarios
+- Ajustes
+- Integraciones
+- Fuentes
+- Sincronizaciones
+- Clientes
+- Calendarios impositivos
+- Cualquier otro menú lateral existente
+
+REQUISITOS
+- Cada módulo debe tener:
+  - identificador
+  - nombre
+  - estado activo/inactivo
+  - visibilidad por rol
+  - posibilidad de asignación por usuario
+- El super_admin debe poder:
+  - agregar módulos
+  - quitar módulos
+  - activar/desactivar módulos
+  - asignarlos por rol
+  - asignarlos o quitarlos a usuarios específicos
+- Si un módulo está desactivado:
+  - no debe mostrarse en sidebar
+  - no debe quedar accesible por URL
+- Si un usuario no tiene permiso:
+  - no debe verlo
+  - no debe poder acceder aunque conozca la ruta
+- Implementar control tanto en frontend como en backend
+- Preparar arquitectura extensible para futuros módulos
+
+==================================================
+4) BLOQUEO DE USUARIOS, RESETEO Y CONTROL DE ACCESO
+==================================================
+
+Necesito herramientas reales de administración de usuarios.
+
+REQUISITOS
+- El super_admin debe poder:
+  - bloquear usuario
+  - desbloquear usuario
+  - desactivar cuenta
+  - reactivar cuenta
+  - forzar cierre de sesión
+  - resetear acceso o reiniciar vínculo de autenticación
+- Si el sistema usa Google como login principal:
+  - implementar una lógica clara de “revocar acceso interno” aunque la cuenta Google siga existiendo
+  - permitir desvincular acceso del sistema
+- Mostrar estado del usuario:
+  - activo
+  - bloqueado
+  - suspendido
+  - pendiente
+- Registrar motivo del bloqueo si se carga
+- Mostrar fecha de última actividad
+
+==================================================
+5) SEGURIDAD ADICIONAL PARA ÁREAS SENSIBLES
+==================================================
+
+Quiero más protección para funciones críticas.
+
+REQUISITOS
+- Para acciones sensibles del super_admin o admin, contemplar:
+  - reautenticación
+  - confirmación fuerte
+  - step-up auth si es viable
+- Acciones críticas:
+  - cambiar roles
+  - bloquear usuarios
+  - restablecer acceso
+  - activar/desactivar módulos
+  - cambiar integraciones
+  - modificar fuentes
+  - cambiar configuración global
+- Agregar protecciones razonables:
+  - rate limiting en login y acciones sensibles
+  - validación de sesiones
+  - expiración
+  - logs de seguridad
+  - manejo de intentos fallidos
+- No exponer información sensible en mensajes de error
+
+==================================================
+6) AUDITORÍA Y LOGS DE SEGURIDAD
+==================================================
+
+Necesito trazabilidad fuerte.
+
+REQUISITOS
+- Registrar eventos como:
+  - login exitoso
+  - login fallido
+  - logout
+  - bloqueo de usuario
+  - desbloqueo
+  - cambio de rol
+  - reseteo de acceso
+  - activación/desactivación de módulo
+  - cambios de configuración crítica
+- Cada log debe guardar:
+  - usuario actor
+  - usuario afectado si aplica
+  - fecha y hora
+  - acción
+  - módulo afectado
+  - resultado
+  - observación resumida
+- Crear una vista en admin para ver logs
+- Permitir filtrar logs por:
+  - usuario
+  - acción
+  - fecha
+  - resultado
+- No guardar secretos ni datos sensibles en texto plano
+
+==================================================
+7) PANEL DE ADMINISTRACIÓN DE SEGURIDAD
+==================================================
+
+Necesito una sección administrativa sólida.
+
+REQUISITOS
+- Crear una sección o subsección de seguridad/usuarios accesible para super_admin
+- Debe permitir:
+  - listado de usuarios
+  - búsqueda
+  - filtros por rol y estado
+  - ver detalle de cada usuario
+  - bloquear/desbloquear
+  - activar/desactivar
+  - cambiar rol
+  - ver módulos habilitados
+  - editar módulos permitidos
+  - ver última actividad
+  - ver sesiones si la arquitectura lo permite
+  - ver eventos recientes
+- Crear también una sección para gestión de módulos
+- Crear una sección para logs de seguridad
+
+==================================================
+8) SEMILLA INICIAL DE SUPERUSUARIO
+==================================================
+
+Necesito que exista o se pueda generar un superusuario inicial.
+
+REQUISITOS
+- Crear mecanismo seguro para definir el super_admin inicial
+- No hardcodear credenciales inseguras en código
+- Si hace falta, usar variables de entorno o flujo de bootstrap inicial
+- Documentar exactamente cómo configurar mi usuario como super_admin
+- El sistema debe evitar que cualquier usuario se autoproclame super_admin
+- Si ya existe un esquema de usuarios, adaptalo sin romperlo
+
+==================================================
+9) MODELO DE PERMISOS
+==================================================
+
+Quiero que la seguridad no dependa solo del menú visible.
+
+REQUISITOS
+- Implementar autorización real por backend
+- Rutas protegidas según:
+  - autenticación
+  - rol
+  - permisos por módulo
+- Middleware claro y reutilizable
+- Separar:
+  - autenticación
+  - autorización por rol
+  - autorización por módulo
+  - autorización por acción sensible
+- Evitar duplicación de lógica
+
+==================================================
+10) UI/UX
+==================================================
+
+REQUISITOS
+- Mantener diseño moderno y premium
+- La administración debe ser clara y usable
+- Los estados de usuario y módulo deben verse claros
+- Usar badges y acciones bien visibles
+- Agregar confirmaciones antes de acciones críticas
+- Agregar mensajes de éxito/error elegantes
+- No romper responsive
+- No generar visualizaciones truncas
+
+==================================================
+11) BASE DE DATOS Y MODELOS
+==================================================
+
+Actualizar base de datos según sea necesario para soportar:
+
+- users
+- roles
+- user_status
+- user_module_permissions
+- modules
+- module_status
+- auth_sessions
+- security_logs
+- password_reset_or_access_reset_requests si aplica
+- login_attempts
+- user_audit_events
+
+No dupliques estructuras innecesariamente.
+Diseñá un esquema claro, extensible y mantenible.
+
+==================================================
+12) ORDEN DE IMPLEMENTACIÓN
+==================================================
+
+Hacelo en este orden:
+1. revisar arquitectura actual de auth y usuarios
+2. corregir debilidades de seguridad existentes
+3. implementar/auth mejorar login con Google de forma segura
+4. crear rol super_admin
+5. crear control de módulos por rol y por usuario
+6. crear bloqueo/desbloqueo y control de acceso
+7. crear panel admin de seguridad
+8. crear logs y auditoría
+9. proteger rutas backend y frontend
+10. revisar todo integralmente
+11. dejar todo estable y ejecutable
+
+==================================================
+13) AUDITORÍA FINAL OBLIGATORIA
+==================================================
+
+Al terminar:
+- revisá errores de compilación
+- revisá imports rotos
+- revisá que no se expongan secretos
+- revisá que los módulos ocultos no sean accesibles por URL sin permiso
+- revisá que super_admin tenga control total
+- revisá que admin no pueda escalar a super_admin sin autorización
+- revisá que bloquear usuario funcione
+- revisá que desactivar módulo funcione
+- revisá que los logs se generen
+- revisá que las rutas sensibles estén protegidas
+- revisá que frontend y backend arranquen
+- dejá todo listo para correr en Replit
+
+==================================================
+14) ENTREGABLE
+==================================================
+
+Quiero que me entregues:
+- código actualizado
+- migraciones o cambios de base de datos
+- endpoints nuevos
+- middleware de auth/autorización
+- paneles administrativos
+- resumen de lo implementado
+- qué quedó 100% funcional
+- qué requiere configuración externa
+- checklist de pruebas
+- instrucciones exactas para configurarlo en Replit
+- explicación exacta de cómo dejar mi usuario como super_admin

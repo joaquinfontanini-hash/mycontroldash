@@ -34,7 +34,7 @@ A full-stack personal executive dashboard for an Argentine contador/consultor in
 - `/dashboard/weather` — 3-day weather forecast for Neuquén (Open-Meteo)
 - `/dashboard/fiscal` — Monitor Fiscal with card/table view toggle + quality filters
 - `/dashboard/travel` — Travel offers browser (with quality scoring)
-- `/admin` — Admin panel (users, integrations, sync logs, discard logs)
+- `/admin` — Admin panel (5 tabs: Users RBAC, Modules toggle, Audit logs, Integrations, Sync logs)
 - `/dashboard/due-dates` — Vencimientos: due dates tracker with urgency grouping (overdue/today/3d/week/future/done)
 - `/settings` — Dashboard configuration (incl. Fuentes Externas section)
 
@@ -62,7 +62,7 @@ Routes under `/api`:
 
 ### Database (lib/db)
 
-Tables: `users`, `tasks`, `shortcuts`, `fiscal_updates`, `travel_offers`, `app_settings`, `news_items`, `weather_snapshots`, `sync_logs`, `discard_logs`, `email_connections`, `currency_rates`, `data_sources`, **`due_dates`**, **`due_date_categories`**, **`external_file_sources`**
+Tables: `users`, `tasks`, `shortcuts`, `fiscal_updates`, `travel_offers`, `app_settings`, `news_items`, `weather_snapshots`, `sync_logs`, `discard_logs`, `email_connections`, `currency_rates`, `data_sources`, **`due_dates`**, **`due_date_categories`**, **`external_file_sources`**, **`modules`**, **`user_module_permissions`**, **`security_logs`**, `uploaded_due_files`, `annual_calendar_items`, `clients`, `supplier_batches`, `supplier_batch_items`, `tax_calendars`
 
 ## Active RSS Sources
 
@@ -145,6 +145,25 @@ Added quality scoring (0-100) to fiscal updates and travel offers:
 - **Seeding**: `seedDefaultCategories()` in `app.ts` on startup → 7 default due-date categories
 - **API server**: Manual validation in all routes (no Zod dependency — Zod only in api-zod lib)
 - **Due-dates sidebar nav**: "Vencimientos" added (CalendarClock icon)
+
+## V6 Features (completed)
+
+- **Clients module**: `clients` table; CUIT validation (Módulo 11 with weights `[5,4,3,2,7,6,5,4,3,2]`); AFIP category engine; full CRUD API + page with search/filter
+- **Annual calendar**: `annual_calendar_items` table; `patchGanancias2026()` seeded on startup; drag-and-drop reorder; page at `/dashboard/due-dates/annual`
+- **Supplier payment batches**: `supplier_batches` + `supplier_batch_items`; CSV import (proveedor, importe, N°doc, venc_original, notas); batch management page
+- **Tax Calendars page**: `/dashboard/tax-calendars`; multer file upload to `uploads/tax-calendars/`; activate/delete/reprocess actions
+- **VencimientosWidget category tabs**: filterable by category tab strip
+- **Security system (RBAC)**:
+  - Roles: `super_admin` > `admin` > `editor` > `viewer`
+  - `modules` table: 14 modules seeded, each with `isActive` + `allowedRoles[]`
+  - `security_logs` table: audit trail for all sensitive actions
+  - `users` extended: `isBlocked`, `blockedAt`, `blockedReason`, `lastActivityAt`, `metadata`
+  - Middleware: `requireAuth` / `requireAdmin` / `requireSuperAdmin` in `src/middleware/require-auth.ts`
+  - `bootstrapSuperAdmin()`: sets `super_admin` role for `SUPER_ADMIN_EMAIL` env var on first login
+  - Rate limiting: 500 req/15min general; 30 req/15min for block/unblock/promote/module-toggle
+  - Routes: `/api/modules`, `/api/modules/:key/toggle`, `/api/modules/:key/roles`, `/api/security-logs`, `/api/users/:id/block`, `/api/users/:id/unblock`
+  - Frontend: 5-tab admin panel (Users RBAC, Modules toggle, Audit logs, Integrations, Sync); `useCurrentUser` hook; layout filters nav items based on active modules + user role
+- **`SUPER_ADMIN_EMAIL`** env var: set to auto-promote email to super_admin on first login
 
 ## External Excel Cloud — Foundation Checklist
 
