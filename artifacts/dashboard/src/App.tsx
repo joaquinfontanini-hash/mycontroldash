@@ -27,6 +27,9 @@ import ClientsPage from "@/pages/dashboard/clients";
 import SupplierBatchesPage from "@/pages/dashboard/supplier-batches";
 import TaxCalendarsPage from "@/pages/dashboard/tax-calendars";
 import FinancePage from "@/pages/dashboard/finance";
+import GoalsPage from "@/pages/dashboard/goals";
+import StrategyPage from "@/pages/dashboard/strategy";
+import DecisionsPage from "@/pages/dashboard/decisions";
 import AdminPage from "@/pages/admin";
 import SettingsPage from "@/pages/settings";
 
@@ -57,6 +60,9 @@ const Clients = () => <DashboardLayout><ClientsPage /></DashboardLayout>;
 const SupplierBatches = () => <DashboardLayout><SupplierBatchesPage /></DashboardLayout>;
 const TaxCalendars = () => <DashboardLayout><TaxCalendarsPage /></DashboardLayout>;
 const Finance = () => <DashboardLayout><FinancePage /></DashboardLayout>;
+const Goals = () => <DashboardLayout><GoalsPage /></DashboardLayout>;
+const Strategy = () => <DashboardLayout><StrategyPage /></DashboardLayout>;
+const Decisions = () => <DashboardLayout><DecisionsPage /></DashboardLayout>;
 const Admin = () => <DashboardLayout><AdminPage /></DashboardLayout>;
 const Settings = () => <DashboardLayout><SettingsPage /></DashboardLayout>;
 
@@ -73,6 +79,9 @@ const RouteClients = () => <ProtectedRoute moduleKey="clients" component={Client
 const RouteSupplierBatches = () => <ProtectedRoute moduleKey="supplier-batches" component={SupplierBatches} />;
 const RouteTaxCalendars = () => <ProtectedRoute moduleKey="tax-calendars" component={TaxCalendars} />;
 const RouteFinance = () => <ProtectedRoute moduleKey="finance" component={Finance} />;
+const RouteGoals = () => <ProtectedRoute moduleKey="goals" component={Goals} />;
+const RouteStrategy = () => <ProtectedRoute moduleKey="strategy" component={Strategy} />;
+const RouteDecisions = () => <ProtectedRoute moduleKey="decisions" component={Decisions} />;
 const RouteAdmin = () => <ProtectedRoute moduleKey="admin" component={Admin} />;
 const RouteSettings = () => <ProtectedRoute moduleKey="settings" component={Settings} />;
 
@@ -134,6 +143,9 @@ function ClerkProviderWithRoutes() {
             <Route path="/dashboard/supplier-batches" component={RouteSupplierBatches} />
             <Route path="/dashboard/tax-calendars" component={RouteTaxCalendars} />
             <Route path="/dashboard/finance" component={RouteFinance} />
+            <Route path="/dashboard/goals" component={RouteGoals} />
+            <Route path="/dashboard/strategy" component={RouteStrategy} />
+            <Route path="/dashboard/decisions" component={RouteDecisions} />
             <Route path="/admin" component={RouteAdmin} />
             <Route path="/settings" component={RouteSettings} />
             <Route component={NotFound} />

@@ -17,7 +17,10 @@ const DEFAULT_MODULES = [
   { key: "tax-calendars", name: "Calendarios", description: "Calendarios impositivos anuales", allowedRoles: ["super_admin", "admin"], orderIndex: 11 },
   { key: "admin", name: "Administración", description: "Panel de administración del sistema", allowedRoles: ["super_admin", "admin"], orderIndex: 12 },
   { key: "finance", name: "Finanzas", description: "Resumen financiero personal", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 13 },
-  { key: "settings", name: "Ajustes", description: "Configuración personal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 14 },
+  { key: "goals", name: "Objetivos del día", description: "Checklist diario de objetivos", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 14 },
+  { key: "strategy", name: "Estrategia", description: "Objetivos estratégicos y Gantt", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 15 },
+  { key: "decisions", name: "Decisiones", description: "Motor de decisiones y scoring", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 16 },
+  { key: "settings", name: "Ajustes", description: "Configuración personal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 17 },
 ];
 
 export async function seedModules(): Promise<void> {

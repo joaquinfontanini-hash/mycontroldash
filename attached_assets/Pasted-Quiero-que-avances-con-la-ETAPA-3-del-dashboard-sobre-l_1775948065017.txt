@@ -1,0 +1,166 @@
+Quiero que avances con la ETAPA 3 del dashboard, sobre la base ya construida en etapas 1 y 2, sin romper nada de lo anterior.
+
+IMPORTANTE
+- Mantener consistencia de arquitectura, UX y código
+- Todo debe quedar auditado, verificado, integrado y orientado al usuario final
+- Esta etapa es el corazón inteligente del sistema
+
+OBJETIVO DE ESTA ETAPA
+Convertir el dashboard en un sistema que no solo muestre datos, sino que ayude a decidir y ejecutar.
+
+==================================================
+1. MÓDULO MOTOR DE DECISIONES (CORE)
+==================================================
+
+Crear el módulo central de decisiones.
+
+Debe mostrar:
+
+- problemas críticos
+- riesgos
+- oportunidades
+- decisiones pendientes
+
+Debe analizar datos existentes de:
+- finanzas
+- vencimientos
+- alertas
+- objetivos
+
+Y generar:
+👉 “Hoy tenés que hacer esto”
+con una lista priorizada de 3 a 5 acciones.
+
+==================================================
+2. SISTEMA DE REGLAS
+==================================================
+
+Implementar un motor de reglas claro y mantenible.
+
+Ejemplos:
+- IF vencimiento < 3 días → alerta alta
+- IF gasto mensual supera umbral → alerta financiera
+- IF liquidez baja → riesgo
+- IF no hay tareas críticas → sugerir foco estratégico
+- IF objetivos atrasados → elevar prioridad
+- IF hay demasiadas alertas críticas → recomendar orden de resolución
+
+La lógica debe quedar desacoplada y preparada para crecer.
+
+==================================================
+3. SCORING GENERAL
+==================================================
+
+Crear scores visibles de:
+- productividad (0–100)
+- finanzas (0–100)
+- salud (editable manual)
+- estrés (editable manual)
+
+Deben verse:
+- claros
+- fáciles de entender
+- útiles para decisiones
+
+==================================================
+4. MÓDULO OBJETIVOS DIARIOS
+==================================================
+
+Crear un módulo de ejecución diaria.
+
+Debe incluir:
+- top 3 del día
+- checklist del día
+- prioridad alta/media/baja
+- barra de progreso
+- porcentaje completado
+- historial de días anteriores
+
+Debe ser simple, rápido y muy usable.
+
+==================================================
+5. MÓDULO ESTRATEGIA Y LINEAMIENTOS
+==================================================
+
+Crear un módulo estratégico tipo gestión ejecutiva personal.
+
+Categorías:
+- personal
+- profesional
+- financiero
+- salud
+
+Cada lineamiento debe tener:
+- objetivo
+- prioridad
+- estado
+- progreso %
+- fecha o ventana de seguimiento
+
+==================================================
+6. GANTT INTERACTIVO BASE
+==================================================
+
+Agregar una vista timeline / gantt inicial para objetivos estratégicos.
+
+Debe permitir:
+- ver objetivos en el tiempo
+- editar duración
+- cambiar estado
+- visualizar atrasos
+- si es viable, mover con drag & drop sin romper nada
+
+==================================================
+7. INTEGRACIÓN TOTAL CON MODO HOY
+==================================================
+
+Modo Hoy ahora debe integrarse con:
+- finanzas
+- vencimientos
+- alertas
+- objetivos
+- estrategia
+- motor de decisiones
+
+Debe sentirse realmente útil y ejecutivo.
+
+==================================================
+8. ENTREGABLES DE ESTA ETAPA
+==================================================
+
+Quiero:
+- motor de decisiones funcional
+- reglas iniciales implementadas
+- scoring general
+- módulo objetivos diarios
+- módulo estrategia
+- gantt base
+- integración total con modo hoy
+
+==================================================
+9. AUDITORÍA OBLIGATORIA DE ETAPA 3
+==================================================
+
+Al terminar, auditá:
+
+1. que no se rompa nada de etapas 1 y 2
+2. que el motor de decisiones use datos reales
+3. que las reglas se ejecuten correctamente
+4. que las prioridades estén bien ordenadas
+5. que los scores no den resultados absurdos
+6. que el módulo objetivos funcione y persista
+7. que el historial diario quede guardado
+8. que estrategia y gantt se vean bien
+9. que modo hoy mejore realmente con esta integración
+10. que no haya desbordes visuales
+11. que el diseño siga premium y claro
+12. que la UX sea rápida y no confusa
+
+Al final entregame:
+- resumen de lo implementado
+- explicación de las reglas usadas
+- validaciones realizadas
+- bugs corregidos
+- pendientes reales
+- checklist para probar la etapa
+- y frenate ahí, sin avanzar a la etapa 4

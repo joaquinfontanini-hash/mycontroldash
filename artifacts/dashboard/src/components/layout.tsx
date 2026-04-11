@@ -30,6 +30,9 @@ import {
   DollarSign,
   Sparkles,
   RefreshCw,
+  Brain,
+  Target,
+  Flag,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -62,6 +65,9 @@ const ALL_NAV_ITEMS = [
   { href: "/dashboard/supplier-batches", label: "Proveedores", icon: Truck, moduleKey: "supplier-batches" },
   { href: "/dashboard/tax-calendars", label: "Calendarios", icon: CalendarDays, moduleKey: "tax-calendars" },
   { href: "/dashboard/finance", label: "Finanzas", icon: DollarSign, moduleKey: "finance" },
+  { href: "/dashboard/goals", label: "Objetivos del día", icon: Target, moduleKey: "goals" },
+  { href: "/dashboard/strategy", label: "Estrategia", icon: Flag, moduleKey: "strategy" },
+  { href: "/dashboard/decisions", label: "Decisiones", icon: Brain, moduleKey: "decisions" },
 ];
 
 interface ModuleData {
@@ -297,7 +303,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
-      <ModoHoy open={modoHoyOpen} onOpenChange={setModoHoyOpen} />
+      <ModoHoy open={modoHoyOpen} onClose={() => setModoHoyOpen(false)} />
     </div>
   );
 }

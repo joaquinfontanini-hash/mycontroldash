@@ -18,3 +18,4 @@ export * from "./annual-calendars";
 export * from "./supplier-batches";
 export * from "./security";
 export * from "./finance";
+export * from "./goals";

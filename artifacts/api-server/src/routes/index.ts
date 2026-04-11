@@ -20,6 +20,7 @@ import supplierBatchesRouter from "./supplier-batches";
 import modulesRouter from "./modules";
 import securityLogsRouter from "./security-logs";
 import financeRouter from "./finance";
+import goalsRouter from "./goals";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(supplierBatchesRouter);
 router.use(modulesRouter);
 router.use(securityLogsRouter);
 router.use(financeRouter);
+router.use(goalsRouter);
 
 export default router;
