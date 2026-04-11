@@ -1,0 +1,221 @@
+Quiero que actúes como un arquitecto de software senior + experto en UX/UI + ingeniero de datos + especialista en automatización.
+
+Vas a construir la ETAPA 1 de un dashboard web personal tipo SaaS que funcione como sistema operativo de vida, negocios y decisiones.
+
+IMPORTANTE
+- No rehagas nada innecesario
+- Priorizá arquitectura, estabilidad, performance y UX
+- Todo debe quedar auditado, verificado, integrado y orientado al usuario final
+- No avances a módulos complejos todavía
+- Primero dejá la base perfecta
+
+OBJETIVO DE ESTA ETAPA
+Construir una base sólida, visualmente moderna y técnicamente estable, lista para escalar a módulos futuros.
+
+==================================================
+1. PRINCIPIOS DE LA ETAPA
+==================================================
+
+El sistema debe ser:
+- modular
+- escalable
+- seguro
+- rápido
+- limpio
+- preparado para backend futuro
+- usable desde el primer momento
+
+Debe verse inspirado en:
+- Notion
+- Linear
+- Superhuman
+
+Con estas características:
+- dark mode por defecto
+- diseño minimalista y premium
+- sidebar claro
+- header limpio
+- panel central dinámico
+- responsive
+- animaciones suaves
+- excelente legibilidad
+
+==================================================
+2. ESTRUCTURA BASE DEL SISTEMA
+==================================================
+
+Construir:
+
+1) Layout principal
+- Sidebar izquierdo colapsable
+- Header superior
+- Main content dinámico
+
+2) Header con:
+- usuario actual
+- campana de alertas
+- botón “Modo HOY”
+- botón “Actualizar datos”
+
+3) Sidebar con módulos iniciales visibles:
+- Inicio
+- Finanzas
+- Decisiones
+- Alertas
+- Objetivos
+- Estrategia
+- Configuración
+
+4) Navegación
+- tipo SPA
+- sin recarga completa
+- rutas claras
+- estado persistente cuando tenga sentido
+
+==================================================
+3. AUTENTICACIÓN Y SEGURIDAD INICIAL
+==================================================
+
+Implementar una base de acceso segura para una primera etapa local.
+
+REQUISITOS
+- login básico funcional
+- roles:
+  - admin
+  - user
+- persistencia local controlada
+- no guardar contraseñas en texto plano
+- simular hash local si todavía no hay backend
+- dejar preparada estructura para:
+  - OAuth futuro
+  - 2FA futuro
+  - backend real
+- crear guardas de rutas por rol
+- evitar que un usuario acceda a vistas restringidas solo escribiendo la URL
+
+==================================================
+4. ARQUITECTURA TÉCNICA
+==================================================
+
+Usar preferentemente:
+- React + Vite
+
+Estructura deseada:
+- src/components
+- src/layouts
+- src/modules
+- src/services
+- src/store
+- src/utils
+- src/types
+- src/hooks
+
+Separar claramente:
+- UI
+- lógica
+- persistencia
+- utilidades
+- configuración
+
+Preparar la app para que más adelante pueda migrar de localStorage a backend sin reescribir todo.
+
+==================================================
+5. PERSISTENCIA Y ESTADO
+==================================================
+
+Implementar una capa de persistencia clara y mantenible.
+
+REQUISITOS
+- usar localStorage de forma ordenada
+- definir una estructura consistente para datos del usuario, configuración y módulos
+- crear utilidades para leer/escribir datos
+- evitar duplicación de lógica
+- contemplar versionado simple del storage si hace falta
+
+==================================================
+6. MODO HOY — BASE FUNCIONAL
+==================================================
+
+Crear el botón “Modo HOY” y una primera vista funcional.
+
+Debe mostrar:
+- prioridades del día
+- alertas críticas
+- acción sugerida
+
+En esta etapa puede usar reglas simples y datos locales, pero no debe ser un texto fijo decorativo.
+Debe quedar preparado para conectarse luego con:
+- finanzas
+- vencimientos
+- noticias
+- objetivos
+
+==================================================
+7. PANTALLA DE INICIO
+==================================================
+
+Crear una home clara y ejecutiva, aunque todavía sea inicial.
+
+Debe mostrar:
+- bienvenida
+- resumen del día
+- accesos rápidos a módulos
+- estado general del sistema
+- alertas visibles
+- placeholder elegante para widgets futuros
+
+==================================================
+8. UX/UI OBLIGATORIA
+==================================================
+
+Quiero:
+- tarjetas modernas
+- espaciado excelente
+- tipografía limpia
+- jerarquía visual clara
+- estados loading / empty / error bien diseñados
+- transiciones suaves
+- cero componentes toscos o genéricos
+
+==================================================
+9. ENTREGABLES DE ESTA ETAPA
+==================================================
+
+Quiero que generes:
+- estructura completa del proyecto
+- layout funcional
+- sidebar + header funcionales
+- navegación SPA
+- login básico funcional
+- persistencia local ordenada
+- home inicial
+- modo hoy inicial
+- base visual completa y moderna
+- instrucciones para correr el proyecto
+
+==================================================
+10. AUDITORÍA OBLIGATORIA DE ETAPA 1
+==================================================
+
+Al terminar, ejecutá una auditoría técnica y funcional completa.
+
+Verificá:
+1. que el proyecto compile sin errores
+2. que no haya imports rotos
+3. que la navegación funcione
+4. que el login funcione
+5. que los roles básicos funcionen
+6. que rutas restringidas no puedan abrirse sin permiso
+7. que localStorage esté bien estructurado
+8. que el layout sea responsive
+9. que no haya textos truncos ni desbordes
+10. que el diseño se vea premium y consistente
+11. que modo hoy funcione aunque sea en versión base
+12. que no existan pantallas vacías pobres
+
+Al final entregame:
+- resumen de lo implementado
+- problemas encontrados y corregidos
+- pendientes reales
+- checklist para probar la etapa
+- y frenate ahí, sin avanzar a la etapa 2
