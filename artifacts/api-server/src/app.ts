@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import { clerkMiddleware } from "@clerk/express";
@@ -12,6 +13,8 @@ import { seedCalendar2026, patchGanancias2026 } from "./lib/seed-calendar-2026.j
 import { seedModules, bootstrapSuperAdmin } from "./lib/seed-modules.js";
 
 const app: Express = express();
+
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -33,11 +36,37 @@ app.use(
   }),
 );
 
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim())
+  : null;
+
+app.use(
+  cors({
+    credentials: true,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (!ALLOWED_ORIGINS) return callback(null, true);
+      if (ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed))) {
+        return callback(null, true);
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+  }),
+);
+
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === "/api/healthz",
   message: { error: "Demasiadas solicitudes. Intentá de nuevo en 15 minutos." },
 });
 
@@ -51,9 +80,8 @@ const sensitiveActionsLimiter = rateLimit({
 
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
-app.use(cors({ credentials: true, origin: true }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use(clerkMiddleware());
 

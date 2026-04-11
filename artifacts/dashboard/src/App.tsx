@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
-import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from "wouter";
+import { ClerkProvider, useClerk } from "@clerk/react";
+import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import NotFound from "@/pages/not-found";
+import { ProtectedRoute } from "@/components/module-protected-route";
 
 import Home from "@/pages/home";
 import SignInPage from "@/pages/sign-in";
@@ -31,15 +32,45 @@ const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+if (!clerkPubKey) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
+}
+
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
     ? path.slice(basePath.length) || "/"
     : path;
 }
 
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
-}
+const DashboardPage = () => <DashboardLayout><DashboardSummary /></DashboardLayout>;
+const Tasks = () => <DashboardLayout><TasksPage /></DashboardLayout>;
+const Shortcuts = () => <DashboardLayout><ShortcutsPage /></DashboardLayout>;
+const News = () => <DashboardLayout><NewsPage /></DashboardLayout>;
+const Emails = () => <DashboardLayout><EmailsPage /></DashboardLayout>;
+const Weather = () => <DashboardLayout><WeatherPage /></DashboardLayout>;
+const Fiscal = () => <DashboardLayout><FiscalPage /></DashboardLayout>;
+const Travel = () => <DashboardLayout><TravelPage /></DashboardLayout>;
+const DueDates = () => <DashboardLayout><DueDatesPage /></DashboardLayout>;
+const Clients = () => <DashboardLayout><ClientsPage /></DashboardLayout>;
+const SupplierBatches = () => <DashboardLayout><SupplierBatchesPage /></DashboardLayout>;
+const TaxCalendars = () => <DashboardLayout><TaxCalendarsPage /></DashboardLayout>;
+const Admin = () => <DashboardLayout><AdminPage /></DashboardLayout>;
+const Settings = () => <DashboardLayout><SettingsPage /></DashboardLayout>;
+
+const RouteDashboard = () => <ProtectedRoute moduleKey="dashboard" component={DashboardPage} />;
+const RouteTasks = () => <ProtectedRoute moduleKey="tasks" component={Tasks} />;
+const RouteShortcuts = () => <ProtectedRoute moduleKey="shortcuts" component={Shortcuts} />;
+const RouteNews = () => <ProtectedRoute moduleKey="news" component={News} />;
+const RouteEmails = () => <ProtectedRoute moduleKey="emails" component={Emails} />;
+const RouteWeather = () => <ProtectedRoute moduleKey="weather" component={Weather} />;
+const RouteFiscal = () => <ProtectedRoute moduleKey="fiscal" component={Fiscal} />;
+const RouteTravel = () => <ProtectedRoute moduleKey="travel" component={Travel} />;
+const RouteDueDates = () => <ProtectedRoute moduleKey="due-dates" component={DueDates} />;
+const RouteClients = () => <ProtectedRoute moduleKey="clients" component={Clients} />;
+const RouteSupplierBatches = () => <ProtectedRoute moduleKey="supplier-batches" component={SupplierBatches} />;
+const RouteTaxCalendars = () => <ProtectedRoute moduleKey="tax-calendars" component={TaxCalendars} />;
+const RouteAdmin = () => <ProtectedRoute moduleKey="admin" component={Admin} />;
+const RouteSettings = () => <ProtectedRoute moduleKey="settings" component={Settings} />;
 
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
@@ -63,19 +94,6 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
-function ProtectedRoute({ component: Component }: { component: any }) {
-  return (
-    <>
-      <Show when="signed-in">
-        <Component />
-      </Show>
-      <Show when="signed-out">
-        <Redirect to="/" />
-      </Show>
-    </>
-  );
-}
-
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -93,22 +111,20 @@ function ClerkProviderWithRoutes() {
             <Route path="/" component={Home} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
-
-            <Route path="/dashboard" component={() => <ProtectedRoute component={() => <DashboardLayout><DashboardSummary /></DashboardLayout>} />} />
-            <Route path="/dashboard/tasks" component={() => <ProtectedRoute component={() => <DashboardLayout><TasksPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/shortcuts" component={() => <ProtectedRoute component={() => <DashboardLayout><ShortcutsPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/news" component={() => <ProtectedRoute component={() => <DashboardLayout><NewsPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/emails" component={() => <ProtectedRoute component={() => <DashboardLayout><EmailsPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/weather" component={() => <ProtectedRoute component={() => <DashboardLayout><WeatherPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/fiscal" component={() => <ProtectedRoute component={() => <DashboardLayout><FiscalPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/travel" component={() => <ProtectedRoute component={() => <DashboardLayout><TravelPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/due-dates" component={() => <ProtectedRoute component={() => <DashboardLayout><DueDatesPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/clients" component={() => <ProtectedRoute component={() => <DashboardLayout><ClientsPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/supplier-batches" component={() => <ProtectedRoute component={() => <DashboardLayout><SupplierBatchesPage /></DashboardLayout>} />} />
-            <Route path="/dashboard/tax-calendars" component={() => <ProtectedRoute component={() => <DashboardLayout><TaxCalendarsPage /></DashboardLayout>} />} />
-            <Route path="/admin" component={() => <ProtectedRoute component={() => <DashboardLayout><AdminPage /></DashboardLayout>} />} />
-            <Route path="/settings" component={() => <ProtectedRoute component={() => <DashboardLayout><SettingsPage /></DashboardLayout>} />} />
-            
+            <Route path="/dashboard" component={RouteDashboard} />
+            <Route path="/dashboard/tasks" component={RouteTasks} />
+            <Route path="/dashboard/shortcuts" component={RouteShortcuts} />
+            <Route path="/dashboard/news" component={RouteNews} />
+            <Route path="/dashboard/emails" component={RouteEmails} />
+            <Route path="/dashboard/weather" component={RouteWeather} />
+            <Route path="/dashboard/fiscal" component={RouteFiscal} />
+            <Route path="/dashboard/travel" component={RouteTravel} />
+            <Route path="/dashboard/due-dates" component={RouteDueDates} />
+            <Route path="/dashboard/clients" component={RouteClients} />
+            <Route path="/dashboard/supplier-batches" component={RouteSupplierBatches} />
+            <Route path="/dashboard/tax-calendars" component={RouteTaxCalendars} />
+            <Route path="/admin" component={RouteAdmin} />
+            <Route path="/settings" component={RouteSettings} />
             <Route component={NotFound} />
           </Switch>
         </TooltipProvider>
