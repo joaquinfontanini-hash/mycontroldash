@@ -26,6 +26,7 @@ import DueDatesPage from "@/pages/dashboard/due-dates";
 import ClientsPage from "@/pages/dashboard/clients";
 import SupplierBatchesPage from "@/pages/dashboard/supplier-batches";
 import TaxCalendarsPage from "@/pages/dashboard/tax-calendars";
+import FinancePage from "@/pages/dashboard/finance";
 import AdminPage from "@/pages/admin";
 import SettingsPage from "@/pages/settings";
 
@@ -55,6 +56,7 @@ const DueDates = () => <DashboardLayout><DueDatesPage /></DashboardLayout>;
 const Clients = () => <DashboardLayout><ClientsPage /></DashboardLayout>;
 const SupplierBatches = () => <DashboardLayout><SupplierBatchesPage /></DashboardLayout>;
 const TaxCalendars = () => <DashboardLayout><TaxCalendarsPage /></DashboardLayout>;
+const Finance = () => <DashboardLayout><FinancePage /></DashboardLayout>;
 const Admin = () => <DashboardLayout><AdminPage /></DashboardLayout>;
 const Settings = () => <DashboardLayout><SettingsPage /></DashboardLayout>;
 
@@ -70,6 +72,7 @@ const RouteDueDates = () => <ProtectedRoute moduleKey="due-dates" component={Due
 const RouteClients = () => <ProtectedRoute moduleKey="clients" component={Clients} />;
 const RouteSupplierBatches = () => <ProtectedRoute moduleKey="supplier-batches" component={SupplierBatches} />;
 const RouteTaxCalendars = () => <ProtectedRoute moduleKey="tax-calendars" component={TaxCalendars} />;
+const RouteFinance = () => <ProtectedRoute moduleKey="finance" component={Finance} />;
 const RouteAdmin = () => <ProtectedRoute moduleKey="admin" component={Admin} />;
 const RouteSettings = () => <ProtectedRoute moduleKey="settings" component={Settings} />;
 
@@ -130,6 +133,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/dashboard/clients" component={RouteClients} />
             <Route path="/dashboard/supplier-batches" component={RouteSupplierBatches} />
             <Route path="/dashboard/tax-calendars" component={RouteTaxCalendars} />
+            <Route path="/dashboard/finance" component={RouteFinance} />
             <Route path="/admin" component={RouteAdmin} />
             <Route path="/settings" component={RouteSettings} />
             <Route component={NotFound} />

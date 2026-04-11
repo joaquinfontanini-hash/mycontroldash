@@ -19,6 +19,7 @@ import annualCalendarsRouter from "./annual-calendars";
 import supplierBatchesRouter from "./supplier-batches";
 import modulesRouter from "./modules";
 import securityLogsRouter from "./security-logs";
+import financeRouter from "./finance";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(annualCalendarsRouter);
 router.use(supplierBatchesRouter);
 router.use(modulesRouter);
 router.use(securityLogsRouter);
+router.use(financeRouter);
 
 export default router;

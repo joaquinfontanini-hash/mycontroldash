@@ -1,0 +1,165 @@
+Quiero que avances con la ETAPA 2 del dashboard, trabajando sobre la base ya creada, sin romper nada de la etapa 1.
+
+IMPORTANTE
+- No rehagas el proyecto
+- Mantené arquitectura, diseño y lógica existentes
+- Todo debe quedar auditado, verificado, integrado y orientado al usuario
+- Priorizá claridad de uso, robustez de datos y visualización útil
+
+OBJETIVO DE ESTA ETAPA
+Construir el núcleo operativo financiero del sistema y una primera capa real de alertas y vencimientos.
+
+==================================================
+1. MÓDULO FINANZAS PERSONALES PRO
+==================================================
+
+Crear un módulo de finanzas personales con enfoque ejecutivo.
+
+Debe incluir:
+
+1) Resumen financiero
+- patrimonio total
+- liquidez disponible
+- inversiones
+- deudas
+
+2) Tracking manual editable
+- caja
+- bancos
+- cripto
+- inversiones
+- gastos mensuales
+- ingresos si corresponde
+
+3) Métricas automáticas
+- variación mensual %
+- capacidad de ahorro
+- ratio gasto/ingreso
+- alerta si gasto supera umbral configurable
+
+4) Alertas financieras
+- gasto excesivo
+- baja liquidez
+- oportunidad detectada
+- necesidad de revisión
+
+5) UI
+- gráficos simples y claros
+- líneas, barras o torta según convenga
+- colores:
+  - verde = bien
+  - amarillo = atención
+  - rojo = alerta
+
+==================================================
+2. MÓDULO ALERTAS — PRIMERA CAPA REAL
+==================================================
+
+Construir un sistema unificado de alertas.
+
+Tipos iniciales:
+- financieras
+- vencimientos
+- recordatorios críticos
+- informativas
+
+Debe incluir:
+- campanita con contador
+- panel desplegable
+- clasificación:
+  - crítico
+  - importante
+  - informativo
+- lectura/no leída
+- timestamp
+- persistencia
+
+==================================================
+3. MÓDULO VENCIMIENTOS — BASE FUNCIONAL
+==================================================
+
+Construir un módulo base de vencimientos.
+
+Debe permitir:
+- crear vencimiento manual
+- editar
+- eliminar
+- clasificar
+- priorizar
+- ver próximos 7 días
+- alertar por urgencia
+
+Categorías iniciales:
+- impuestos
+- cargas sociales
+- proveedores
+- alquileres
+- salud
+- otras
+
+Debe existir un widget resumido para el home o la columna lateral futura.
+
+==================================================
+4. INTEGRACIÓN CON MODO HOY
+==================================================
+
+El botón “Modo HOY” debe empezar a usar datos reales de:
+- finanzas
+- alertas
+- vencimientos
+
+Debe generar una vista priorizada con:
+- 3 prioridades
+- alertas críticas
+- una acción recomendada
+
+==================================================
+5. DISEÑO Y EXPERIENCIA
+==================================================
+
+Mantener la misma línea visual:
+- moderna
+- oscura
+- limpia
+- premium
+- clara para ver métricas rápido
+
+==================================================
+6. ENTREGABLES DE ESTA ETAPA
+==================================================
+
+Quiero:
+- módulo finanzas funcional
+- métricas y alertas financieras
+- panel de alertas funcional
+- módulo de vencimientos base
+- integración real con modo hoy
+- persistencia completa
+- UI consistente con etapa 1
+
+==================================================
+7. AUDITORÍA OBLIGATORIA DE ETAPA 2
+==================================================
+
+Al terminar, auditá:
+
+1. que no se haya roto la etapa 1
+2. que el módulo finanzas cargue y guarde bien
+3. que las métricas se calculen correctamente
+4. que las alertas aparezcan cuando corresponde
+5. que los vencimientos se ordenen bien por fecha
+6. que el panel de alertas funcione
+7. que modo hoy tome datos reales de esta etapa
+8. que no haya duplicados
+9. que no existan gráficos rotos o vacíos
+10. que el diseño siga consistente
+11. que todo sea responsive
+12. que haya manejo claro de estados vacíos y errores
+
+Al final entregame:
+- resumen de lo implementado
+- validaciones realizadas
+- bugs corregidos
+- pendientes reales
+- checklist para probar la etapa
+- y frenate ahí, sin avanzar a la etapa 3

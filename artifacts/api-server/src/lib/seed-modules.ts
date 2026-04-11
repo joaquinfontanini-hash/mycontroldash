@@ -16,7 +16,8 @@ const DEFAULT_MODULES = [
   { key: "supplier-batches", name: "Proveedores", description: "Lotes de pago a proveedores", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 10 },
   { key: "tax-calendars", name: "Calendarios", description: "Calendarios impositivos anuales", allowedRoles: ["super_admin", "admin"], orderIndex: 11 },
   { key: "admin", name: "Administración", description: "Panel de administración del sistema", allowedRoles: ["super_admin", "admin"], orderIndex: 12 },
-  { key: "settings", name: "Ajustes", description: "Configuración personal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 13 },
+  { key: "finance", name: "Finanzas", description: "Resumen financiero personal", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 13 },
+  { key: "settings", name: "Ajustes", description: "Configuración personal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 14 },
 ];
 
 export async function seedModules(): Promise<void> {

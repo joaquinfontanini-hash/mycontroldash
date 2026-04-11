@@ -36,9 +36,15 @@ A full-stack personal executive dashboard for an Argentine contador/consultor in
 - `/dashboard/travel` — Travel offers browser (with quality scoring)
 - `/admin` — Admin panel (5 tabs: Users RBAC, Modules toggle, Audit logs, Integrations, Sync logs)
 - `/dashboard/due-dates` — Vencimientos: due dates tracker with urgency grouping (overdue/today/3d/week/future/done)
+- `/dashboard/finance` — Finanzas personales: patrimonial summary, editable accounts (caja/banco/cripto/inversiones/deuda), pie chart, configurable alert thresholds
 - `/settings` — Dashboard configuration (incl. Fuentes Externas section)
 
 ### Backend (artifacts/api-server)
+
+**Header controls (Etapa 2 additions):**
+- "Modo HOY" button — slide-over panel with today's top 3 priorities (vencimientos + tasks + finance), critical alerts, and recommended action
+- "Actualizar datos" button — invalidates all React Query caches
+- Alert bell — popover with badge counter for urgent vencimientos (≤7 days) and high-priority tasks, with read/unread state
 
 Routes under `/api`:
 - `/api/healthz` — Health check

@@ -1,9 +1,11 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/components/theme-provider";
 import GlobalSearch, { useGlobalSearch } from "@/components/global-search";
+import AlertsBell from "@/components/alerts-bell";
+import ModoHoy from "@/components/modo-hoy";
 import {
   LayoutDashboard,
   CheckSquare,
@@ -25,6 +27,9 @@ import {
   Users,
   Truck,
   Crown,
+  DollarSign,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -56,6 +61,7 @@ const ALL_NAV_ITEMS = [
   { href: "/dashboard/clients", label: "Clientes", icon: Users, moduleKey: "clients" },
   { href: "/dashboard/supplier-batches", label: "Proveedores", icon: Truck, moduleKey: "supplier-batches" },
   { href: "/dashboard/tax-calendars", label: "Calendarios", icon: CalendarDays, moduleKey: "tax-calendars" },
+  { href: "/dashboard/finance", label: "Finanzas", icon: DollarSign, moduleKey: "finance" },
 ];
 
 interface ModuleData {
@@ -168,7 +174,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { signOut } = useClerk();
   const { theme, setTheme } = useTheme();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [modoHoyOpen, setModoHoyOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const { open: searchOpen, setOpen: setSearchOpen } = useGlobalSearch();
+  const qc = useQueryClient();
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await qc.invalidateQueries();
+    setTimeout(() => setRefreshing(false), 800);
+  }
 
   const initials = [user?.firstName?.charAt(0), user?.lastName?.charAt(0)]
     .filter(Boolean).join("") || "U";
@@ -203,6 +218,27 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
 
           <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden sm:flex h-8 px-3 gap-1.5 text-xs font-semibold bg-primary/5 border-primary/20 text-primary hover:bg-primary/10"
+              onClick={() => setModoHoyOpen(true)}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Modo HOY
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg"
+              onClick={handleRefresh}
+              title="Actualizar datos"
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              <span className="sr-only">Actualizar datos</span>
+            </Button>
+            <AlertsBell />
             <Button
               variant="ghost"
               size="icon"
@@ -261,6 +297,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+      <ModoHoy open={modoHoyOpen} onOpenChange={setModoHoyOpen} />
     </div>
   );
 }
