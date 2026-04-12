@@ -1,4 +1,4 @@
-import { ReactNode, useState, useCallback, useRef } from "react";
+import { ReactNode, useState, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -377,14 +377,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           transition-[width] duration-300 ease-in-out
           ${isHidden ? "w-0" : isCollapsed ? "w-14" : "w-[260px]"}`}
       >
-        {!isHidden && (
-          <SidebarContent
-            collapsed={isCollapsed}
-            pinned={sidebarPinned}
-            onTogglePin={handleTogglePin}
-            onToggleCollapse={handleToggleCollapse}
-          />
-        )}
+        <SidebarContent
+          collapsed={isCollapsed}
+          pinned={sidebarPinned}
+          onTogglePin={handleTogglePin}
+          onToggleCollapse={handleToggleCollapse}
+        />
       </aside>
 
       {/* ── Main Content ────────────────────────────────────────── */}
