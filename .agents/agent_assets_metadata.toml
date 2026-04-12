@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "IV1nFPKmfPe_LKuFLV6SJ"
+uri = "file://exports/dashboard-build.tar.gz"
+type = "unspecified"
+title = "Frontend build (HTML + assets para servidor estático)"
+
+[[outputs]]
+id = "M3KPzRw_nNPinmjEwvYUL"
+uri = "file://exports/backup-proyecto.tar.gz"
+type = "unspecified"
+title = "Backup completo del código fuente"
