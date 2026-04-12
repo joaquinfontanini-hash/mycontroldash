@@ -7,13 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Search, MessageSquare, Edit2, Phone, Mail, User, Shield, Eye,
-  CheckCircle, XCircle, RefreshCw,
+  Search, MessageSquare, Edit2, Phone, Mail, User, XCircle, RefreshCw,
 } from "lucide-react";
 import { useCurrentUser, isAdmin } from "@/hooks/use-current-user";
 import { apiGet, apiPatch, apiPost } from "@/services/api-client";
@@ -151,6 +150,7 @@ function EditDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Editar perfil</DialogTitle>
+          <DialogDescription>Actualizá los datos de contacto del usuario.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           {isAdminUser && (

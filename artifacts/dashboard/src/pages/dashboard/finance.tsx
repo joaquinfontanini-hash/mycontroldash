@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -393,6 +393,9 @@ export default function FinancePage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editId !== null ? "Editar cuenta" : "Nueva cuenta"}</DialogTitle>
+            <DialogDescription>
+              {editId !== null ? "Modificá los datos de esta cuenta financiera." : "Agregá una nueva cuenta para registrar tu patrimonio."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>

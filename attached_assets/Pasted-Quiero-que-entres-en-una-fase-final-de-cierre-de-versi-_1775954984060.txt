@@ -1,0 +1,417 @@
+Quiero que entres en una fase final de cierre de versión del proyecto actual del dashboard web.
+
+A partir de este momento, no quiero que agregues funcionalidades nuevas salvo que sean estrictamente necesarias para corregir problemas detectados en la revisión.
+
+OBJETIVO DE ESTA ETAPA
+Cerrar una versión estable del sistema, completamente revisada, auditada, optimizada y validada como lo haría un desarrollador super senior, con mentalidad de arquitecto de software, QA lead, experto en seguridad, performance engineer y especialista en experiencia de usuario.
+
+IMPORTANTE
+- No rehagas el proyecto desde cero
+- No rompas nada de lo ya construido
+- Trabajá sobre la base actual
+- Priorizá estabilidad, seguridad, velocidad, consistencia y calidad final
+- Quiero una revisión profunda, no superficial
+- Quiero que audites TODO
+- Quiero que corrijas TODO lo que detectes
+- Quiero que dejes la aplicación lista para dar por cerrada esta versión
+
+CRITERIO GENERAL
+Debés comportarte como:
+- arquitecto de software senior
+- full stack principal del proyecto
+- ingeniero de performance
+- especialista en seguridad
+- QA lead
+- experto en UX/UI
+- revisor final de release candidate
+
+La consigna es:
+👉 garantizar que todo, pero todo, funcione 100% bien dentro del alcance actual del proyecto
+
+==================================================
+1) AUDITORÍA FUNCIONAL COMPLETA
+==================================================
+
+Quiero una revisión completa de todos los módulos, pantallas, rutas, widgets, acciones, filtros, botones, formularios, flujos y estados.
+
+REVISAR
+- todas las opciones del sidebar
+- dashboard principal
+- tareas
+- accesos directos
+- noticias
+- emails
+- clima
+- monitor fiscal
+- viajes
+- vencimientos
+- clientes
+- proveedores
+- calendarios
+- finanzas
+- objetivos del día
+- estrategia
+- decisiones
+- admin
+- ajustes
+- chat interno
+- contactos / tarjetas de usuario
+- cualquier otro módulo existente
+
+VALIDAR EN CADA UNO
+- que abra correctamente
+- que no quede cargando indefinidamente
+- que no tenga vistas vacías pobres
+- que no haya botones que no hagan nada
+- que filtros funcionen
+- que formularios guarden
+- que editar funcione
+- que eliminar funcione
+- que los detalles abran
+- que los links internos funcionen
+- que la navegación sea clara
+- que no haya errores silenciosos
+- que no existan flujos rotos
+- que los estados vacíos, loading y error estén bien resueltos
+
+==================================================
+2) AUDITORÍA DE INTERACCIONES
+==================================================
+
+Quiero que revises absolutamente todas las interacciones del sistema.
+
+CHEQUEAR
+- click en cards
+- botones de ver detalle
+- acciones rápidas
+- tabs
+- filtros por chips
+- filtros por medios
+- selectores
+- dropdowns
+- modales
+- drawers
+- drag and drop si existe
+- expandir/colapsar
+- refresco manual
+- sidebar ocultar/fijar/colapsar
+- login/logout
+- navegación protegida
+- cambio de vistas
+- apertura de chats
+- edición de usuarios
+- creación de widgets
+- carga de archivos
+- carga de calendarios
+- carga de reportes
+- apertura de detalle de vencimientos agrupados
+
+OBJETIVO
+- ninguna interacción debe fallar
+- ninguna interacción debe quedar sin feedback
+- ninguna interacción debe romper el layout
+- ninguna interacción debe dejar estados inconsistentes
+
+==================================================
+3) AUDITORÍA DE ESTABILIDAD
+==================================================
+
+Necesito que revises estabilidad general del sistema.
+
+DETECTAR Y CORREGIR
+- loaders infinitos
+- promesas no resueltas
+- estados huérfanos
+- componentes que no montan
+- rutas que fallan
+- re-renderizados innecesarios
+- loops de hooks
+- errores silenciosos
+- problemas por datos null/undefined
+- vistas que dependen de datos inexistentes
+- race conditions si existen
+- fallos al persistir datos
+- componentes que explotan al refrescar
+- errores al cambiar de módulo
+- errores al recargar la página
+- problemas de sincronización entre módulos
+
+==================================================
+4) AUDITORÍA DE PERFORMANCE
+==================================================
+
+Quiero una optimización real de performance antes de cerrar la versión.
+
+REVISAR Y CORREGIR
+- renders innecesarios
+- componentes pesados
+- imports demasiado grandes o innecesarios
+- lógica compleja dentro del render
+- efectos mal definidos
+- duplicación de cálculos
+- almacenamiento redundante
+- widgets que frenan toda la home
+- listas que renderizan de más
+- filtros poco eficientes
+- recalculado innecesario
+- mala composición de estado
+- módulos que cargan demasiado al inicio
+- navegación lenta entre vistas
+
+MEJORAS ESPERADAS
+- carga inicial más rápida
+- navegación entre módulos más fluida
+- menor tiempo de respuesta al interactuar
+- experiencia general más liviana
+- que la página no “quede pensando”
+
+SI CORRESPONDE
+- aplicar lazy loading
+- memoización razonable
+- separar módulos pesados
+- refactorizar hooks o store
+- mejorar estrategia de persistencia
+
+==================================================
+5) AUDITORÍA DE SEGURIDAD
+==================================================
+
+Quiero una revisión seria de seguridad dentro del alcance actual del proyecto.
+
+REVISAR
+- login
+- roles
+- permisos
+- rutas protegidas
+- acceso a módulos por rol
+- acceso del super admin
+- bloqueo de usuarios
+- edición de usuarios
+- acceso a chat
+- acceso a conversaciones
+- acceso a admin
+- acceso a ajustes sensibles
+- manejo de datos sensibles
+- exposición de secretos al frontend
+- validaciones de formularios
+- sanitización básica
+- manejo de sesiones local o actual
+- puntos de escalamiento de privilegios
+- posibilidad de acceder por URL a vistas no permitidas
+
+CORREGIR
+- cualquier permiso mal aplicado
+- cualquier ruta insegura
+- cualquier acceso a módulos sin control
+- cualquier debilidad grave de lógica
+- cualquier exposición innecesaria en frontend
+
+IMPORTANTE
+- no inventes seguridad ficticia
+- mejorá lo real que exista hoy
+- dejá claramente documentado qué queda preparado para una capa de seguridad más fuerte en versión futura
+
+==================================================
+6) AUDITORÍA DE DATOS Y PERSISTENCIA
+==================================================
+
+Quiero revisar la integridad de los datos en toda la app.
+
+CHEQUEAR
+- localStorage actual
+- estructuras persistidas
+- consistencia de claves
+- duplicados
+- corrupción por cambios de estructura
+- manejo de datos faltantes
+- compatibilidad entre módulos
+- migración suave si cambió el esquema
+- persistencia de:
+  - usuarios
+  - widgets
+  - layout
+  - tareas
+  - finanzas
+  - alertas
+  - vencimientos
+  - clientes
+  - calendarios
+  - chats
+  - contactos
+  - ajustes
+  - módulos
+  - permisos
+  - filtros guardados si aplica
+
+OBJETIVO
+- que al cerrar y abrir la app no se rompa nada
+- que no se pierda información importante
+- que no haya datos duplicados o inconsistentes
+- que la app tolere storage previo sin romperse
+
+==================================================
+7) AUDITORÍA DE UX/UI
+==================================================
+
+Quiero una revisión visual y de experiencia de usuario completa.
+
+VALIDAR
+- consistencia visual
+- espaciado
+- jerarquía tipográfica
+- contraste
+- legibilidad
+- tamaños correctos
+- botones claros
+- estados hover/focus/active
+- textos truncos
+- scrolls incómodos
+- cards deformadas
+- tablas rotas
+- formularios confusos
+- mensajes de error poco claros
+- estados vacíos pobres
+- responsive
+- sidebar en desktop/mobile
+- dashboards de cada módulo
+- coherencia de iconografía
+- fluidez visual
+
+CORREGIR
+- todo lo que se vea improvisado
+- todo lo que se vea poco profesional
+- todo lo que pueda confundir al usuario
+- todo lo que haga lenta o pesada la experiencia
+
+==================================================
+8) RESILIENCIA Y MANEJO DE ERRORES
+==================================================
+
+Necesito que la app no colapse si algo falla.
+
+IMPLEMENTAR O REVISAR
+- manejo de errores por vista o módulo
+- fallbacks útiles
+- mensajes claros
+- que si un módulo falla no se caiga toda la app
+- protección ante datos corruptos
+- estados de recuperación
+- empty states elegantes
+- no dejar pantallas en blanco
+
+==================================================
+9) REVISIÓN DE CÓDIGO Y ARQUITECTURA
+==================================================
+
+Quiero una revisión senior de la calidad del código actual.
+
+REVISAR
+- duplicación
+- complejidad innecesaria
+- acoplamiento excesivo
+- nombres confusos
+- archivos demasiado grandes
+- hooks mal diseñados
+- componentes con demasiadas responsabilidades
+- lógica mezclada con UI
+- mala separación entre datos, vista y acciones
+- deuda técnica evitable
+- código muerto
+- imports sin uso
+- estructuras frágiles
+
+CORREGIR
+- lo necesario para cerrar esta versión sólida
+- sin sobre-refactorizar ni romper cosas
+
+==================================================
+10) PRUEBAS DE FLUJOS CRÍTICOS
+==================================================
+
+Quiero que pruebes y verifiques al menos estos flujos críticos:
+
+- login
+- logout
+- acceso según rol
+- ocultar/fijar sidebar
+- navegación por todos los módulos
+- creación, edición y borrado de tareas
+- uso de accesos directos
+- filtros y lectura de noticias
+- visualización de emails
+- clima y cotizaciones
+- monitor fiscal y filtros por medios
+- viajes y filtros
+- vencimientos manuales
+- vencimientos con periodicidad
+- clientes + CUIT + impuestos asignados
+- carga de calendario fiscal
+- activación de calendario
+- cálculo de vencimientos por terminación de CUIT si ya está implementado
+- carga de reporte de proveedores
+- visualización del lote semanal
+- chat interno
+- tarjetas de contacto
+- edición de usuarios
+- bloqueo/desbloqueo de usuarios
+- activación/desactivación de módulos
+- ajustes
+- modo hoy
+- dashboard principal
+
+==================================================
+11) CIERRE DE RELEASE
+==================================================
+
+Quiero que esta revisión se trate como un cierre de versión.
+
+Por lo tanto:
+- corregí todo lo importante
+- no dejes errores conocidos sin mencionar
+- no me digas “está casi”
+- dejá una versión estable y usable
+- documentá claramente si hay algo menor pendiente
+- pero no cierres la revisión hasta haber hecho una validación profunda
+
+==================================================
+12) ENTREGABLES OBLIGATORIOS
+==================================================
+
+Al finalizar quiero que me entregues:
+
+1. Código actualizado y corregido
+2. Mejoras de performance aplicadas
+3. Mejoras de estabilidad aplicadas
+4. Mejoras de seguridad aplicadas
+5. Correcciones de UX/UI aplicadas
+6. Resumen completo de todo lo auditado
+7. Lista de errores encontrados y corregidos
+8. Lista de riesgos detectados y mitigados
+9. Lista de pendientes menores reales, si quedaran
+10. Checklist final de prueba manual
+11. Confirmación de qué partes están 100% funcionales
+12. Recomendaciones para una futura versión 2, separadas del cierre actual
+
+==================================================
+13) AUDITORÍA FINAL OBLIGATORIA
+==================================================
+
+Antes de dar esta versión por cerrada, ejecutá una auditoría final global y no la cierres hasta revisar:
+
+1. que compile sin errores
+2. que no haya imports rotos
+3. que no haya módulos que no abran
+4. que no haya loaders infinitos
+5. que no haya interacciones muertas
+6. que no haya rutas inseguras dentro del alcance actual
+7. que no haya datos corruptos o duplicaciones críticas
+8. que la app no se sienta lenta
+9. que el responsive sea usable
+10. que la experiencia visual sea consistente
+11. que el sistema sea estable al refrescar y navegar
+12. que todo lo implementado funcione realmente
+
+IMPORTANTE FINAL
+Esta es una revisión de cierre.
+Quiero que actúes como si estuvieras aprobando un release candidate para salir a producción interna.
+No te quedes en observaciones superficiales: corregí, verificá, auditá y dejá una versión final estable.

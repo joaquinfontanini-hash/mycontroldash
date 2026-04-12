@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
   MessageSquare, Send, Search, Plus, ArrowLeft, CheckCheck, RefreshCw, X,
@@ -132,6 +132,7 @@ function NewChatDialog({ open, onClose, onStart }: {
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Nueva conversación</DialogTitle>
+          <DialogDescription>Seleccioná un usuario para iniciar una conversación directa.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="relative">

@@ -198,37 +198,31 @@ router.get("/conversations/unread", requireAuth, async (req: Request, res: Respo
       .from(conversationParticipantsTable)
       .where(eq(conversationParticipantsTable.userId, meId));
 
-    let total = 0;
-    for (const p of myConvs) {
-      const after = p.lastReadAt;
-      let msgs;
-      if (after) {
-        msgs = await db
-          .select({ id: messagesTable.id })
-          .from(messagesTable)
-          .where(
-            and(
-              eq(messagesTable.conversationId, p.conversationId),
-              eq(messagesTable.isDeleted, false),
-            ),
-          );
-        msgs = msgs.filter(m => {
-          return true;
-        });
-      }
-      const allMsgs = await db
-        .select()
-        .from(messagesTable)
-        .where(
-          and(
-            eq(messagesTable.conversationId, p.conversationId),
-            eq(messagesTable.isDeleted, false),
-          ),
-        );
-      const unread = allMsgs.filter(
-        m => m.senderId !== meId && (!after || m.createdAt > after),
+    if (myConvs.length === 0) {
+      res.json({ total: 0 });
+      return;
+    }
+
+    const convIds = myConvs.map(p => p.conversationId);
+    const allMsgs = await db
+      .select()
+      .from(messagesTable)
+      .where(
+        and(
+          inArray(messagesTable.conversationId, convIds),
+          eq(messagesTable.isDeleted, false),
+        ),
       );
-      total += unread.length;
+
+    const participantMap = new Map(myConvs.map(p => [p.conversationId, p]));
+    let total = 0;
+    for (const msg of allMsgs) {
+      if (msg.senderId === meId) continue;
+      const p = participantMap.get(msg.conversationId);
+      if (!p) continue;
+      if (!p.lastReadAt || msg.createdAt > p.lastReadAt) {
+        total++;
+      }
     }
 
     res.json({ total });

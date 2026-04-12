@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -418,6 +418,9 @@ export default function StrategyPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editId !== null ? "Editar objetivo" : "Nuevo objetivo estratégico"}</DialogTitle>
+            <DialogDescription>
+              {editId !== null ? "Actualizá los datos del objetivo estratégico." : "Definí un nuevo objetivo a largo plazo para tu estrategia."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
