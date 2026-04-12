@@ -1,0 +1,316 @@
+Quiero que trabajes sobre el proyecto actual del dashboard web ya construido, sin rehacerlo desde cero, y que enfoques esta etapa como una revisión senior integral de producto, arquitectura, performance, navegación y experiencia de usuario.
+
+IMPORTANTE
+- No rompas nada de lo ya implementado
+- No rehagas toda la app
+- Trabajá sobre la base actual
+- Todo debe quedar auditado, verificado, integrado, corregido y orientado al usuario final
+- Priorizá performance, estabilidad, navegación clara, dashboards interactivos y experiencia fluida
+- Quiero una app rápida, sólida, usable y sin bloqueos
+
+OBJETIVO DE ESTA ETAPA
+1. Mejorar el sidebar izquierdo para poder ocultarlo o fijarlo
+2. Crear dashboards reales para todas las opciones del menú izquierdo
+3. Hacer los dashboards mucho más interactivos
+4. Revisar toda la app para corregir lentitud, pantallas que no cargan, secciones que “quedan pensando” y errores de navegación
+5. Dejar la app auditada y funcionando al 100%
+
+==================================================
+1) SIDEBAR IZQUIERDO: OCULTAR / FIJAR
+==================================================
+
+Necesito mejorar el comportamiento del panel izquierdo.
+
+REQUISITOS
+- El sidebar debe poder:
+  - mostrarse
+  - ocultarse
+  - fijarse
+  - colapsarse
+- Debe existir un botón claro para:
+  - ocultar/mostrar
+  - fijar/desfijar
+- Si está fijado:
+  - queda visible siempre
+- Si no está fijado:
+  - puede ocultarse automáticamente o quedar colapsado
+- Persistir la preferencia del usuario en localStorage o en la capa de configuración actual
+- Debe funcionar bien en desktop y mobile
+- En mobile debe comportarse como drawer o panel temporal elegante
+- No debe romper el layout principal
+- El contenido principal debe reajustarse correctamente al ocultar o mostrar sidebar
+- Agregar transiciones suaves
+- Evitar saltos visuales o glitches
+
+==================================================
+2) GENERAR DASHBOARDS PARA TODAS LAS OPCIONES DEL MENÚ IZQUIERDO
+==================================================
+
+Necesito que cada opción del menú izquierdo tenga su propio dashboard o vista útil, no solo una pantalla vacía o muy básica.
+
+OPCIONES ACTUALES DEL MENÚ
+- Dashboard / Inicio
+- Tareas
+- Accesos Directos
+- Noticias
+- Emails
+- Clima
+- Monitor Fiscal
+- Viajes
+- Vencimientos
+- Clientes
+- Proveedores
+- Calendarios
+- Finanzas
+- Objetivos del día
+- Estrategia
+- Decisiones
+- Admin
+- Ajustes
+- cualquier otro módulo lateral existente
+
+REQUISITOS
+- Cada módulo debe tener una vista dashboard propia
+- Cada dashboard debe incluir:
+  - resumen superior
+  - métricas principales
+  - filtros si aplica
+  - acciones rápidas
+  - tarjetas o tablas útiles
+  - estado del módulo
+  - última actualización si aplica
+- No quiero pantallas decorativas
+- Cada una debe sentirse como una vista real y usable
+- Mantener consistencia visual entre módulos
+- Diseñar estructura común reutilizable para dashboards:
+  - header del módulo
+  - zona de métricas
+  - zona de filtros
+  - zona de contenido
+  - acciones rápidas
+- Si una funcionalidad aún no está completa, mostrar una vista útil y elegante, no vacía
+
+==================================================
+3) HACER MÁS INTERACTIVOS LOS DASHBOARDS
+==================================================
+
+Necesito que los dashboards tengan más interacción real.
+
+REQUISITOS
+- Agregar más interacción en cada módulo según corresponda:
+  - filtros
+  - tabs
+  - ordenamientos
+  - acciones rápidas
+  - expandir/colapsar secciones
+  - refresco manual
+  - ver detalle
+  - editar
+  - cambiar vista (cards / tabla / lista) si tiene sentido
+- Los widgets y tarjetas deben responder mejor al usuario
+- Si existen tarjetas de resumen, al hacer click deben navegar o expandir detalle
+- Agregar más feedback visual:
+  - hover
+  - active state
+  - loading state
+  - empty state
+  - success/error state
+- Las interacciones deben ser fluidas, no pesadas
+- No sobrecargar la UI
+- Mantener claridad, velocidad y elegancia
+
+==================================================
+4) REVISIÓN DE PERFORMANCE Y BLOQUEOS
+==================================================
+
+Ahora la app muchas veces queda pensando y hay partes que no ingresan.
+
+Necesito una auditoría técnica real de performance y carga.
+
+REVISAR Y CORREGIR
+- renders innecesarios
+- bucles de re-render
+- efectos mal definidos
+- dependencias incorrectas en hooks
+- consultas repetidas
+- cálculos pesados en render
+- loaders infinitos
+- promesas no resueltas
+- componentes que esperan datos que nunca llegan
+- estados mal sincronizados
+- rutas que quedan colgadas
+- módulos que no montan correctamente
+- errores silenciosos
+- imports innecesarios o demasiado pesados
+- lógica duplicada
+- problemas de persistencia que traban vistas
+- widgets que bloquean el render principal
+- problemas de layout que impiden entrar a ciertas vistas
+
+OBJETIVO
+- que la app cargue rápido
+- que la navegación entre módulos sea fluida
+- que ninguna sección quede “pensando” indefinidamente
+- que todo abra correctamente
+
+==================================================
+5) AUDITORÍA INTEGRAL DE TODA LA APP
+==================================================
+
+Quiero una revisión completa del sistema actual.
+
+AUDITAR
+- frontend
+- rutas
+- módulos
+- persistencia
+- componentes
+- estado global/local
+- sidebar
+- dashboards
+- widgets
+- panel admin
+- seguridad actual
+- rendimiento general
+- responsive
+- consistencia visual
+- validaciones
+- errores de navegación
+
+CORREGIR
+- todo lo que esté roto
+- todo lo que cargue lento
+- todo lo que no abra
+- todo lo que genere experiencia mala al usuario
+- todo componente truncado o visualmente inconsistente
+
+==================================================
+6) ESTABILIDAD Y VELOCIDAD
+==================================================
+
+REQUISITOS
+- La página debe sentirse rápida
+- Mejorar tiempo de render inicial
+- Mejorar transición entre módulos
+- Asegurar que cada vista monte correctamente
+- Evitar que el dashboard principal se bloquee por widgets secundarios
+- Si un módulo falla, no debe romper toda la app
+- Aplicar manejo de errores por módulo o vista
+- Agregar fallbacks útiles
+- Si corresponde, lazy load en módulos pesados
+- Optimizar estado y composición de componentes
+
+==================================================
+7) UX/UI
+==================================================
+
+Mantener y mejorar la línea visual actual.
+
+REQUISITOS
+- diseño premium
+- oscuro
+- moderno
+- limpio
+- consistente
+- excelente jerarquía visual
+- mejor espaciado
+- mejor lectura
+- evitar sensación de rigidez
+- microinteracciones suaves
+- navegación clara
+
+==================================================
+8) PATRÓN COMÚN DE DASHBOARD POR MÓDULO
+==================================================
+
+Quiero que cada módulo adopte una estructura consistente.
+
+PROPUESTA
+Cada vista debería incluir, cuando aplique:
+- título del módulo
+- subtítulo o descripción breve
+- métricas clave
+- acciones rápidas
+- filtros
+- contenido principal
+- panel secundario opcional
+- estado de sincronización o actualización si corresponde
+
+Aplicarlo sin romper la identidad de cada módulo.
+
+==================================================
+9) REVISIÓN DE NAVEGACIÓN Y ACCESIBILIDAD
+==================================================
+
+Revisar:
+- que todos los botones funcionen
+- que todos los links internos naveguen bien
+- que no haya vistas inaccesibles
+- que el usuario sepa dónde está
+- breadcrumbs o indicador claro si conviene
+- estados activos correctos en el sidebar
+- compatibilidad con teclado básica si es posible
+- no dejar acciones sin respuesta visual
+
+==================================================
+10) ENTREGABLES
+==================================================
+
+Quiero que hagas todo esto sobre el proyecto actual y me entregues:
+
+- sidebar mejorado con ocultar/fijar/colapsar
+- dashboards reales para todos los módulos del menú izquierdo
+- dashboards más interactivos
+- corrección de lentitud y bloqueos
+- corrección de vistas que no ingresan
+- revisión técnica integral
+- mejora general de UX/UI
+- app estable, rápida y funcional
+
+==================================================
+11) ORDEN DE TRABAJO
+==================================================
+
+Hacelo en este orden:
+1. revisar arquitectura actual
+2. detectar causas de lentitud y cuelgues
+3. corregir sidebar y comportamiento responsive
+4. crear patrón común de dashboard por módulo
+5. completar dashboards de todas las opciones laterales
+6. aumentar interactividad en vistas
+7. corregir errores de navegación y carga
+8. optimizar performance
+9. ejecutar auditoría final
+10. dejar todo listo para correr
+
+==================================================
+12) AUDITORÍA FINAL OBLIGATORIA
+==================================================
+
+Al terminar, ejecutá una auditoría completa y corregí todo lo que encuentres.
+
+Verificá:
+1. que la app compile sin errores
+2. que no haya imports rotos
+3. que el sidebar pueda ocultarse y fijarse
+4. que el sidebar persista configuración
+5. que todas las opciones del menú izquierdo abran correctamente
+6. que cada opción tenga un dashboard usable
+7. que no haya pantallas vacías pobres
+8. que no haya loaders infinitos
+9. que no haya módulos que queden pensando
+10. que la navegación sea rápida
+11. que la app no se bloquee
+12. que el responsive funcione
+13. que no haya desbordes ni textos truncos
+14. que la experiencia visual sea consistente
+15. que la app se sienta realmente rápida
+
+Al final entregame:
+- resumen de lo implementado
+- listado de errores encontrados y corregidos
+- causas detectadas de lentitud
+- mejoras de performance aplicadas
+- módulos que quedaron completos
+- pendientes reales si existieran
+- checklist exacto de prueba para que yo valide que quedó funcionando

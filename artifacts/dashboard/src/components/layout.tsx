@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,49 +7,55 @@ import GlobalSearch, { useGlobalSearch } from "@/components/global-search";
 import AlertsBell from "@/components/alerts-bell";
 import ModoHoy from "@/components/modo-hoy";
 import {
-  LayoutDashboard,
-  CheckSquare,
-  Link as LinkIcon,
-  Newspaper,
-  Mail,
-  CloudSun,
-  Briefcase,
-  Plane,
-  CalendarClock,
-  CalendarDays,
-  Settings,
-  Shield,
-  Search,
-  LogOut,
-  Moon,
-  Sun,
-  Menu,
-  Users,
-  Truck,
-  Crown,
-  DollarSign,
-  Sparkles,
-  RefreshCw,
-  Brain,
-  Target,
-  Flag,
+  LayoutDashboard, CheckSquare, Link as LinkIcon, Newspaper, Mail,
+  CloudSun, Briefcase, Plane, CalendarClock, CalendarDays, Settings,
+  Shield, Search, LogOut, Moon, Sun, Menu, Users, Truck, Crown,
+  DollarSign, Sparkles, RefreshCw, Brain, Target, Flag,
+  ChevronLeft, ChevronRight, Pin, PinOff, PanelLeftClose, PanelLeft,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Kbd } from "@/components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCurrentUser, isAdmin } from "@/hooks/use-current-user";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+// ── Sidebar state persistence ──────────────────────────────────────────────────
+
+type SidebarState = "expanded" | "collapsed" | "hidden";
+
+function loadSidebarState(): SidebarState {
+  try {
+    return (localStorage.getItem("sidebar-state") as SidebarState) ?? "expanded";
+  } catch {
+    return "expanded";
+  }
+}
+
+function loadSidebarPinned(): boolean {
+  try {
+    return localStorage.getItem("sidebar-pinned") !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function saveSidebarState(state: SidebarState) {
+  try { localStorage.setItem("sidebar-state", state); } catch {}
+}
+
+function saveSidebarPinned(pinned: boolean) {
+  try { localStorage.setItem("sidebar-pinned", String(pinned)); } catch {}
+}
+
+// ── Nav items ──────────────────────────────────────────────────────────────────
 
 const ALL_NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard" },
@@ -65,7 +71,7 @@ const ALL_NAV_ITEMS = [
   { href: "/dashboard/supplier-batches", label: "Proveedores", icon: Truck, moduleKey: "supplier-batches" },
   { href: "/dashboard/tax-calendars", label: "Calendarios", icon: CalendarDays, moduleKey: "tax-calendars" },
   { href: "/dashboard/finance", label: "Finanzas", icon: DollarSign, moduleKey: "finance" },
-  { href: "/dashboard/goals", label: "Objetivos del día", icon: Target, moduleKey: "goals" },
+  { href: "/dashboard/goals", label: "Objetivos", icon: Target, moduleKey: "goals" },
   { href: "/dashboard/strategy", label: "Estrategia", icon: Flag, moduleKey: "strategy" },
   { href: "/dashboard/decisions", label: "Decisiones", icon: Brain, moduleKey: "decisions" },
 ];
@@ -94,14 +100,39 @@ function useVisibleModules() {
   });
 }
 
-function NavLink({ href, label, icon: Icon, location, onClick }: {
-  href: string;
-  label: string;
-  icon: React.ElementType;
-  location: string;
-  onClick?: () => void;
+// ── NavLink ────────────────────────────────────────────────────────────────────
+
+function NavLink({
+  href, label, icon: Icon, location, onClick, collapsed,
+}: {
+  href: string; label: string; icon: React.ElementType;
+  location: string; onClick?: () => void; collapsed?: boolean;
 }) {
   const isActive = location === href || (href !== "/dashboard" && location.startsWith(href));
+
+  if (collapsed) {
+    return (
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <Link
+            href={href}
+            onClick={onClick}
+            className={`flex items-center justify-center h-10 w-10 mx-auto rounded-lg transition-all duration-150
+              ${isActive
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+          >
+            <Icon className="h-[18px] w-[18px] shrink-0" />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="text-xs font-medium">
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
     <Link
       href={href}
@@ -113,29 +144,137 @@ function NavLink({ href, label, icon: Icon, location, onClick }: {
         }`}
     >
       <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`} />
-      <span>{label}</span>
+      <span className="truncate">{label}</span>
     </Link>
   );
 }
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+// ── SidebarContent ─────────────────────────────────────────────────────────────
+
+function SidebarContent({
+  onNavigate, collapsed, pinned, onTogglePin, onToggleCollapse,
+}: {
+  onNavigate?: () => void;
+  collapsed?: boolean;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  onToggleCollapse?: () => void;
+}) {
   const [location] = useLocation();
   const { data: me } = useCurrentUser();
   const visibleItems = useVisibleModules();
   const canSeeAdmin = isAdmin(me);
 
+  if (collapsed) {
+    return (
+      <div className="flex h-full flex-col bg-sidebar border-r border-sidebar-border items-center py-3 gap-1">
+        <div className="flex flex-col items-center h-[60px] justify-center mb-1">
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Link href="/dashboard" onClick={onNavigate} className="flex items-center justify-center">
+                <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
+                  <Briefcase className="h-4 w-4 text-primary-foreground" />
+                </div>
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="text-xs font-medium">Executive Dashboard</TooltipContent>
+          </Tooltip>
+        </div>
+
+        <Separator className="w-8 mb-1" />
+
+        <nav className="flex flex-col gap-1 flex-1 overflow-y-auto w-full items-center px-1">
+          {visibleItems.map((item) => (
+            <NavLink key={item.href} {...item} location={location} onClick={onNavigate} collapsed />
+          ))}
+
+          <Separator className="w-8 my-1" />
+
+          {canSeeAdmin && (
+            <NavLink href="/admin" label="Admin" icon={Shield} location={location} onClick={onNavigate} collapsed />
+          )}
+          <NavLink href="/settings" label="Ajustes" icon={Settings} location={location} onClick={onNavigate} collapsed />
+        </nav>
+
+        <div className="flex flex-col items-center gap-1 pb-2">
+          {onTogglePin && (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onTogglePin}
+                  className={`flex items-center justify-center h-8 w-8 rounded-lg transition-all duration-150
+                    ${pinned ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"}`}
+                >
+                  {pinned ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">
+                {pinned ? "Desanclar sidebar" : "Anclar sidebar"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {onToggleCollapse && (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onToggleCollapse}
+                  className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">Expandir sidebar</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col bg-sidebar border-r border-sidebar-border">
-      <div className="flex h-[60px] items-center px-5 shrink-0">
-        <Link href="/dashboard" className="flex items-center gap-2.5" onClick={onNavigate}>
-          <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center">
+      <div className="flex h-[60px] items-center px-4 shrink-0 gap-2">
+        <Link href="/dashboard" className="flex items-center gap-2.5 flex-1 min-w-0" onClick={onNavigate}>
+          <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center shrink-0">
             <Briefcase className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <div className="flex flex-col leading-none">
+          <div className="flex flex-col leading-none min-w-0">
             <span className="font-serif font-bold text-sm tracking-tight text-foreground">Executive</span>
             <span className="text-[10px] text-muted-foreground">Dashboard Personal</span>
           </div>
         </Link>
+
+        <div className="flex items-center gap-0.5 shrink-0">
+          {onTogglePin && (
+            <Tooltip delayDuration={100}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onTogglePin}
+                  className={`flex items-center justify-center h-7 w-7 rounded-md transition-all duration-150
+                    ${pinned ? "text-primary hover:bg-primary/10" : "text-muted-foreground/60 hover:text-foreground hover:bg-muted/60"}`}
+                >
+                  {pinned ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                {pinned ? "Desanclar — puede ocultarse" : "Anclar — siempre visible"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {onToggleCollapse && (
+            <Tooltip delayDuration={100}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onToggleCollapse}
+                  className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">Colapsar sidebar</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
 
       <Separator />
@@ -165,15 +304,19 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {me?.role && (
           <div className="mx-3 mt-3 px-2.5 py-1.5 rounded-md bg-muted/60 flex items-center gap-2">
             {me.role === "super_admin"
-              ? <Crown className="h-3 w-3 text-amber-500" />
-              : <Shield className="h-3 w-3 text-muted-foreground" />}
-            <span className="text-[10px] font-medium text-muted-foreground capitalize">{me.role.replace("_", " ")}</span>
+              ? <Crown className="h-3 w-3 text-amber-500 shrink-0" />
+              : <Shield className="h-3 w-3 text-muted-foreground shrink-0" />}
+            <span className="text-[10px] font-medium text-muted-foreground capitalize truncate">
+              {me.role.replace("_", " ")}
+            </span>
           </div>
         )}
       </div>
     </div>
   );
 }
+
+// ── Main Layout ────────────────────────────────────────────────────────────────
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user } = useUser();
@@ -185,6 +328,35 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { open: searchOpen, setOpen: setSearchOpen } = useGlobalSearch();
   const qc = useQueryClient();
 
+  const [sidebarState, setSidebarStateRaw] = useState<SidebarState>(loadSidebarState);
+  const [sidebarPinned, setSidebarPinnedRaw] = useState(loadSidebarPinned);
+
+  const setSidebarState = useCallback((s: SidebarState) => {
+    setSidebarStateRaw(s);
+    saveSidebarState(s);
+  }, []);
+
+  const setSidebarPinned = useCallback((p: boolean) => {
+    setSidebarPinnedRaw(p);
+    saveSidebarPinned(p);
+  }, []);
+
+  const handleToggleCollapse = useCallback(() => {
+    setSidebarState(sidebarState === "collapsed" ? "expanded" : "collapsed");
+  }, [sidebarState, setSidebarState]);
+
+  const handleTogglePin = useCallback(() => {
+    setSidebarPinned(!sidebarPinned);
+  }, [sidebarPinned, setSidebarPinned]);
+
+  const handleToggleSidebar = useCallback(() => {
+    if (sidebarState === "hidden") {
+      setSidebarState("expanded");
+    } else {
+      setSidebarState("hidden");
+    }
+  }, [sidebarState, setSidebarState]);
+
   async function handleRefresh() {
     setRefreshing(true);
     await qc.invalidateQueries();
@@ -194,14 +366,33 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const initials = [user?.firstName?.charAt(0), user?.lastName?.charAt(0)]
     .filter(Boolean).join("") || "U";
 
+  const isCollapsed = sidebarState === "collapsed";
+  const isHidden = sidebarState === "hidden";
+
   return (
-    <div className="flex min-h-[100dvh] w-full">
-      <aside className="hidden md:flex w-[240px] lg:w-[260px] flex-col shrink-0 sticky top-0 h-screen">
-        <SidebarContent />
+    <div className="flex min-h-[100dvh] w-full overflow-x-hidden">
+      {/* ── Desktop Sidebar ─────────────────────────────────────── */}
+      <aside
+        className={`hidden md:flex flex-col shrink-0 sticky top-0 h-screen overflow-hidden
+          transition-[width] duration-300 ease-in-out
+          ${isHidden ? "w-0" : isCollapsed ? "w-14" : "w-[260px]"}`}
+      >
+        {!isHidden && (
+          <SidebarContent
+            collapsed={isCollapsed}
+            pinned={sidebarPinned}
+            onTogglePin={handleTogglePin}
+            onToggleCollapse={handleToggleCollapse}
+          />
+        )}
       </aside>
 
+      {/* ── Main Content ────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col min-w-0">
+        {/* Header */}
         <header className="flex h-[60px] items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 lg:px-6 shrink-0 sticky top-0 z-10">
+
+          {/* Mobile hamburger */}
           <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon" className="shrink-0 md:hidden">
@@ -214,6 +405,25 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </SheetContent>
           </Sheet>
 
+          {/* Desktop sidebar toggle */}
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden md:flex h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                onClick={handleToggleSidebar}
+              >
+                {isHidden ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                <span className="sr-only">{isHidden ? "Mostrar sidebar" : "Ocultar sidebar"}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">
+              {isHidden ? "Mostrar sidebar" : "Ocultar sidebar"}
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Search */}
           <button
             onClick={() => setSearchOpen(true)}
             className="flex flex-1 max-w-xs items-center gap-2 h-8 px-3 rounded-md bg-muted/50 border border-transparent hover:border-border hover:bg-background text-sm text-muted-foreground transition-all duration-150"
@@ -250,7 +460,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               size="icon"
               className="h-8 w-8 rounded-lg"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-              title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
             >
               <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -297,7 +506,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6 bg-muted/30">
+        <main className="flex-1 p-4 lg:p-6 bg-muted/30 overflow-x-hidden">
           {children}
         </main>
       </div>

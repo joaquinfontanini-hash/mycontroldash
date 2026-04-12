@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { ClerkProvider, useClerk } from "@clerk/react";
 import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -6,6 +6,8 @@ import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/module-protected-route";
 import { useUserSync } from "@/hooks/use-user-sync";
@@ -14,24 +16,25 @@ import Home from "@/pages/home";
 import SignInPage from "@/pages/sign-in";
 import SignUpPage from "@/pages/sign-up";
 import DashboardLayout from "@/components/layout";
-import DashboardSummary from "@/pages/dashboard/index";
-import TasksPage from "@/pages/dashboard/tasks";
-import ShortcutsPage from "@/pages/dashboard/shortcuts";
-import NewsPage from "@/pages/dashboard/news";
-import EmailsPage from "@/pages/dashboard/emails";
-import WeatherPage from "@/pages/dashboard/weather";
-import FiscalPage from "@/pages/dashboard/fiscal";
-import TravelPage from "@/pages/dashboard/travel";
-import DueDatesPage from "@/pages/dashboard/due-dates";
-import ClientsPage from "@/pages/dashboard/clients";
-import SupplierBatchesPage from "@/pages/dashboard/supplier-batches";
-import TaxCalendarsPage from "@/pages/dashboard/tax-calendars";
-import FinancePage from "@/pages/dashboard/finance";
-import GoalsPage from "@/pages/dashboard/goals";
-import StrategyPage from "@/pages/dashboard/strategy";
-import DecisionsPage from "@/pages/dashboard/decisions";
-import AdminPage from "@/pages/admin";
-import SettingsPage from "@/pages/settings";
+
+const DashboardSummary   = lazy(() => import("@/pages/dashboard/index"));
+const TasksPage          = lazy(() => import("@/pages/dashboard/tasks"));
+const ShortcutsPage      = lazy(() => import("@/pages/dashboard/shortcuts"));
+const NewsPage           = lazy(() => import("@/pages/dashboard/news"));
+const EmailsPage         = lazy(() => import("@/pages/dashboard/emails"));
+const WeatherPage        = lazy(() => import("@/pages/dashboard/weather"));
+const FiscalPage         = lazy(() => import("@/pages/dashboard/fiscal"));
+const TravelPage         = lazy(() => import("@/pages/dashboard/travel"));
+const DueDatesPage       = lazy(() => import("@/pages/dashboard/due-dates"));
+const ClientsPage        = lazy(() => import("@/pages/dashboard/clients"));
+const SupplierBatchesPage = lazy(() => import("@/pages/dashboard/supplier-batches"));
+const TaxCalendarsPage   = lazy(() => import("@/pages/dashboard/tax-calendars"));
+const FinancePage        = lazy(() => import("@/pages/dashboard/finance"));
+const GoalsPage          = lazy(() => import("@/pages/dashboard/goals"));
+const StrategyPage       = lazy(() => import("@/pages/dashboard/strategy"));
+const DecisionsPage      = lazy(() => import("@/pages/dashboard/decisions"));
+const AdminPage          = lazy(() => import("@/pages/admin"));
+const SettingsPage       = lazy(() => import("@/pages/settings"));
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -47,43 +50,71 @@ function stripBase(path: string): string {
     : path;
 }
 
-const DashboardPage = () => <DashboardLayout><DashboardSummary /></DashboardLayout>;
-const Tasks = () => <DashboardLayout><TasksPage /></DashboardLayout>;
-const Shortcuts = () => <DashboardLayout><ShortcutsPage /></DashboardLayout>;
-const News = () => <DashboardLayout><NewsPage /></DashboardLayout>;
-const Emails = () => <DashboardLayout><EmailsPage /></DashboardLayout>;
-const Weather = () => <DashboardLayout><WeatherPage /></DashboardLayout>;
-const Fiscal = () => <DashboardLayout><FiscalPage /></DashboardLayout>;
-const Travel = () => <DashboardLayout><TravelPage /></DashboardLayout>;
-const DueDates = () => <DashboardLayout><DueDatesPage /></DashboardLayout>;
-const Clients = () => <DashboardLayout><ClientsPage /></DashboardLayout>;
-const SupplierBatches = () => <DashboardLayout><SupplierBatchesPage /></DashboardLayout>;
-const TaxCalendars = () => <DashboardLayout><TaxCalendarsPage /></DashboardLayout>;
-const Finance = () => <DashboardLayout><FinancePage /></DashboardLayout>;
-const Goals = () => <DashboardLayout><GoalsPage /></DashboardLayout>;
-const Strategy = () => <DashboardLayout><StrategyPage /></DashboardLayout>;
-const Decisions = () => <DashboardLayout><DecisionsPage /></DashboardLayout>;
-const Admin = () => <DashboardLayout><AdminPage /></DashboardLayout>;
-const Settings = () => <DashboardLayout><SettingsPage /></DashboardLayout>;
+// ── Page-level Suspense fallback ───────────────────────────────────────────────
 
-const RouteDashboard = () => <ProtectedRoute moduleKey="dashboard" component={DashboardPage} />;
-const RouteTasks = () => <ProtectedRoute moduleKey="tasks" component={Tasks} />;
-const RouteShortcuts = () => <ProtectedRoute moduleKey="shortcuts" component={Shortcuts} />;
-const RouteNews = () => <ProtectedRoute moduleKey="news" component={News} />;
-const RouteEmails = () => <ProtectedRoute moduleKey="emails" component={Emails} />;
-const RouteWeather = () => <ProtectedRoute moduleKey="weather" component={Weather} />;
-const RouteFiscal = () => <ProtectedRoute moduleKey="fiscal" component={Fiscal} />;
-const RouteTravel = () => <ProtectedRoute moduleKey="travel" component={Travel} />;
-const RouteDueDates = () => <ProtectedRoute moduleKey="due-dates" component={DueDates} />;
-const RouteClients = () => <ProtectedRoute moduleKey="clients" component={Clients} />;
+function PageLoader() {
+  return (
+    <div className="space-y-4 p-2">
+      <Skeleton className="h-9 w-64" />
+      <div className="grid gap-4 md:grid-cols-3">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+      </div>
+      <Skeleton className="h-64 rounded-xl" />
+    </div>
+  );
+}
+
+function Lazy({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        {children}
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+// ── Route helpers ──────────────────────────────────────────────────────────────
+
+const DashboardPage      = () => <DashboardLayout><Lazy><DashboardSummary /></Lazy></DashboardLayout>;
+const Tasks              = () => <DashboardLayout><Lazy><TasksPage /></Lazy></DashboardLayout>;
+const Shortcuts          = () => <DashboardLayout><Lazy><ShortcutsPage /></Lazy></DashboardLayout>;
+const News               = () => <DashboardLayout><Lazy><NewsPage /></Lazy></DashboardLayout>;
+const Emails             = () => <DashboardLayout><Lazy><EmailsPage /></Lazy></DashboardLayout>;
+const Weather            = () => <DashboardLayout><Lazy><WeatherPage /></Lazy></DashboardLayout>;
+const Fiscal             = () => <DashboardLayout><Lazy><FiscalPage /></Lazy></DashboardLayout>;
+const Travel             = () => <DashboardLayout><Lazy><TravelPage /></Lazy></DashboardLayout>;
+const DueDates           = () => <DashboardLayout><Lazy><DueDatesPage /></Lazy></DashboardLayout>;
+const Clients            = () => <DashboardLayout><Lazy><ClientsPage /></Lazy></DashboardLayout>;
+const SupplierBatches    = () => <DashboardLayout><Lazy><SupplierBatchesPage /></Lazy></DashboardLayout>;
+const TaxCalendars       = () => <DashboardLayout><Lazy><TaxCalendarsPage /></Lazy></DashboardLayout>;
+const Finance            = () => <DashboardLayout><Lazy><FinancePage /></Lazy></DashboardLayout>;
+const Goals              = () => <DashboardLayout><Lazy><GoalsPage /></Lazy></DashboardLayout>;
+const Strategy           = () => <DashboardLayout><Lazy><StrategyPage /></Lazy></DashboardLayout>;
+const Decisions          = () => <DashboardLayout><Lazy><DecisionsPage /></Lazy></DashboardLayout>;
+const Admin              = () => <DashboardLayout><Lazy><AdminPage /></Lazy></DashboardLayout>;
+const Settings           = () => <DashboardLayout><Lazy><SettingsPage /></Lazy></DashboardLayout>;
+
+const RouteDashboard       = () => <ProtectedRoute moduleKey="dashboard"        component={DashboardPage} />;
+const RouteTasks           = () => <ProtectedRoute moduleKey="tasks"            component={Tasks} />;
+const RouteShortcuts       = () => <ProtectedRoute moduleKey="shortcuts"        component={Shortcuts} />;
+const RouteNews            = () => <ProtectedRoute moduleKey="news"             component={News} />;
+const RouteEmails          = () => <ProtectedRoute moduleKey="emails"           component={Emails} />;
+const RouteWeather         = () => <ProtectedRoute moduleKey="weather"          component={Weather} />;
+const RouteFiscal          = () => <ProtectedRoute moduleKey="fiscal"           component={Fiscal} />;
+const RouteTravel          = () => <ProtectedRoute moduleKey="travel"           component={Travel} />;
+const RouteDueDates        = () => <ProtectedRoute moduleKey="due-dates"        component={DueDates} />;
+const RouteClients         = () => <ProtectedRoute moduleKey="clients"          component={Clients} />;
 const RouteSupplierBatches = () => <ProtectedRoute moduleKey="supplier-batches" component={SupplierBatches} />;
-const RouteTaxCalendars = () => <ProtectedRoute moduleKey="tax-calendars" component={TaxCalendars} />;
-const RouteFinance = () => <ProtectedRoute moduleKey="finance" component={Finance} />;
-const RouteGoals = () => <ProtectedRoute moduleKey="goals" component={Goals} />;
-const RouteStrategy = () => <ProtectedRoute moduleKey="strategy" component={Strategy} />;
-const RouteDecisions = () => <ProtectedRoute moduleKey="decisions" component={Decisions} />;
-const RouteAdmin = () => <ProtectedRoute moduleKey="admin" component={Admin} />;
-const RouteSettings = () => <ProtectedRoute moduleKey="settings" component={Settings} />;
+const RouteTaxCalendars    = () => <ProtectedRoute moduleKey="tax-calendars"    component={TaxCalendars} />;
+const RouteFinance         = () => <ProtectedRoute moduleKey="finance"          component={Finance} />;
+const RouteGoals           = () => <ProtectedRoute moduleKey="goals"            component={Goals} />;
+const RouteStrategy        = () => <ProtectedRoute moduleKey="strategy"         component={Strategy} />;
+const RouteDecisions       = () => <ProtectedRoute moduleKey="decisions"        component={Decisions} />;
+const RouteAdmin           = () => <ProtectedRoute moduleKey="admin"            component={Admin} />;
+const RouteSettings        = () => <ProtectedRoute moduleKey="settings"         component={Settings} />;
+
+// ── Clerk cache invalidator ────────────────────────────────────────────────────
 
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
@@ -112,6 +143,8 @@ function UserSyncEffect() {
   return null;
 }
 
+// ── Main router ────────────────────────────────────────────────────────────────
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -127,27 +160,27 @@ function ClerkProviderWithRoutes() {
         <UserSyncEffect />
         <TooltipProvider>
           <Switch>
-            <Route path="/" component={Home} />
-            <Route path="/sign-in/*?" component={SignInPage} />
-            <Route path="/sign-up/*?" component={SignUpPage} />
-            <Route path="/dashboard" component={RouteDashboard} />
-            <Route path="/dashboard/tasks" component={RouteTasks} />
-            <Route path="/dashboard/shortcuts" component={RouteShortcuts} />
-            <Route path="/dashboard/news" component={RouteNews} />
-            <Route path="/dashboard/emails" component={RouteEmails} />
-            <Route path="/dashboard/weather" component={RouteWeather} />
-            <Route path="/dashboard/fiscal" component={RouteFiscal} />
-            <Route path="/dashboard/travel" component={RouteTravel} />
-            <Route path="/dashboard/due-dates" component={RouteDueDates} />
-            <Route path="/dashboard/clients" component={RouteClients} />
+            <Route path="/"                       component={Home} />
+            <Route path="/sign-in/*?"             component={SignInPage} />
+            <Route path="/sign-up/*?"             component={SignUpPage} />
+            <Route path="/dashboard"              component={RouteDashboard} />
+            <Route path="/dashboard/tasks"        component={RouteTasks} />
+            <Route path="/dashboard/shortcuts"    component={RouteShortcuts} />
+            <Route path="/dashboard/news"         component={RouteNews} />
+            <Route path="/dashboard/emails"       component={RouteEmails} />
+            <Route path="/dashboard/weather"      component={RouteWeather} />
+            <Route path="/dashboard/fiscal"       component={RouteFiscal} />
+            <Route path="/dashboard/travel"       component={RouteTravel} />
+            <Route path="/dashboard/due-dates"    component={RouteDueDates} />
+            <Route path="/dashboard/clients"      component={RouteClients} />
             <Route path="/dashboard/supplier-batches" component={RouteSupplierBatches} />
             <Route path="/dashboard/tax-calendars" component={RouteTaxCalendars} />
-            <Route path="/dashboard/finance" component={RouteFinance} />
-            <Route path="/dashboard/goals" component={RouteGoals} />
-            <Route path="/dashboard/strategy" component={RouteStrategy} />
-            <Route path="/dashboard/decisions" component={RouteDecisions} />
-            <Route path="/admin" component={RouteAdmin} />
-            <Route path="/settings" component={RouteSettings} />
+            <Route path="/dashboard/finance"      component={RouteFinance} />
+            <Route path="/dashboard/goals"        component={RouteGoals} />
+            <Route path="/dashboard/strategy"     component={RouteStrategy} />
+            <Route path="/dashboard/decisions"    component={RouteDecisions} />
+            <Route path="/admin"                  component={RouteAdmin} />
+            <Route path="/settings"               component={RouteSettings} />
             <Route component={NotFound} />
           </Switch>
         </TooltipProvider>
