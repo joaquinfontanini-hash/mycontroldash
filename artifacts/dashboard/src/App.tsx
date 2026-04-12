@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
-import { ClerkProvider, useClerk } from "@clerk/react";
-import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
+import { ClerkProvider, useClerk, useUser } from "@clerk/react";
+import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,45 +11,55 @@ import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/module-protected-route";
 import { useUserSync } from "@/hooks/use-user-sync";
+import {
+  LOCAL_AUTH_MODE,
+  getLocalSession,
+  clearLocalSession,
+  LOCAL_NAME,
+  LOCAL_EMAIL,
+} from "@/lib/local-auth";
+import { AuthContextProvider, buildAuthValue } from "@/contexts/auth-context";
 
 import Home from "@/pages/home";
 import SignInPage from "@/pages/sign-in";
 import SignUpPage from "@/pages/sign-up";
+import LocalSignInPage from "@/pages/local-sign-in";
 import DashboardLayout from "@/components/layout";
 
-const DashboardSummary   = lazy(() => import("@/pages/dashboard/index"));
-const TasksPage          = lazy(() => import("@/pages/dashboard/tasks"));
-const ShortcutsPage      = lazy(() => import("@/pages/dashboard/shortcuts"));
-const NewsPage           = lazy(() => import("@/pages/dashboard/news"));
-const EmailsPage         = lazy(() => import("@/pages/dashboard/emails"));
-const WeatherPage        = lazy(() => import("@/pages/dashboard/weather"));
-const FiscalPage         = lazy(() => import("@/pages/dashboard/fiscal"));
-const TravelPage         = lazy(() => import("@/pages/dashboard/travel"));
-const DueDatesPage       = lazy(() => import("@/pages/dashboard/due-dates"));
-const ClientsPage        = lazy(() => import("@/pages/dashboard/clients"));
+const DashboardSummary    = lazy(() => import("@/pages/dashboard/index"));
+const TasksPage           = lazy(() => import("@/pages/dashboard/tasks"));
+const ShortcutsPage       = lazy(() => import("@/pages/dashboard/shortcuts"));
+const NewsPage            = lazy(() => import("@/pages/dashboard/news"));
+const EmailsPage          = lazy(() => import("@/pages/dashboard/emails"));
+const WeatherPage         = lazy(() => import("@/pages/dashboard/weather"));
+const FiscalPage          = lazy(() => import("@/pages/dashboard/fiscal"));
+const TravelPage          = lazy(() => import("@/pages/dashboard/travel"));
+const DueDatesPage        = lazy(() => import("@/pages/dashboard/due-dates"));
+const ClientsPage         = lazy(() => import("@/pages/dashboard/clients"));
 const SupplierBatchesPage = lazy(() => import("@/pages/dashboard/supplier-batches"));
-const TaxCalendarsPage   = lazy(() => import("@/pages/dashboard/tax-calendars"));
-const FinancePage        = lazy(() => import("@/pages/dashboard/finance"));
-const GoalsPage          = lazy(() => import("@/pages/dashboard/goals"));
-const StrategyPage       = lazy(() => import("@/pages/dashboard/strategy"));
-const DecisionsPage      = lazy(() => import("@/pages/dashboard/decisions"));
-const AdminPage          = lazy(() => import("@/pages/admin"));
-const SettingsPage       = lazy(() => import("@/pages/settings"));
-const ContactsPage       = lazy(() => import("@/pages/dashboard/contacts"));
-const ChatPage           = lazy(() => import("@/pages/dashboard/chat"));
+const TaxCalendarsPage    = lazy(() => import("@/pages/dashboard/tax-calendars"));
+const FinancePage         = lazy(() => import("@/pages/dashboard/finance"));
+const GoalsPage           = lazy(() => import("@/pages/dashboard/goals"));
+const StrategyPage        = lazy(() => import("@/pages/dashboard/strategy"));
+const DecisionsPage       = lazy(() => import("@/pages/dashboard/decisions"));
+const AdminPage           = lazy(() => import("@/pages/admin"));
+const SettingsPage        = lazy(() => import("@/pages/settings"));
+const ContactsPage        = lazy(() => import("@/pages/dashboard/contacts"));
+const ChatPage            = lazy(() => import("@/pages/dashboard/chat"));
 
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-// When base is "./" (portable static build), BASE_URL is "./" or ".".
-// Normalise to "" so Wouter gets no base prefix and routes work correctly.
+// ── Clerk env vars (only required in Clerk mode) ───────────────────────────────
+const clerkPubKey   = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL as string | undefined;
+
+if (!LOCAL_AUTH_MODE && !clerkPubKey) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
+}
+
+// ── Base path normalisation ────────────────────────────────────────────────────
 const rawBaseUrl = import.meta.env.BASE_URL ?? "/";
 const basePath = rawBaseUrl === "./" || rawBaseUrl === "."
   ? ""
   : rawBaseUrl.replace(/\/$/, "");
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
-}
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -57,7 +67,7 @@ function stripBase(path: string): string {
     : path;
 }
 
-// ── Page-level Suspense fallback ───────────────────────────────────────────────
+// ── Shared page-level Suspense ─────────────────────────────────────────────────
 
 function PageLoader() {
   return (
@@ -81,28 +91,30 @@ function Lazy({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── Route helpers ──────────────────────────────────────────────────────────────
+// ── Page components ────────────────────────────────────────────────────────────
 
-const DashboardPage      = () => <DashboardLayout><Lazy><DashboardSummary /></Lazy></DashboardLayout>;
-const Tasks              = () => <DashboardLayout><Lazy><TasksPage /></Lazy></DashboardLayout>;
-const Shortcuts          = () => <DashboardLayout><Lazy><ShortcutsPage /></Lazy></DashboardLayout>;
-const News               = () => <DashboardLayout><Lazy><NewsPage /></Lazy></DashboardLayout>;
-const Emails             = () => <DashboardLayout><Lazy><EmailsPage /></Lazy></DashboardLayout>;
-const Weather            = () => <DashboardLayout><Lazy><WeatherPage /></Lazy></DashboardLayout>;
-const Fiscal             = () => <DashboardLayout><Lazy><FiscalPage /></Lazy></DashboardLayout>;
-const Travel             = () => <DashboardLayout><Lazy><TravelPage /></Lazy></DashboardLayout>;
-const DueDates           = () => <DashboardLayout><Lazy><DueDatesPage /></Lazy></DashboardLayout>;
-const Clients            = () => <DashboardLayout><Lazy><ClientsPage /></Lazy></DashboardLayout>;
-const SupplierBatches    = () => <DashboardLayout><Lazy><SupplierBatchesPage /></Lazy></DashboardLayout>;
-const TaxCalendars       = () => <DashboardLayout><Lazy><TaxCalendarsPage /></Lazy></DashboardLayout>;
-const Finance            = () => <DashboardLayout><Lazy><FinancePage /></Lazy></DashboardLayout>;
-const Goals              = () => <DashboardLayout><Lazy><GoalsPage /></Lazy></DashboardLayout>;
-const Strategy           = () => <DashboardLayout><Lazy><StrategyPage /></Lazy></DashboardLayout>;
-const Decisions          = () => <DashboardLayout><Lazy><DecisionsPage /></Lazy></DashboardLayout>;
-const Admin              = () => <DashboardLayout><Lazy><AdminPage /></Lazy></DashboardLayout>;
-const Settings           = () => <DashboardLayout><Lazy><SettingsPage /></Lazy></DashboardLayout>;
-const Contacts           = () => <DashboardLayout><Lazy><ContactsPage /></Lazy></DashboardLayout>;
-const Chat               = () => <DashboardLayout><Lazy><ChatPage /></Lazy></DashboardLayout>;
+const DashboardPage   = () => <DashboardLayout><Lazy><DashboardSummary /></Lazy></DashboardLayout>;
+const Tasks           = () => <DashboardLayout><Lazy><TasksPage /></Lazy></DashboardLayout>;
+const Shortcuts       = () => <DashboardLayout><Lazy><ShortcutsPage /></Lazy></DashboardLayout>;
+const News            = () => <DashboardLayout><Lazy><NewsPage /></Lazy></DashboardLayout>;
+const Emails          = () => <DashboardLayout><Lazy><EmailsPage /></Lazy></DashboardLayout>;
+const Weather         = () => <DashboardLayout><Lazy><WeatherPage /></Lazy></DashboardLayout>;
+const Fiscal          = () => <DashboardLayout><Lazy><FiscalPage /></Lazy></DashboardLayout>;
+const Travel          = () => <DashboardLayout><Lazy><TravelPage /></Lazy></DashboardLayout>;
+const DueDates        = () => <DashboardLayout><Lazy><DueDatesPage /></Lazy></DashboardLayout>;
+const Clients         = () => <DashboardLayout><Lazy><ClientsPage /></Lazy></DashboardLayout>;
+const SupplierBatches = () => <DashboardLayout><Lazy><SupplierBatchesPage /></Lazy></DashboardLayout>;
+const TaxCalendars    = () => <DashboardLayout><Lazy><TaxCalendarsPage /></Lazy></DashboardLayout>;
+const Finance         = () => <DashboardLayout><Lazy><FinancePage /></Lazy></DashboardLayout>;
+const Goals           = () => <DashboardLayout><Lazy><GoalsPage /></Lazy></DashboardLayout>;
+const Strategy        = () => <DashboardLayout><Lazy><StrategyPage /></Lazy></DashboardLayout>;
+const Decisions       = () => <DashboardLayout><Lazy><DecisionsPage /></Lazy></DashboardLayout>;
+const Admin           = () => <DashboardLayout><Lazy><AdminPage /></Lazy></DashboardLayout>;
+const Settings        = () => <DashboardLayout><Lazy><SettingsPage /></Lazy></DashboardLayout>;
+const Contacts        = () => <DashboardLayout><Lazy><ContactsPage /></Lazy></DashboardLayout>;
+const Chat            = () => <DashboardLayout><Lazy><ChatPage /></Lazy></DashboardLayout>;
+
+// ── Protected route wrappers ───────────────────────────────────────────────────
 
 const RouteDashboard       = () => <ProtectedRoute moduleKey="dashboard"        component={DashboardPage} />;
 const RouteTasks           = () => <ProtectedRoute moduleKey="tasks"            component={Tasks} />;
@@ -125,7 +137,96 @@ const RouteSettings        = () => <ProtectedRoute moduleKey="settings"         
 const RouteContacts        = () => <ProtectedRoute moduleKey="contacts"         component={Contacts} />;
 const RouteChat            = () => <ProtectedRoute moduleKey="chat"             component={Chat} />;
 
-// ── Clerk cache invalidator ────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// ── LOCAL AUTH MODE ──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+function LocalAuthBridge({ children }: { children: React.ReactNode }) {
+  const [, setLocation] = useLocation();
+  const session = getLocalSession();
+
+  const value = buildAuthValue(
+    session?.name ?? LOCAL_NAME,
+    session?.email ?? LOCAL_EMAIL,
+    undefined,
+    () => {
+      clearLocalSession();
+      setLocation("/sign-in");
+    },
+  );
+
+  return <AuthContextProvider value={value}>{children}</AuthContextProvider>;
+}
+
+function LocalHome() {
+  const session = getLocalSession();
+  return <Redirect to={session ? "/dashboard" : "/sign-in"} />;
+}
+
+function UserSyncEffect() {
+  useUserSync();
+  return null;
+}
+
+function LocalApp() {
+  return (
+    <ThemeProvider defaultTheme="system" storageKey="dashboard-theme">
+      <WouterRouter base="">
+        <QueryClientProvider client={queryClient}>
+          <LocalAuthBridge>
+            <UserSyncEffect />
+            <TooltipProvider>
+              <Switch>
+                <Route path="/"                       component={LocalHome} />
+                <Route path="/sign-in/*?"             component={LocalSignInPage} />
+                <Route path="/dashboard"              component={RouteDashboard} />
+                <Route path="/dashboard/tasks"        component={RouteTasks} />
+                <Route path="/dashboard/shortcuts"    component={RouteShortcuts} />
+                <Route path="/dashboard/news"         component={RouteNews} />
+                <Route path="/dashboard/emails"       component={RouteEmails} />
+                <Route path="/dashboard/weather"      component={RouteWeather} />
+                <Route path="/dashboard/fiscal"       component={RouteFiscal} />
+                <Route path="/dashboard/travel"       component={RouteTravel} />
+                <Route path="/dashboard/due-dates"    component={RouteDueDates} />
+                <Route path="/dashboard/clients"      component={RouteClients} />
+                <Route path="/dashboard/supplier-batches" component={RouteSupplierBatches} />
+                <Route path="/dashboard/tax-calendars" component={RouteTaxCalendars} />
+                <Route path="/dashboard/finance"      component={RouteFinance} />
+                <Route path="/dashboard/goals"        component={RouteGoals} />
+                <Route path="/dashboard/strategy"     component={RouteStrategy} />
+                <Route path="/dashboard/decisions"    component={RouteDecisions} />
+                <Route path="/admin"                  component={RouteAdmin} />
+                <Route path="/settings"               component={RouteSettings} />
+                <Route path="/dashboard/contacts"     component={RouteContacts} />
+                <Route path="/dashboard/chat"         component={RouteChat} />
+                <Route component={NotFound} />
+              </Switch>
+            </TooltipProvider>
+          </LocalAuthBridge>
+        </QueryClientProvider>
+      </WouterRouter>
+      <Toaster />
+    </ThemeProvider>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── CLERK AUTH MODE ──────────────────────────════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+
+function ClerkAuthBridge({ children }: { children: React.ReactNode }) {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+
+  const value = buildAuthValue(
+    user?.fullName ?? "Mi Cuenta",
+    user?.primaryEmailAddress?.emailAddress ?? "",
+    user?.imageUrl,
+    signOut,
+  );
+
+  return <AuthContextProvider value={value}>{children}</AuthContextProvider>;
+}
 
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
@@ -149,19 +250,12 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
-function UserSyncEffect() {
-  useUserSync();
-  return null;
-}
-
-// ── Main router ────────────────────────────────────────────────────────────────
-
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
   return (
     <ClerkProvider
-      publishableKey={clerkPubKey}
+      publishableKey={clerkPubKey!}
       proxyUrl={clerkProxyUrl}
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
@@ -169,40 +263,42 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
         <UserSyncEffect />
-        <TooltipProvider>
-          <Switch>
-            <Route path="/"                       component={Home} />
-            <Route path="/sign-in/*?"             component={SignInPage} />
-            <Route path="/sign-up/*?"             component={SignUpPage} />
-            <Route path="/dashboard"              component={RouteDashboard} />
-            <Route path="/dashboard/tasks"        component={RouteTasks} />
-            <Route path="/dashboard/shortcuts"    component={RouteShortcuts} />
-            <Route path="/dashboard/news"         component={RouteNews} />
-            <Route path="/dashboard/emails"       component={RouteEmails} />
-            <Route path="/dashboard/weather"      component={RouteWeather} />
-            <Route path="/dashboard/fiscal"       component={RouteFiscal} />
-            <Route path="/dashboard/travel"       component={RouteTravel} />
-            <Route path="/dashboard/due-dates"    component={RouteDueDates} />
-            <Route path="/dashboard/clients"      component={RouteClients} />
-            <Route path="/dashboard/supplier-batches" component={RouteSupplierBatches} />
-            <Route path="/dashboard/tax-calendars" component={RouteTaxCalendars} />
-            <Route path="/dashboard/finance"      component={RouteFinance} />
-            <Route path="/dashboard/goals"        component={RouteGoals} />
-            <Route path="/dashboard/strategy"     component={RouteStrategy} />
-            <Route path="/dashboard/decisions"    component={RouteDecisions} />
-            <Route path="/admin"                  component={RouteAdmin} />
-            <Route path="/settings"               component={RouteSettings} />
-            <Route path="/dashboard/contacts"     component={RouteContacts} />
-            <Route path="/dashboard/chat"         component={RouteChat} />
-            <Route component={NotFound} />
-          </Switch>
-        </TooltipProvider>
+        <ClerkAuthBridge>
+          <TooltipProvider>
+            <Switch>
+              <Route path="/"                       component={Home} />
+              <Route path="/sign-in/*?"             component={SignInPage} />
+              <Route path="/sign-up/*?"             component={SignUpPage} />
+              <Route path="/dashboard"              component={RouteDashboard} />
+              <Route path="/dashboard/tasks"        component={RouteTasks} />
+              <Route path="/dashboard/shortcuts"    component={RouteShortcuts} />
+              <Route path="/dashboard/news"         component={RouteNews} />
+              <Route path="/dashboard/emails"       component={RouteEmails} />
+              <Route path="/dashboard/weather"      component={RouteWeather} />
+              <Route path="/dashboard/fiscal"       component={RouteFiscal} />
+              <Route path="/dashboard/travel"       component={RouteTravel} />
+              <Route path="/dashboard/due-dates"    component={RouteDueDates} />
+              <Route path="/dashboard/clients"      component={RouteClients} />
+              <Route path="/dashboard/supplier-batches" component={RouteSupplierBatches} />
+              <Route path="/dashboard/tax-calendars" component={RouteTaxCalendars} />
+              <Route path="/dashboard/finance"      component={RouteFinance} />
+              <Route path="/dashboard/goals"        component={RouteGoals} />
+              <Route path="/dashboard/strategy"     component={RouteStrategy} />
+              <Route path="/dashboard/decisions"    component={RouteDecisions} />
+              <Route path="/admin"                  component={RouteAdmin} />
+              <Route path="/settings"               component={RouteSettings} />
+              <Route path="/dashboard/contacts"     component={RouteContacts} />
+              <Route path="/dashboard/chat"         component={RouteChat} />
+              <Route component={NotFound} />
+            </Switch>
+          </TooltipProvider>
+        </ClerkAuthBridge>
       </QueryClientProvider>
     </ClerkProvider>
   );
 }
 
-function App() {
+function ClerkApp() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="dashboard-theme">
       <WouterRouter base={basePath}>
@@ -213,4 +309,8 @@ function App() {
   );
 }
 
-export default App;
+// ── Root export ────────────────────────────────────────────────────────────────
+
+export default function App() {
+  return LOCAL_AUTH_MODE ? <LocalApp /> : <ClerkApp />;
+}

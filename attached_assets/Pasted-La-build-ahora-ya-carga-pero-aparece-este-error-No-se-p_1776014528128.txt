@@ -1,0 +1,64 @@
+La build ahora ya carga, pero aparece este error:
+
+"No se pudo cargar tu sesión. Hubo un problema al conectar con el servidor."
+
+OBJETIVO
+Quiero que elimines cualquier dependencia de sesión que requiera servidor externo para esta versión estática/publicable.
+
+IMPORTANTE
+- No quiero romper toda la seguridad y lógica general del proyecto
+- Pero para esta versión exportable necesito que el acceso funcione sin depender de conexión a Clerk o backend de sesión
+- La app ya carga, así que el problema ahora está específicamente en auth/session
+
+NECESITO QUE HAGAS ESTO
+
+1. Revisá todo el flujo de sesión/autenticación actual
+- carga de sesión al iniciar
+- validación de sesión
+- uso de Clerk
+- providers de auth
+- llamadas a servidor para obtener sesión
+- guards de rutas
+- post-login
+
+2. Detectá exactamente qué parte está intentando conectarse a un servidor
+- Clerk session
+- endpoint de auth
+- token validation
+- fetch interno
+- cualquier dependencia externa
+
+3. Para esta versión estática, implementá un modo de autenticación local estable
+- login local simple
+- persistencia en localStorage
+- sesión local persistida
+- roles básicos si ya existen
+- sin llamadas obligatorias a servidor externo
+- sin Clerk obligatorio
+
+4. Reemplazá o desacoplá la carga de sesión actual
+- si Clerk no está disponible, no debe romper
+- si no hay servidor, no debe mostrar error fatal
+- debe entrar con sesión local correctamente
+
+5. Mantener:
+- layout actual
+- módulos
+- navegación
+- permisos básicos si ya están implementados
+- experiencia visual actual
+
+6. Validá específicamente:
+- que la app abra
+- que no aparezca el error de sesión
+- que el login funcione
+- que después del login cargue el dashboard
+- que al refrescar se mantenga sesión local
+- que al cerrar sesión salga correctamente
+
+7. Entregame:
+- causa exacta del error
+- archivo o flujo donde estaba el problema
+- qué reemplazaste
+- confirmación de que la build ya no depende de Clerk ni de servidor para cargar sesión
+- nueva build lista para publicar

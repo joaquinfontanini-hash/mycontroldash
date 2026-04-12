@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useUser } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
+import { LOCAL_AUTH_MODE } from "@/lib/local-auth";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const MAX_ATTEMPTS = 3;
@@ -27,7 +28,7 @@ async function syncUser(
   }
 }
 
-export function useUserSync() {
+function useUserSyncClerk() {
   const { user, isSignedIn, isLoaded } = useUser();
   const qc = useQueryClient();
   const syncedRef = useRef<string | null>(null);
@@ -59,3 +60,11 @@ export function useUserSync() {
       });
   }, [isLoaded, isSignedIn, user, qc]);
 }
+
+function useUserSyncLocal() {
+  // No-op in local mode: session is managed by local-auth
+}
+
+export const useUserSync: () => void = LOCAL_AUTH_MODE
+  ? useUserSyncLocal
+  : useUserSyncClerk;

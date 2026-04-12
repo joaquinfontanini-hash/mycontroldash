@@ -1,6 +1,6 @@
 import { ReactNode, useState, useCallback } from "react";
 import { Link, useLocation } from "wouter";
-import { useUser, useClerk } from "@clerk/react";
+import { useAuthContext } from "@/contexts/auth-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/components/theme-provider";
 import GlobalSearch, { useGlobalSearch } from "@/components/global-search";
@@ -351,8 +351,7 @@ function SidebarContent({
 // ── Main Layout ────────────────────────────────────────────────────────────────
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const auth = useAuthContext();
   const { theme, setTheme } = useTheme();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [modoHoyOpen, setModoHoyOpen] = useState(false);
@@ -395,8 +394,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     setTimeout(() => setRefreshing(false), 800);
   }
 
-  const initials = [user?.firstName?.charAt(0), user?.lastName?.charAt(0)]
-    .filter(Boolean).join("") || "U";
+  const initials = auth.initials;
 
   const isCollapsed = sidebarState === "collapsed";
   const isHidden = sidebarState === "hidden";
@@ -500,7 +498,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full p-0">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user?.imageUrl} />
+                    <AvatarImage src={auth.userImageUrl} />
                     <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
                       {initials}
                     </AvatarFallback>
@@ -510,9 +508,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuLabel>
                   <div className="flex flex-col">
-                    <span>{user?.fullName || "Mi Cuenta"}</span>
+                    <span>{auth.userFullName || "Mi Cuenta"}</span>
                     <span className="text-xs font-normal text-muted-foreground truncate">
-                      {user?.primaryEmailAddress?.emailAddress}
+                      {auth.userEmail}
                     </span>
                   </div>
                 </DropdownMenuLabel>
@@ -525,7 +523,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => signOut()}
+                  onClick={() => auth.signOut()}
                   className="text-destructive focus:text-destructive"
                 >
                   <LogOut className="mr-2 h-4 w-4" />

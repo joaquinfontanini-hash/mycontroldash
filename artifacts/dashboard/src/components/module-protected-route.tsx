@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LOCAL_AUTH_MODE, getLocalSession } from "@/lib/local-auth";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -140,7 +141,22 @@ function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: Rea
   return <>{children}</>;
 }
 
-export function ProtectedRoute({
+// ── Local auth version: checks localStorage, no API calls ──────────────────────
+
+function ProtectedRouteLocal({
+  component: Component,
+}: {
+  component: React.ComponentType;
+  moduleKey?: string;
+}) {
+  const session = getLocalSession();
+  if (!session) return <Redirect to="/sign-in" />;
+  return <Component />;
+}
+
+// ── Clerk version: validates Clerk session + module guards ──────────────────────
+
+function ProtectedRouteClerk({
   component: Component,
   moduleKey,
 }: {
@@ -163,3 +179,8 @@ export function ProtectedRoute({
 
   return <Component />;
 }
+
+export const ProtectedRoute: React.FC<{
+  component: React.ComponentType;
+  moduleKey?: string;
+}> = LOCAL_AUTH_MODE ? ProtectedRouteLocal : ProtectedRouteClerk;
