@@ -23,14 +23,18 @@ export function getLocalSession(): LocalSession | null {
   }
 }
 
-export function setLocalSession(): void {
+export function setLocalSession(opts?: { name?: string; email?: string }): void {
   const session: LocalSession = {
-    name: LOCAL_NAME,
-    email: LOCAL_EMAIL,
+    name: opts?.name ?? LOCAL_NAME,
+    email: opts?.email ?? LOCAL_EMAIL,
     role: "super_admin",
     loggedInAt: Date.now(),
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+export function saveLocalSession(opts: { name?: string; email?: string }): void {
+  setLocalSession(opts);
 }
 
 export function clearLocalSession(): void {
@@ -39,4 +43,8 @@ export function clearLocalSession(): void {
 
 export function checkPassword(password: string): boolean {
   return password === LOCAL_PASSWORD;
+}
+
+export function verifyLocalPassword(password: string): boolean {
+  return checkPassword(password);
 }

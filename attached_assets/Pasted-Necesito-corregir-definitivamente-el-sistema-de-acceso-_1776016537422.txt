@@ -1,0 +1,88 @@
+Necesito corregir definitivamente el sistema de acceso de la app.
+
+OBJETIVO
+Quiero que el sistema permita ingresar de dos maneras:
+
+1. Con Google
+2. Con usuario y contraseña
+
+Además, necesito que mi usuario principal sea el super usuario del sistema.
+
+REQUISITOS FUNCIONALES
+
+1) DOBLE MÉTODO DE LOGIN
+Implementar una pantalla de acceso con dos opciones:
+- Ingresar con Google
+- Ingresar con email/usuario y contraseña
+
+2) SUPER USUARIO
+Necesito que el usuario:
+- joaquin.fontanini@gmail.com
+
+quede registrado como:
+- super_admin
+- acceso total
+- control total de módulos y usuarios
+
+3) CONTRASEÑA LOCAL
+La contraseña inicial del super usuario debe ser:
+Felipe$10
+
+PERO IMPORTANTE:
+- no la hardcodees en texto plano dentro del frontend
+- no quiero que quede expuesta en la build
+- guardala con hash
+- si hace falta, generá un mecanismo de bootstrap inicial o seed seguro
+- si la arquitectura es estática, implementá una forma razonable y segura dentro del alcance del proyecto
+
+4) ERROR ACTUAL A CORREGIR
+Ahora la app muestra error de sesión al conectar con el servidor.
+Necesito que lo corrijas.
+
+La app no debe:
+- depender obligatoriamente de Clerk para cargar sesión
+- quedar bloqueada si falla auth externa
+- mostrar error fatal al iniciar
+
+5) COMPORTAMIENTO ESPERADO
+Quiero que funcione así:
+- si el usuario entra con Google y coincide con una cuenta autorizada, entra
+- si entra con usuario y contraseña local válidos, entra
+- si el usuario es joaquin.fontanini@gmail.com, debe quedar como super_admin
+- la sesión debe persistir correctamente
+- al refrescar la página no debe romperse
+- debe poder cerrar sesión correctamente
+
+6) SEGURIDAD
+- no exponer secretos en frontend
+- no dejar contraseñas visibles en el bundle
+- no dejar el rol de super_admin asignable por cualquier usuario
+- proteger rutas por rol
+- si Google no está configurado o falla, debe seguir funcionando el login local
+
+7) MODO DE IMPLEMENTACIÓN
+Quiero que desacoples correctamente la auth para que:
+- exista proveedor Google si está configurado
+- exista proveedor local siempre disponible
+- el sistema elija el flujo correcto sin romper la app
+
+8) VALIDACIONES
+Verificá:
+- login con Google
+- login con usuario y contraseña
+- sesión persistente
+- logout
+- acceso del super_admin
+- acceso restringido para otros usuarios
+- que no aparezca más el error de sesión
+- que la app cargue bien después del login
+
+9) ENTREGABLE
+Quiero que me entregues:
+- causa exacta del error actual
+- qué corregiste
+- cómo quedó implementado Google login
+- cómo quedó implementado el login local
+- cómo quedó definido el super_admin
+- nueva build lista para publicar
+- instrucciones exactas para probar ambos tipos de acceso

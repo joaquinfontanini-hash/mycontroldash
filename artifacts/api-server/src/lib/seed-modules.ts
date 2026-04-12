@@ -1,4 +1,4 @@
-import { db, modulesTable } from "@workspace/db";
+import { db, modulesTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger.js";
 
@@ -40,14 +40,51 @@ export async function seedModules(): Promise<void> {
 }
 
 export async function bootstrapSuperAdmin(): Promise<void> {
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
-  if (!superAdminEmail) return;
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL ?? "joaquin.fontanini@gmail.com";
+  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
+
   try {
-    const { usersTable } = await import("@workspace/db");
-    const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, superAdminEmail));
-    if (existing && existing.role !== "super_admin") {
-      await db.update(usersTable).set({ role: "super_admin" }).where(eq(usersTable.email, superAdminEmail));
-      logger.info({ email: superAdminEmail }, "Super admin promoted from env var");
+    const [existing] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, superAdminEmail));
+
+    if (!existing) {
+      if (!superAdminPassword) {
+        logger.warn({ email: superAdminEmail }, "Super admin not found and SUPER_ADMIN_PASSWORD not set — skipping creation");
+        return;
+      }
+      const { default: bcrypt } = await import("bcrypt");
+      const hash = await bcrypt.hash(superAdminPassword, 12);
+      await db.insert(usersTable).values({
+        email: superAdminEmail,
+        name: "Joaquin Fontanini",
+        role: "super_admin",
+        passwordHash: hash,
+        isActive: true,
+        isBlocked: false,
+      });
+      logger.info({ email: superAdminEmail }, "Super admin created with local password");
+      return;
+    }
+
+    const updates: Record<string, unknown> = {};
+
+    if (existing.role !== "super_admin") {
+      updates.role = "super_admin";
+    }
+
+    if (!existing.passwordHash && superAdminPassword) {
+      const { default: bcrypt } = await import("bcrypt");
+      updates.passwordHash = await bcrypt.hash(superAdminPassword, 12);
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await db
+        .update(usersTable)
+        .set(updates)
+        .where(eq(usersTable.email, superAdminEmail));
+      logger.info({ email: superAdminEmail, updates: Object.keys(updates) }, "Super admin updated");
     }
   } catch (err) {
     logger.error({ err }, "bootstrapSuperAdmin error");

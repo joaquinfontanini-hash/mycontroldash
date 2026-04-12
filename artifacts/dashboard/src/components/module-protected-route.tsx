@@ -1,6 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Redirect } from "wouter";
-import { useUser } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { AlertTriangle, RefreshCw } from "lucide-react";
@@ -154,7 +153,7 @@ function ProtectedRouteLocal({
   return <Component />;
 }
 
-// ── Clerk version: validates Clerk session + module guards ──────────────────────
+// ── Clerk+Session version: validates backend session + module guards ────────────
 
 function ProtectedRouteClerk({
   component: Component,
@@ -163,11 +162,11 @@ function ProtectedRouteClerk({
   component: React.ComponentType;
   moduleKey?: string;
 }) {
-  const { isSignedIn, isLoaded } = useUser();
+  const { data: me, isLoading, isError } = useCurrentUser();
 
-  if (!isLoaded) return <Spinner />;
+  if (isLoading) return <Spinner />;
 
-  if (!isSignedIn) return <Redirect to="/" />;
+  if (isError || !me) return <Redirect to="/sign-in" />;
 
   if (moduleKey) {
     return (

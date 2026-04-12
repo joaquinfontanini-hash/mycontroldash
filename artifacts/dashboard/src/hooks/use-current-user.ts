@@ -5,7 +5,7 @@ const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 export interface CurrentUser {
   id: number;
-  clerkId: string;
+  clerkId: string | null;
   email: string;
   name: string | null;
   role: "super_admin" | "admin" | "editor" | "viewer" | string;
@@ -27,7 +27,7 @@ export function useCurrentUser() {
     ? session
       ? {
           id: 1,
-          clerkId: "local",
+          clerkId: null,
           email: session.email ?? LOCAL_EMAIL,
           name: session.name ?? LOCAL_NAME,
           role: "super_admin",
@@ -46,15 +46,15 @@ export function useCurrentUser() {
     queryKey: ["current-user"],
     queryFn: async () => {
       if (LOCAL_AUTH_MODE) return localUser!;
-      const r = await fetch(`${BASE}/api/users/me`);
+      const r = await fetch(`${BASE}/api/users/me`, { credentials: "include" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     },
     enabled: !LOCAL_AUTH_MODE || !!session,
     initialData: LOCAL_AUTH_MODE ? localUser : undefined,
     staleTime: LOCAL_AUTH_MODE ? Infinity : 30_000,
-    retry: LOCAL_AUTH_MODE ? false : 2,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    retry: LOCAL_AUTH_MODE ? false : 1,
+    retryDelay: 3000,
   });
 }
 

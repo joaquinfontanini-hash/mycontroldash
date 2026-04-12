@@ -7,7 +7,7 @@ import { logger } from "../lib/logger.js";
 export type AuthenticatedRequest = Request & {
   dbUser: {
     id: number;
-    clerkId: string;
+    clerkId: string | null;
     email: string;
     name: string | null;
     role: string;
@@ -16,16 +16,34 @@ export type AuthenticatedRequest = Request & {
   };
 };
 
-export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const auth = getAuth(req);
-  if (!auth?.userId) {
-    res.status(401).json({ error: "No autenticado" });
-    return;
+async function resolveUser(req: Request): Promise<typeof usersTable.$inferSelect | null> {
+  const sessionUserId = req.session?.userId;
+  if (sessionUserId) {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, sessionUserId));
+    return user ?? null;
   }
+
+  const clerkId = getAuth(req)?.userId;
+  if (clerkId) {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.clerkId, clerkId));
+    return user ?? null;
+  }
+
+  return null;
+}
+
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, auth.userId));
+    const user = await resolveUser(req);
+
     if (!user) {
-      res.status(401).json({ error: "Usuario no registrado en el sistema" });
+      res.status(401).json({ error: "No autenticado" });
       return;
     }
     if (!user.isActive) {
@@ -36,8 +54,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       res.status(403).json({ error: "Cuenta bloqueada. Contactá al administrador." });
       return;
     }
+
     (req as AuthenticatedRequest).dbUser = user;
-    await db.update(usersTable).set({ lastActivityAt: new Date() }).where(eq(usersTable.id, user.id));
+    await db
+      .update(usersTable)
+      .set({ lastActivityAt: new Date() })
+      .where(eq(usersTable.id, user.id));
     next();
   } catch (err) {
     logger.error({ err }, "requireAuth error");
@@ -47,13 +69,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
 export function requireRole(...roles: string[]) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const auth = getAuth(req);
-    if (!auth?.userId) {
-      res.status(401).json({ error: "No autenticado" });
-      return;
-    }
     try {
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, auth.userId));
+      const user = await resolveUser(req);
+
       if (!user || !user.isActive || user.isBlocked) {
         res.status(403).json({ error: "Acceso denegado" });
         return;
@@ -62,6 +80,7 @@ export function requireRole(...roles: string[]) {
         res.status(403).json({ error: `Se requiere rol: ${roles.join(" o ")}` });
         return;
       }
+
       (req as AuthenticatedRequest).dbUser = user;
       next();
     } catch (err) {

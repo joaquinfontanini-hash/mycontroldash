@@ -1,35 +1,55 @@
 import { useEffect, useRef } from "react";
-import { useUser } from "@clerk/react";
+import { useUser, useAuth } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { LOCAL_AUTH_MODE } from "@/lib/local-auth";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 const MAX_ATTEMPTS = 3;
 
-async function syncUser(
+async function registerUser(
   clerkId: string,
   email: string,
   name: string | null,
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) {
-      await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
-    }
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
     try {
       const r = await fetch(`${BASE}/api/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ clerkId, email, name }),
       });
       if (r.ok || r.status === 409) return;
     } catch {
-      if (attempt === MAX_ATTEMPTS - 1) throw new Error("sync failed after retries");
+      if (attempt === MAX_ATTEMPTS - 1) throw new Error("register failed");
+    }
+  }
+}
+
+async function establishGoogleSession(getToken: () => Promise<string | null>): Promise<void> {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const r = await fetch(`${BASE}/api/auth/google-session`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
+      if (r.ok) return;
+    } catch {
+      if (attempt === MAX_ATTEMPTS - 1) throw new Error("session sync failed");
     }
   }
 }
 
 function useUserSyncClerk() {
   const { user, isSignedIn, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const qc = useQueryClient();
   const syncedRef = useRef<string | null>(null);
   const abortRef = useRef(false);
@@ -46,7 +66,8 @@ function useUserSyncClerk() {
     const email = user.primaryEmailAddress?.emailAddress ?? "";
     const name = user.fullName ?? null;
 
-    syncUser(user.id, email, name)
+    registerUser(user.id, email, name)
+      .then(() => establishGoogleSession(getToken))
       .then(() => {
         if (!abortRef.current) {
           syncedRef.current = user.id;
@@ -58,7 +79,7 @@ function useUserSyncClerk() {
           qc.invalidateQueries({ queryKey: ["current-user"] });
         }
       });
-  }, [isLoaded, isSignedIn, user, qc]);
+  }, [isLoaded, isSignedIn, user, qc, getToken]);
 }
 
 function useUserSyncLocal() {

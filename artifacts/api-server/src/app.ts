@@ -3,14 +3,39 @@ import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
+import session from "express-session";
+import ConnectPg from "connect-pg-simple";
 import { clerkMiddleware } from "@clerk/express";
-import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
-import router from "./routes";
-import { logger } from "./lib/logger";
-import { startScheduler } from "./jobs/scheduler";
+import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware.js";
+import router from "./routes/index.js";
+import { logger } from "./lib/logger.js";
+import { startScheduler } from "./jobs/scheduler.js";
 import { seedDefaultCategories } from "./lib/seed.js";
 import { seedCalendar2026, patchGanancias2026 } from "./lib/seed-calendar-2026.js";
 import { seedModules, bootstrapSuperAdmin } from "./lib/seed-modules.js";
+
+// CJS/ESM interop: connect-pg-simple expects the express-session module reference
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const PgSession = ConnectPg(session as any);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sessionMiddleware = (session as any)(
+  {
+    store: new PgSession({
+      conString: process.env.DATABASE_URL,
+      tableName: "session",
+      createTableIfMissing: true,
+    }),
+    secret: process.env.SESSION_SECRET ?? "fallback-dev-secret-change-in-prod",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      sameSite: process.env.NODE_ENV === "production" ? ("strict" as const) : ("lax" as const),
+    },
+  } satisfies session.SessionOptions,
+);
 
 const app: Express = express();
 
@@ -82,6 +107,8 @@ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+app.use(sessionMiddleware);
 
 app.use(clerkMiddleware());
 

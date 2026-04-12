@@ -14,7 +14,7 @@ A full-stack personal executive dashboard for an Argentine contador/consultor in
 - **UI Components**: shadcn/ui + Radix UI + Framer Motion
 - **Backend**: Express 5 + Node.js
 - **Database**: PostgreSQL + Drizzle ORM
-- **Authentication**: Clerk (Google OAuth + email/password)
+- **Authentication**: Dual system — local email/password (session-based, always available) + Google OAuth via Clerk
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -116,9 +116,21 @@ Disabled: AFIP (404), Boletín Oficial (SPA), El Cronista (HTML)
 
 ## Authentication
 
-Uses Clerk authentication with support for Google OAuth. User roles: admin, editor, viewer.
-- Admin can manage users (activate/deactivate, change roles)
-- All dashboard routes require authentication
+**Dual auth system (session-based + Clerk):**
+
+1. **Local email/password** (primary): `POST /api/auth/login` verifies bcrypt hash → creates Express session cookie (`connect.sid`, 30-day, stored in PostgreSQL `session` table). Fully independent of Clerk — always works even without internet.
+2. **Google OAuth** (via Clerk): after Clerk OAuth completes, `use-user-sync.ts` calls `POST /api/auth/google-session` with the Clerk Bearer token → backend creates a parallel Express session.
+
+**Super admin**: `joaquin.fontanini@gmail.com`, password `Felipe$10` (bcrypt-hashed in DB, id=2, role=`super_admin`).
+
+**Key files:**
+- `artifacts/api-server/src/routes/auth.ts` — login, google-session, logout, me routes
+- `artifacts/api-server/src/middleware/require-auth.ts` — checks `req.session.userId` first, then Clerk JWT
+- `artifacts/dashboard/src/pages/sign-in.tsx` — dual form: Google button (Clerk modal) + email/password
+- `artifacts/dashboard/src/lib/local-auth.ts` — `LOCAL_AUTH_MODE`, `verifyLocalPassword`, `saveLocalSession`
+- `artifacts/dashboard/src/hooks/use-user-sync.ts` — registers Google user + establishes backend session
+
+User roles: super_admin, admin, editor, viewer. All dashboard routes require a valid session.
 
 ## Data Quality System (v3)
 

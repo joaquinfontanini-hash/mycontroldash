@@ -10,6 +10,17 @@ import { logger } from "../lib/logger.js";
 const router: IRouter = Router();
 
 router.get("/users/me", async (req, res): Promise<void> => {
+  const sessionUserId = req.session?.userId;
+  if (sessionUserId) {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, sessionUserId));
+    if (!user || !user.isActive || user.isBlocked) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    res.json(user);
+    return;
+  }
+
   const auth = getAuth(req);
   const clerkId = auth?.userId;
   if (!clerkId) {
