@@ -168,6 +168,8 @@ function ProtectedRouteClerk({
 
   if (isError || !me) return <Redirect to="/sign-in" />;
 
+  if (me.mustChangePassword) return <Redirect to="/change-password" />;
+
   if (moduleKey) {
     return (
       <ModuleGuard moduleKey={moduleKey}>

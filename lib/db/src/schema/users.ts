@@ -14,6 +14,7 @@ export const usersTable = pgTable("users", {
   blockedAt: timestamp("blocked_at", { withTimezone: true }),
   blockedReason: text("blocked_reason"),
   lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

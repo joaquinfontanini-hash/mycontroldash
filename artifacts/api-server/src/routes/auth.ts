@@ -53,9 +53,53 @@ router.post("/auth/login", async (req: Request, res): Promise<void> => {
       .where(eq(usersTable.id, user.id));
 
     logger.info({ userId: user.id, email: user.email }, "Local login success");
-    res.json({ id: user.id, email: user.email, name: user.name, role: user.role });
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword,
+    });
   } catch (err) {
     logger.error({ err }, "auth/login error");
+    res.status(500).json({ error: "Error interno. Intentá de nuevo." });
+  }
+});
+
+router.post("/auth/change-password", async (req: Request, res): Promise<void> => {
+  const sessionUserId = req.session?.userId;
+  if (!sessionUserId) {
+    res.status(401).json({ error: "No autenticado" });
+    return;
+  }
+
+  const { newPassword } = req.body ?? {};
+  if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+    res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres" });
+    return;
+  }
+
+  try {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, sessionUserId));
+
+    if (!user || !user.isActive || user.isBlocked) {
+      res.status(403).json({ error: "Acceso denegado" });
+      return;
+    }
+
+    const hash = await bcrypt.hash(newPassword, 12);
+    await db
+      .update(usersTable)
+      .set({ passwordHash: hash, mustChangePassword: false, updatedAt: new Date() })
+      .where(eq(usersTable.id, user.id));
+
+    logger.info({ userId: user.id }, "Password changed successfully");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "auth/change-password error");
     res.status(500).json({ error: "Error interno. Intentá de nuevo." });
   }
 });

@@ -39,7 +39,7 @@ function ClerkSignInButton() {
   );
 }
 
-function LocalPasswordForm({ onSuccess }: { onSuccess: () => void }) {
+function LocalPasswordForm({ onSuccess }: { onSuccess: (mustChangePassword: boolean) => void }) {
   const [email, setEmail] = useState(SUPER_ADMIN_EMAIL);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,7 +60,7 @@ function LocalPasswordForm({ onSuccess }: { onSuccess: () => void }) {
         }
         saveLocalSession({ name: "Joaquin Fontanini", email });
         qc.invalidateQueries({ queryKey: ["current-user"] });
-        onSuccess();
+        onSuccess(false);
         return;
       }
 
@@ -76,7 +76,7 @@ function LocalPasswordForm({ onSuccess }: { onSuccess: () => void }) {
         return;
       }
       qc.invalidateQueries({ queryKey: ["current-user"] });
-      onSuccess();
+      onSuccess(data.mustChangePassword === true);
     } catch {
       setError("No se pudo conectar. Intentá de nuevo.");
     } finally {
@@ -152,7 +152,7 @@ export default function SignInPage() {
           </>
         )}
 
-        <LocalPasswordForm onSuccess={() => setLocation("/dashboard")} />
+        <LocalPasswordForm onSuccess={(mustChange) => setLocation(mustChange ? "/change-password" : "/dashboard")} />
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ export interface CurrentUser {
   isBlocked: boolean;
   blockedAt: string | null;
   blockedReason: string | null;
+  mustChangePassword: boolean;
   lastActivityAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +36,7 @@ export function useCurrentUser() {
           isBlocked: false,
           blockedAt: null,
           blockedReason: null,
+          mustChangePassword: false,
           lastActivityAt: null,
           createdAt: STATIC_DATE,
           updatedAt: STATIC_DATE,
