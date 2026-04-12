@@ -40,7 +40,12 @@ const ChatPage           = lazy(() => import("@/pages/dashboard/chat"));
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+// When base is "./" (portable static build), BASE_URL is "./" or ".".
+// Normalise to "" so Wouter gets no base prefix and routes work correctly.
+const rawBaseUrl = import.meta.env.BASE_URL ?? "/";
+const basePath = rawBaseUrl === "./" || rawBaseUrl === "."
+  ? ""
+  : rawBaseUrl.replace(/\/$/, "");
 
 if (!clerkPubKey) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");

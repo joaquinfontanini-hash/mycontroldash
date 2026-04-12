@@ -12,3 +12,9 @@ id = "M3KPzRw_nNPinmjEwvYUL"
 uri = "file://exports/backup-proyecto.tar.gz"
 type = "unspecified"
 title = "Backup completo del código fuente"
+
+[[outputs]]
+id = "5ku3YKy6JBMIM4a92wxug"
+uri = "file://exports/dashboard-static-build.tar.gz"
+type = "unspecified"
+title = "dashboard-static-build.tar.gz — Build estática lista para hosting"
