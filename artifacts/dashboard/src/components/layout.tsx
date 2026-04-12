@@ -12,6 +12,7 @@ import {
   Shield, Search, LogOut, Moon, Sun, Menu, Users, Truck, Crown,
   DollarSign, Sparkles, RefreshCw, Brain, Target, Flag,
   ChevronLeft, ChevronRight, Pin, PinOff, PanelLeftClose, PanelLeft,
+  MessageSquare, Contact,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,8 @@ const ALL_NAV_ITEMS = [
   { href: "/dashboard/goals", label: "Objetivos", icon: Target, moduleKey: "goals" },
   { href: "/dashboard/strategy", label: "Estrategia", icon: Flag, moduleKey: "strategy" },
   { href: "/dashboard/decisions", label: "Decisiones", icon: Brain, moduleKey: "decisions" },
+  { href: "/dashboard/contacts", label: "Contactos", icon: Contact, moduleKey: "contacts" },
+  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare, moduleKey: "chat" },
 ];
 
 interface ModuleData {
@@ -100,13 +103,25 @@ function useVisibleModules() {
   });
 }
 
+// ── Unread messages hook ────────────────────────────────────────────────────────
+
+function useUnreadMessages() {
+  const { data } = useQuery<{ total: number }>({
+    queryKey: ["chat-unread"],
+    queryFn: () => fetch(`${BASE}/api/conversations/unread`).then(r => r.ok ? r.json() : { total: 0 }),
+    refetchInterval: 10_000,
+    staleTime: 0,
+  });
+  return data?.total ?? 0;
+}
+
 // ── NavLink ────────────────────────────────────────────────────────────────────
 
 function NavLink({
-  href, label, icon: Icon, location, onClick, collapsed,
+  href, label, icon: Icon, location, onClick, collapsed, badge,
 }: {
   href: string; label: string; icon: React.ElementType;
-  location: string; onClick?: () => void; collapsed?: boolean;
+  location: string; onClick?: () => void; collapsed?: boolean; badge?: number;
 }) {
   const isActive = location === href || (href !== "/dashboard" && location.startsWith(href));
 
@@ -117,17 +132,22 @@ function NavLink({
           <Link
             href={href}
             onClick={onClick}
-            className={`flex items-center justify-center h-10 w-10 mx-auto rounded-lg transition-all duration-150
+            className={`relative flex items-center justify-center h-10 w-10 mx-auto rounded-lg transition-all duration-150
               ${isActive
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
               }`}
           >
             <Icon className="h-[18px] w-[18px] shrink-0" />
+            {badge != null && badge > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 bg-primary text-primary-foreground text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                {badge > 99 ? "99+" : badge}
+              </span>
+            )}
           </Link>
         </TooltipTrigger>
         <TooltipContent side="right" className="text-xs font-medium">
-          {label}
+          {label}{badge != null && badge > 0 ? ` (${badge})` : ""}
         </TooltipContent>
       </Tooltip>
     );
@@ -144,7 +164,12 @@ function NavLink({
         }`}
     >
       <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`} />
-      <span className="truncate">{label}</span>
+      <span className="truncate flex-1">{label}</span>
+      {badge != null && badge > 0 && (
+        <span className="ml-auto h-5 min-w-5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1 shrink-0">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -164,6 +189,7 @@ function SidebarContent({
   const { data: me } = useCurrentUser();
   const visibleItems = useVisibleModules();
   const canSeeAdmin = isAdmin(me);
+  const chatUnread = useUnreadMessages();
 
   if (collapsed) {
     return (
@@ -185,7 +211,10 @@ function SidebarContent({
 
         <nav className="flex flex-col gap-1 flex-1 overflow-y-auto w-full items-center px-1">
           {visibleItems.map((item) => (
-            <NavLink key={item.href} {...item} location={location} onClick={onNavigate} collapsed />
+            <NavLink
+              key={item.href} {...item} location={location} onClick={onNavigate} collapsed
+              badge={item.moduleKey === "chat" ? chatUnread : undefined}
+            />
           ))}
 
           <Separator className="w-8 my-1" />
@@ -285,7 +314,10 @@ function SidebarContent({
         </p>
         <nav className="flex flex-col gap-0.5">
           {visibleItems.map((item) => (
-            <NavLink key={item.href} {...item} location={location} onClick={onNavigate} />
+            <NavLink
+              key={item.href} {...item} location={location} onClick={onNavigate}
+              badge={item.moduleKey === "chat" ? chatUnread : undefined}
+            />
           ))}
         </nav>
 

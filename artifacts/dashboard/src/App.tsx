@@ -35,6 +35,8 @@ const StrategyPage       = lazy(() => import("@/pages/dashboard/strategy"));
 const DecisionsPage      = lazy(() => import("@/pages/dashboard/decisions"));
 const AdminPage          = lazy(() => import("@/pages/admin"));
 const SettingsPage       = lazy(() => import("@/pages/settings"));
+const ContactsPage       = lazy(() => import("@/pages/dashboard/contacts"));
+const ChatPage           = lazy(() => import("@/pages/dashboard/chat"));
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -94,6 +96,8 @@ const Strategy           = () => <DashboardLayout><Lazy><StrategyPage /></Lazy><
 const Decisions          = () => <DashboardLayout><Lazy><DecisionsPage /></Lazy></DashboardLayout>;
 const Admin              = () => <DashboardLayout><Lazy><AdminPage /></Lazy></DashboardLayout>;
 const Settings           = () => <DashboardLayout><Lazy><SettingsPage /></Lazy></DashboardLayout>;
+const Contacts           = () => <DashboardLayout><Lazy><ContactsPage /></Lazy></DashboardLayout>;
+const Chat               = () => <DashboardLayout><Lazy><ChatPage /></Lazy></DashboardLayout>;
 
 const RouteDashboard       = () => <ProtectedRoute moduleKey="dashboard"        component={DashboardPage} />;
 const RouteTasks           = () => <ProtectedRoute moduleKey="tasks"            component={Tasks} />;
@@ -113,6 +117,8 @@ const RouteStrategy        = () => <ProtectedRoute moduleKey="strategy"         
 const RouteDecisions       = () => <ProtectedRoute moduleKey="decisions"        component={Decisions} />;
 const RouteAdmin           = () => <ProtectedRoute moduleKey="admin"            component={Admin} />;
 const RouteSettings        = () => <ProtectedRoute moduleKey="settings"         component={Settings} />;
+const RouteContacts        = () => <ProtectedRoute moduleKey="contacts"         component={Contacts} />;
+const RouteChat            = () => <ProtectedRoute moduleKey="chat"             component={Chat} />;
 
 // ── Clerk cache invalidator ────────────────────────────────────────────────────
 
@@ -181,6 +187,8 @@ function ClerkProviderWithRoutes() {
             <Route path="/dashboard/decisions"    component={RouteDecisions} />
             <Route path="/admin"                  component={RouteAdmin} />
             <Route path="/settings"               component={RouteSettings} />
+            <Route path="/dashboard/contacts"     component={RouteContacts} />
+            <Route path="/dashboard/chat"         component={RouteChat} />
             <Route component={NotFound} />
           </Switch>
         </TooltipProvider>

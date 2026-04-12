@@ -22,6 +22,8 @@ import securityLogsRouter from "./security-logs";
 import financeRouter from "./finance";
 import goalsRouter from "./goals";
 import userSettingsRouter from "./user-settings";
+import contactsRouter from "./contacts";
+import chatRouter from "./chat";
 
 const router: IRouter = Router();
 
@@ -48,5 +50,7 @@ router.use(securityLogsRouter);
 router.use(financeRouter);
 router.use(goalsRouter);
 router.use(userSettingsRouter);
+router.use(contactsRouter);
+router.use(chatRouter);
 
 export default router;

@@ -184,3 +184,40 @@ Still needed for real Excel/Sheets reading:
 3. A `getGoogleSheetsClient(userId)` service that reads OAuth tokens from `email_connections` table
 4. A sync job that reads rows from Google Sheets and stores them in a new `imported_data` table
 5. For Excel files: `xlsx` or `exceljs` package + a file upload endpoint
+
+## Chat Interno y Contactos (Módulos 19-20)
+
+### Nuevas tablas en PostgreSQL
+- **`user_profiles`**: extends users — phone, bio, avatarUrl, area; userId UNIQUE FK → users
+- **`conversations`**: id, type ("direct"/"group"), name, createdAt, updatedAt
+- **`conversation_participants`**: conversationId + userId FKs, lastReadAt (for unread tracking), joinedAt
+- **`messages`**: conversationId + senderId FKs, content, isDeleted, createdAt
+
+### API Routes (auth required)
+- `GET /api/contacts` — all users with profile data merged
+- `PATCH /api/contacts/me` — update own phone/bio/avatarUrl/area
+- `PATCH /api/contacts/:id` — admin-only: update any user's profile + name
+- `GET /api/conversations` — user's conversations with participants, lastMessage, unreadCount
+- `POST /api/conversations` — start/get direct conversation (idempotent)
+- `GET /api/conversations/unread` — total unread count for badge
+- `GET /api/conversations/:id/messages` — last 100 messages, enriched with sender info
+- `POST /api/conversations/:id/messages` — send message (max 5000 chars)
+- `PUT /api/conversations/:id/read` — mark conversation as read (updates lastReadAt)
+
+### Frontend Pages
+- `/dashboard/contacts` — Grid of user cards: avatar/initials, name, role badge, status, email, phone, area, bio; "Mensaje" button → navigates to chat; Edit dialog (own profile, admin can edit anyone)
+- `/dashboard/chat` — Split-panel: left (conversations list with unread badges), right (messages + input); polling every 3s; "Nueva conversación" dialog with user search; Responsive (mobile: single panel toggle)
+
+### Sidebar
+- Contactos (Contact icon) + Chat (MessageSquare icon) added to ALL_NAV_ITEMS
+- Chat item shows live unread badge (polls every 10s via useUnreadMessages hook)
+- Badge visible in both expanded and collapsed sidebar states
+
+### Módulos seeded
+- `contacts` (orderIndex 18, all roles)
+- `chat` (orderIndex 19, all roles)
+
+### Design decisions
+- Polling interval: 3s for messages, 10s for unread count in sidebar
+- Security: server-side participant check on every message endpoint
+- Architecture ready for WebSocket upgrade (all data model in place)

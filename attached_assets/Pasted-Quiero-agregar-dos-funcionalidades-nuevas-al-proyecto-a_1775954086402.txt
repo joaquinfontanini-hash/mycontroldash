@@ -1,0 +1,256 @@
+Quiero agregar dos funcionalidades nuevas al proyecto actual del dashboard web, trabajando sobre la base existente, sin romper nada de lo ya implementado.
+
+IMPORTANTE
+- No rehagas la app desde cero
+- Integrá estas funciones con el sistema actual de usuarios, roles, seguridad y panel admin
+- Todo debe quedar auditado, validado, integrado, verificado y orientado al usuario final
+- Priorizá una implementación sólida, clara, usable y consistente con el diseño actual
+- Mantener la estética moderna, premium y rápida de la app
+
+OBJETIVO
+Agregar:
+1. Chat interno entre usuarios
+2. Tarjeta de contacto por cada usuario con teléfono, email y foto
+
+==================================================
+1) CHAT INTERNO ENTRE USUARIOS
+==================================================
+
+Quiero un sistema de chat interno dentro de la app.
+
+REQUISITOS GENERALES
+- Debe estar integrado con el sistema actual de usuarios
+- Solo usuarios autenticados pueden acceder
+- Debe respetar roles y permisos si corresponde
+- Debe verse como parte nativa del dashboard, no como algo externo
+- Debe ser rápido, claro y usable
+
+FUNCIONALIDADES
+- Lista de conversaciones
+- Posibilidad de iniciar conversación con otro usuario
+- Vista de chat con mensajes
+- Campo para escribir y enviar mensaje
+- Timestamp por mensaje
+- Mostrar quién envió cada mensaje
+- Estado visual básico:
+  - enviado
+  - leído si es viable en esta etapa
+- Búsqueda de usuarios para iniciar chat
+- Notificación o badge de mensajes no leídos
+- Integración con campana o alertas si tiene sentido
+
+TIPO DE CHAT
+- Primero implementar chat directo 1 a 1 entre usuarios
+- Dejar preparada arquitectura para grupos futuros
+- Si da el alcance, agregar conversaciones grupales como base, pero priorizar que funcione bien el chat individual
+
+PERSISTENCIA
+- Si el sistema sigue con localStorage o almacenamiento local en esta etapa:
+  - persistir conversaciones y mensajes de forma ordenada
+- Dejar arquitectura lista para backend o websocket futuro
+
+UI/UX
+- Panel de conversaciones
+- Panel de mensajes
+- Vista moderna tipo chat interno profesional
+- Buen espaciado
+- Avatares o iniciales
+- Diferenciar mensajes propios y ajenos
+- Responsive
+- No truncar mensajes
+- Soportar textos largos sin romper el layout
+
+SEGURIDAD Y CONTROL
+- Solo ver chats donde el usuario participa
+- No permitir acceder a conversaciones ajenas por URL o manipulación del estado
+- Validar remitente y destinatario
+- Integrar con usuario autenticado actual
+
+==================================================
+2) TARJETA DE CONTACTO POR CADA USUARIO
+==================================================
+
+Quiero que cada usuario tenga una tarjeta de contacto visible dentro del sistema.
+
+DATOS DE LA TARJETA
+- nombre
+- apellido si existe
+- rol
+- teléfono
+- email
+- foto o avatar
+- estado del usuario:
+  - activo
+  - bloqueado
+  - inactivo
+- opcional:
+  - área
+  - observaciones
+  - último acceso
+
+REQUISITOS
+- Crear una vista o sección de contactos/usuarios
+- Mostrar tarjetas de usuario visualmente prolijas
+- Cada tarjeta debe tener:
+  - foto o avatar
+  - nombre completo
+  - email
+  - teléfono
+  - rol
+  - acción para ver perfil o iniciar chat
+- Si no hay foto, usar avatar con iniciales elegante
+- Diseño moderno y consistente con el resto del dashboard
+- Responsive
+- Sin componentes truncos
+
+FUNCIONALIDAD
+- Poder editar estos datos si el rol lo permite
+- Super admin o admin deben poder modificar teléfono, foto y datos del usuario si aplica
+- El propio usuario debería poder completar o editar su foto y teléfono si la arquitectura actual lo permite
+- Integrar con el sistema actual de usuarios
+
+==================================================
+3) INTEGRACIÓN ENTRE CONTACTOS Y CHAT
+==================================================
+
+Quiero que ambas funcionalidades queden unidas.
+
+REQUISITOS
+- Desde la tarjeta de contacto de un usuario debe existir un botón:
+  - “Enviar mensaje”
+  - o “Abrir chat”
+- Desde el chat debe poder verse mini info del usuario:
+  - nombre
+  - foto/avatar
+  - email si conviene
+- Debe existir una navegación clara entre:
+  - usuarios/contactos
+  - chat
+  - perfil del usuario
+
+==================================================
+4) PANEL ADMIN Y GESTIÓN
+==================================================
+
+Integrar esto con el panel administrativo actual.
+
+REQUISITOS
+- Admin o super admin deben poder:
+  - ver usuarios
+  - editar datos de contacto
+  - bloquear o desactivar usuarios
+  - definir qué usuarios pueden usar chat si existe lógica de permisos por módulo
+- Si ya existe sistema de módulos/permisos:
+  - considerar “Chat” o “Mensajes” como módulo
+  - controlar visibilidad en sidebar y acceso por rol
+- Si no existe aún como módulo, crear la estructura correctamente
+
+==================================================
+5) SIDEBAR Y NAVEGACIÓN
+==================================================
+
+Agregar al menú lateral, si corresponde:
+- Chat
+- Contactos o Usuarios
+
+REQUISITOS
+- Que no rompa la navegación actual
+- Que respete permisos
+- Que mantenga consistencia visual
+- Que el badge de mensajes no leídos se vea en el lugar correcto
+
+==================================================
+6) MODELOS Y ESTRUCTURA TÉCNICA
+==================================================
+
+Actualizar la estructura y base de datos/localStorage según haga falta para soportar:
+
+- users
+- user_profiles
+- user_contact_info
+- conversations
+- conversation_participants
+- messages
+- message_status
+- unread_counts
+
+Si la app todavía no usa backend real:
+- mantener una estructura limpia, modular y lista para migrar después
+
+Separar:
+- UI del chat
+- lógica de mensajes
+- persistencia
+- permisos
+- perfiles/contactos
+
+==================================================
+7) EXPERIENCIA DE USUARIO
+==================================================
+
+REQUISITOS
+- Todo debe sentirse nativo dentro del dashboard
+- Chat rápido y simple
+- Tarjetas de usuario limpias y elegantes
+- Buen hover y active states
+- Estados vacíos útiles:
+  - “No hay conversaciones”
+  - “No hay contactos disponibles”
+- Estados de error claros
+- Excelente responsive
+- Sin pantallas pobres o vacías
+
+==================================================
+8) ENTREGABLES
+==================================================
+
+Quiero que implementes esto en el proyecto actual y me entregues:
+
+- módulo de chat interno funcional
+- tarjetas de contacto por usuario
+- integración entre contactos y chat
+- integración con usuarios, roles y panel admin
+- navegación desde sidebar si corresponde
+- persistencia funcionando
+- UI consistente con el resto del sistema
+
+==================================================
+9) ORDEN DE IMPLEMENTACIÓN
+==================================================
+
+Hacelo en este orden:
+1. revisar arquitectura actual de usuarios y roles
+2. crear estructura de perfiles/contacto
+3. crear vista de tarjetas de usuario
+4. crear sistema de conversaciones y mensajes
+5. crear interfaz de chat
+6. integrar chat con contactos
+7. integrar con sidebar, permisos y admin
+8. revisar responsive y diseño
+9. ejecutar auditoría final
+10. dejar todo listo para correr
+
+==================================================
+10) AUDITORÍA FINAL OBLIGATORIA
+==================================================
+
+Al terminar, auditá:
+
+1. que no se haya roto nada de lo ya existente
+2. que el chat interno funcione entre usuarios
+3. que no se pueda acceder a conversaciones ajenas
+4. que las tarjetas de contacto muestren foto, teléfono y email correctamente
+5. que desde la tarjeta se pueda abrir chat
+6. que la persistencia de mensajes funcione
+7. que no haya badges o contadores rotos
+8. que sidebar y navegación sigan funcionando
+9. que responsive esté bien
+10. que no haya componentes truncos
+11. que la app siga rápida
+12. que todo quede consistente visualmente
+
+Al final entregame:
+- resumen de lo implementado
+- qué quedó 100% funcional
+- qué quedó preparado para futuro backend/tiempo real
+- checklist exacto para probarlo

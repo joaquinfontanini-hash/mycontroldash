@@ -21,6 +21,8 @@ const DEFAULT_MODULES = [
   { key: "strategy", name: "Estrategia", description: "Objetivos estratégicos y Gantt", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 15 },
   { key: "decisions", name: "Decisiones", description: "Motor de decisiones y scoring", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 16 },
   { key: "settings", name: "Ajustes", description: "Configuración personal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 17 },
+  { key: "contacts", name: "Contactos", description: "Tarjetas de contacto de usuarios", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 18 },
+  { key: "chat", name: "Chat", description: "Mensajería interna entre usuarios", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 19 },
 ];
 
 export async function seedModules(): Promise<void> {
