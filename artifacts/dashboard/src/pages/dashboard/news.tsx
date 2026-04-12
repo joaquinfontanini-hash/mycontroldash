@@ -6,6 +6,8 @@ import { Newspaper, ExternalLink, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 interface CategoryDef {
   value: string;
   label: string;
@@ -156,7 +158,7 @@ export default function NewsPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/news/refresh", { method: "POST" });
+      const res = await fetch(`${BASE}/api/news/refresh`, { method: "POST" });
       if (res.ok) {
         setLastRefreshed(new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }));
         queryClient.invalidateQueries({ queryKey: getListNewsQueryKey() });

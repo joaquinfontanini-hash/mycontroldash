@@ -1,10 +1,15 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Redirect } from "wouter";
 import { useUser } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+const RETRY_DELAY = (attempt: number) => Math.min(1000 * 2 ** attempt, 8000);
+const GUARD_TIMEOUT_MS = 12_000;
 
 interface ModuleData {
   key: string;
@@ -17,6 +22,8 @@ function useModules() {
     queryKey: ["modules"],
     queryFn: () => fetch(`${BASE}/api/modules`).then(r => r.ok ? r.json() : []),
     staleTime: 60_000,
+    retry: 2,
+    retryDelay: RETRY_DELAY,
   });
 }
 
@@ -24,6 +31,24 @@ function Spinner() {
   return (
     <div className="flex-1 flex items-center justify-center min-h-screen">
       <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+    </div>
+  );
+}
+
+function LoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] text-center gap-3 p-8">
+      <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+        <AlertTriangle className="h-5 w-5 text-destructive/70" />
+      </div>
+      <h2 className="text-lg font-semibold">No se pudo cargar tu sesión</h2>
+      <p className="text-muted-foreground text-sm max-w-xs">
+        Hubo un problema al conectar con el servidor. Verificá tu conexión e intentá de nuevo.
+      </p>
+      <Button size="sm" variant="outline" onClick={onRetry} className="gap-2">
+        <RefreshCw className="h-3.5 w-3.5" />
+        Reintentar
+      </Button>
     </div>
   );
 }
@@ -41,14 +66,40 @@ function AccessDenied({ title, message }: { title: string; message: ReactNode })
 }
 
 function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: ReactNode }) {
-  const { data: me, isLoading: meLoading } = useCurrentUser();
+  const {
+    data: me,
+    isLoading: meLoading,
+    isError: meError,
+    refetch: refetchMe,
+  } = useCurrentUser();
   const { data: modules, isLoading: modulesLoading } = useModules();
+  const [timedOut, setTimedOut] = useState(false);
 
-  if (meLoading || modulesLoading) return <Spinner />;
+  const isLoading = meLoading || modulesLoading;
 
-  if (!me) {
-    return <Spinner />;
+  useEffect(() => {
+    if (!isLoading) {
+      setTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setTimedOut(true), GUARD_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [isLoading]);
+
+  if (isLoading && !timedOut) return <Spinner />;
+
+  if (timedOut || meError || (!meLoading && !me)) {
+    return (
+      <LoadError
+        onRetry={() => {
+          setTimedOut(false);
+          refetchMe();
+        }}
+      />
+    );
   }
+
+  if (!me) return <Spinner />;
 
   if (me.isBlocked) {
     return (

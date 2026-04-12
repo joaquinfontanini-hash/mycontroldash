@@ -16,6 +16,8 @@ import {
   Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
 } from "@/components/ui/empty";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 const TAX_TYPES = [
   { key: "iva", label: "IVA", category: "impuestos" },
   { key: "ganancias", label: "Ganancias", category: "impuestos" },
@@ -94,7 +96,7 @@ export default function ClientsPage() {
   const { data: clients = [], isLoading } = useQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: async () => {
-      const res = await fetch("/api/clients");
+      const res = await fetch(`${BASE}/api/clients`);
       if (!res.ok) throw new Error("Error al cargar clientes");
       return res.json();
     },
@@ -102,7 +104,7 @@ export default function ClientsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: ClientForm) => {
-      const res = await fetch("/api/clients", {
+      const res = await fetch(`${BASE}/api/clients`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, cuit: data.cuit.replace(/\D/g, "") }),

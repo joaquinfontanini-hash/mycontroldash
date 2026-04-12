@@ -20,9 +20,14 @@ export interface CurrentUser {
 export function useCurrentUser() {
   return useQuery<CurrentUser>({
     queryKey: ["current-user"],
-    queryFn: () => fetch(`${BASE}/api/users/me`).then(r => r.ok ? r.json() : null),
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/users/me`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
     staleTime: 30_000,
-    retry: false,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 }
 

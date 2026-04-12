@@ -19,6 +19,8 @@ import {
   Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
 } from "@/components/ui/empty";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 type FiscalItem = {
   id: number;
   title: string;
@@ -127,7 +129,7 @@ export default function FiscalPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/fiscal/refresh", { method: "POST" });
+      const res = await fetch(`${BASE}/api/fiscal/refresh`, { method: "POST" });
       if (res.ok) {
         setLastRefreshed(new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }));
         queryClient.invalidateQueries({ queryKey: getListFiscalUpdatesQueryKey() });

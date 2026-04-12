@@ -7,6 +7,8 @@ import { CloudSun, CloudRain, Sun, Cloud, Wind, Droplets, Thermometer, RefreshCw
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetWeatherQueryKey } from "@workspace/api-client-react";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 function WeatherIcon({ icon, size = "lg" }: { icon: string; size?: "sm" | "lg" }) {
   const cls = size === "lg" ? "h-16 w-16" : "h-8 w-8";
   if (icon.includes("rain")) return <CloudRain className={`${cls} text-blue-400`} />;
@@ -31,7 +33,7 @@ export default function WeatherPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/weather/refresh", { method: "POST" });
+      const res = await fetch(`${BASE}/api/weather/refresh`, { method: "POST" });
       if (res.ok) {
         setLastRefreshed(new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }));
         queryClient.invalidateQueries({ queryKey: getGetWeatherQueryKey() });

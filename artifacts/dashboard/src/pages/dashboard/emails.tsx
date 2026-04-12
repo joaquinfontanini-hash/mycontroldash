@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListEmailsQueryKey, getGetEmailStatsQueryKey } from "@workspace/api-client-react";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 const CATEGORY_COLORS: Record<string, string> = {
   trabajo: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   impuestos: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -122,7 +124,7 @@ export default function EmailsPage() {
   const isLoading = emailsLoading || statsLoading;
 
   useEffect(() => {
-    fetch("/api/emails/oauth/status")
+    fetch(`${BASE}/api/emails/oauth/status`)
       .then(r => r.json())
       .then(data => setGmailStatus(data))
       .catch(() => {});
@@ -135,7 +137,7 @@ export default function EmailsPage() {
   const handleDisconnect = async () => {
     setStatusLoading(true);
     try {
-      await fetch("/api/emails/oauth/disconnect", { method: "POST" });
+      await fetch(`${BASE}/api/emails/oauth/disconnect`, { method: "POST" });
       setGmailStatus(s => s ? { ...s, connected: false, email: null } : s);
       queryClient.invalidateQueries({ queryKey: getListEmailsQueryKey() });
     } catch {}

@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useState, useMemo, useCallback, type ComponentType } from "react";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DolarRate {
@@ -146,13 +148,13 @@ function saveWidgetConfig(cfg: WidgetConfig) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function fetchCurrency(): Promise<DolarRate[]> {
-  const res = await fetch("/api/currency");
+  const res = await fetch(`${BASE}/api/currency`);
   if (!res.ok) throw new Error("Error al cargar cotizaciones");
   return res.json();
 }
 
 async function fetchDueDates(): Promise<DueDate[]> {
-  const res = await fetch("/api/due-dates");
+  const res = await fetch(`${BASE}/api/due-dates`);
   if (!res.ok) throw new Error("Error al cargar vencimientos");
   return res.json();
 }
@@ -201,7 +203,7 @@ function DollarWidget() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch("/api/currency/refresh", { method: "POST" });
+      await fetch(`${BASE}/api/currency/refresh`, { method: "POST" });
       refetch();
     } finally { setRefreshing(false); }
   };

@@ -3,11 +3,40 @@ import { useUser } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+const MAX_ATTEMPTS = 3;
+
+async function syncUser(
+  clerkId: string,
+  email: string,
+  name: string | null,
+): Promise<void> {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
+    }
+    try {
+      const r = await fetch(`${BASE}/api/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clerkId, email, name }),
+      });
+      if (r.ok || r.status === 409) return;
+    } catch {
+      if (attempt === MAX_ATTEMPTS - 1) throw new Error("sync failed after retries");
+    }
+  }
+}
 
 export function useUserSync() {
   const { user, isSignedIn, isLoaded } = useUser();
   const qc = useQueryClient();
   const syncedRef = useRef<string | null>(null);
+  const abortRef = useRef(false);
+
+  useEffect(() => {
+    abortRef.current = false;
+    return () => { abortRef.current = true; };
+  }, []);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user) return;
@@ -16,19 +45,17 @@ export function useUserSync() {
     const email = user.primaryEmailAddress?.emailAddress ?? "";
     const name = user.fullName ?? null;
 
-    syncedRef.current = user.id;
-
-    fetch(`${BASE}/api/users`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clerkId: user.id, email, name }),
-    })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    syncUser(user.id, email, name)
       .then(() => {
-        qc.invalidateQueries({ queryKey: ["current-user"] });
+        if (!abortRef.current) {
+          syncedRef.current = user.id;
+          qc.invalidateQueries({ queryKey: ["current-user"] });
+        }
       })
       .catch(() => {
-        syncedRef.current = null;
+        if (!abortRef.current) {
+          qc.invalidateQueries({ queryKey: ["current-user"] });
+        }
       });
   }, [isLoaded, isSignedIn, user, qc]);
 }

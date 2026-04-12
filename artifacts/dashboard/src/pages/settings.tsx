@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 interface ExternalSource {
   id: number;
   name: string;
@@ -143,7 +145,7 @@ function ExternalSourcesSection() {
   const { data: sources = [], isLoading } = useQuery<ExternalSource[]>({
     queryKey: ["external-sources"],
     queryFn: async () => {
-      const res = await fetch("/api/external-sources");
+      const res = await fetch(`${BASE}/api/external-sources`);
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
@@ -151,7 +153,7 @@ function ExternalSourcesSection() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof EMPTY_SOURCE_FORM) => {
-      const res = await fetch("/api/external-sources", {
+      const res = await fetch(`${BASE}/api/external-sources`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

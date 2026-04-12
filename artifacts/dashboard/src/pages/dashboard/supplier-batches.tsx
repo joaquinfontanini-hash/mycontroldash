@@ -17,6 +17,8 @@ import {
   Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
 } from "@/components/ui/empty";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 interface BatchItem {
   id?: number;
   supplier: string;
@@ -208,12 +210,12 @@ export default function SupplierBatchesPage() {
 
   const { data: batches = [], isLoading } = useQuery<SupplierBatch[]>({
     queryKey: ["supplier-batches"],
-    queryFn: () => fetch("/api/supplier-batches").then(r => r.json()),
+    queryFn: () => fetch(`${BASE}/api/supplier-batches`).then(r => r.json()),
   });
 
   const createMutation = useMutation({
     mutationFn: (data: BatchForm) =>
-      fetch("/api/supplier-batches", {
+      fetch(`${BASE}/api/supplier-batches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

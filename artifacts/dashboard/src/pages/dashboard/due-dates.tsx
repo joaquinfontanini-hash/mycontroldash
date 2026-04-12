@@ -14,6 +14,8 @@ import {
   CheckCircle2, Circle, X, Tag, ChevronDown,
 } from "lucide-react";
 
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
 interface DueDate {
   id: number;
   title: string;
@@ -211,7 +213,7 @@ export default function DueDatesPage() {
   const { data: dueDates = [], isLoading } = useQuery<DueDate[]>({
     queryKey: ["due-dates"],
     queryFn: async () => {
-      const res = await fetch("/api/due-dates");
+      const res = await fetch(`${BASE}/api/due-dates`);
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
@@ -220,7 +222,7 @@ export default function DueDatesPage() {
   const { data: categories = [] } = useQuery<DueDateCategory[]>({
     queryKey: ["due-date-categories"],
     queryFn: async () => {
-      const res = await fetch("/api/due-date-categories");
+      const res = await fetch(`${BASE}/api/due-date-categories`);
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
@@ -228,7 +230,7 @@ export default function DueDatesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof EMPTY_FORM) => {
-      const res = await fetch("/api/due-dates", {
+      const res = await fetch(`${BASE}/api/due-dates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -261,7 +263,7 @@ export default function DueDatesPage() {
 
   const createCatMutation = useMutation({
     mutationFn: async (data: { name: string; color: string }) => {
-      const res = await fetch("/api/due-date-categories", {
+      const res = await fetch(`${BASE}/api/due-date-categories`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

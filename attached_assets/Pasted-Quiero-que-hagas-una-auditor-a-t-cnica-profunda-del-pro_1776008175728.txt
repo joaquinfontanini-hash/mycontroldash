@@ -1,0 +1,296 @@
+Quiero que hagas una auditoría técnica profunda del proyecto actual enfocada exclusivamente en resolver el problema de carga infinita en producción.
+
+CONTEXTO
+La app fue publicada en un servidor.
+Cuando ingreso con mi usuario, la aplicación queda pensando con un spinner infinito y no termina de cargar.
+Necesito que revises todos los procesos de arranque, carga, navegación, autenticación, persistencia y renderizado para que la app funcione de forma ágil, rápida, estable y sin bucles.
+
+OBJETIVO
+Quiero que detectes, corrijas y verifiques cualquier causa que pueda generar:
+- spinner infinito
+- loader eterno
+- bucles de render
+- bucles de navegación
+- promesas colgadas
+- vistas que nunca montan
+- bloqueos en producción
+- errores silenciosos
+- tiempos de carga excesivos
+
+IMPORTANTE
+- No rehagas la app desde cero
+- Trabajá sobre el proyecto actual
+- Priorizá estabilidad, rapidez y cierre correcto de todos los flujos
+- Todo debe quedar auditado, verificado y listo para producción
+- Quiero un enfoque de desarrollador super senior orientado a resolver causas reales, no parches cosméticos
+
+==================================================
+1) AUDITORÍA DEL FLUJO DE ARRANQUE
+==================================================
+
+Revisá todo lo que ocurre al iniciar la app:
+
+- bootstrap inicial
+- carga de configuración
+- carga de usuario
+- chequeo de sesión
+- lectura de localStorage
+- lectura de permisos/roles
+- inicialización de módulos
+- render del layout principal
+- navegación inicial después del login
+- componentes globales montados al entrar
+
+Buscá y corregí:
+- loaders que no finalizan
+- dependencias circulares
+- awaits sin resolución
+- errores atrapados sin salida visual
+- condiciones que impiden renderizar la app
+- inicializaciones que bloquean todo el árbol
+
+==================================================
+2) AUDITORÍA DE LOGIN Y POST-LOGIN
+==================================================
+
+El problema ocurre después de ingresar con usuario.
+
+Revisá:
+- login
+- validación de usuario
+- persistencia de sesión
+- redirección luego del login
+- carga de perfil
+- carga de permisos
+- carga de módulos habilitados
+- montaje del dashboard luego del login
+
+Detectá:
+- redirecciones en bucle
+- rutas protegidas mal configuradas
+- guardas de auth que nunca resuelven
+- estados de auth inconsistentes
+- dependencias entre login y sidebar/layout
+- espera infinita de datos del usuario
+
+==================================================
+3) AUDITORÍA DE useEffect, HOOKS Y ESTADO
+==================================================
+
+Necesito que revises si hay bucles de render o efectos mal hechos.
+
+Buscar y corregir:
+- useEffect con dependencias incorrectas
+- setState dentro de efectos que se disparan sin control
+- sincronización circular entre estado local y storage
+- cálculos que se disparan en cada render
+- hooks personalizados que devuelven loading infinito
+- suscripciones no limpiadas
+- actualizaciones de estado encadenadas innecesarias
+
+OBJETIVO
+- eliminar cualquier re-render infinito
+- eliminar cualquier loader permanente
+- asegurar que cada vista resuelva su estado de carga
+
+==================================================
+4) AUDITORÍA DE LOCALSTORAGE Y PERSISTENCIA
+==================================================
+
+Revisá todo el uso de localStorage o persistencia local.
+
+Buscar y corregir:
+- JSON corrupto
+- parseos que fallan
+- claves inconsistentes
+- estructuras antiguas incompatibles
+- lectura de datos inexistentes
+- defaults mal definidos
+- guardado excesivo o en bucle
+- migraciones de storage ausentes
+- dependencia de datos que no existen en producción
+
+Implementar si hace falta:
+- capa segura de lectura/escritura
+- try/catch robusto
+- valores por defecto
+- versionado simple de storage
+- limpieza o recuperación ante datos inválidos
+
+==================================================
+5) AUDITORÍA DE APIs, SERVICIOS Y PROMESAS
+==================================================
+
+Si hay servicios o fetch internos, revisá todo.
+
+Buscar y corregir:
+- requests que nunca responden
+- promesas sin timeout
+- llamadas que fallan y dejan loading abierto
+- endpoints mal definidos en producción
+- variables de entorno faltantes
+- errores de red no manejados
+- servicios que bloquean el render principal
+- dependencia de APIs para mostrar layout base
+
+REGLA
+- Si falla un servicio, la app no debe quedarse bloqueada
+- Debe mostrar fallback elegante o contenido parcial
+- Nunca un spinner eterno
+
+==================================================
+6) AUDITORÍA DE RUTAS Y PROTECCIÓN DE RUTAS
+==================================================
+
+Revisá:
+- router
+- rutas privadas
+- rutas admin
+- fallback routes
+- redirect logic
+- estados de carga del route guard
+
+Buscar:
+- bucles entre login y dashboard
+- ruta default mal resuelta
+- redirect infinito
+- condición de auth que nunca termina
+- módulos que intentan abrir una ruta inválida al iniciar
+
+==================================================
+7) AUDITORÍA DE COMPONENTES GLOBALES
+==================================================
+
+Revisá especialmente los componentes que cargan al inicio:
+
+- App principal
+- Layout
+- Sidebar
+- Header
+- Dashboard Home
+- Auth provider
+- Store provider
+- Theme provider
+- módulo de alertas/notificaciones
+- configuración global
+- widgets iniciales de home
+
+Buscar:
+- widget que bloquee toda la carga
+- dependencia entre widgets
+- import pesado o roto
+- errores silenciosos en algún widget de inicio
+- fallback ausente si un widget falla
+
+OBJETIVO
+- si un widget falla, no debe caerse toda la home
+- el layout base debe renderizar igual
+
+==================================================
+8) PERFORMANCE Y VELOCIDAD DE CARGA
+==================================================
+
+Necesito que optimices la carga.
+
+Revisá y corregí:
+- imports innecesarios
+- componentes demasiado pesados
+- render de todos los módulos al inicio
+- cálculos en render
+- inicialización excesiva de widgets
+- store global demasiado grande
+- listeners innecesarios
+- watchers o polling mal implementados
+- carga simultánea de demasiadas cosas
+
+Aplicar si corresponde:
+- lazy loading
+- división por rutas
+- memoización razonable
+- carga diferida de widgets secundarios
+- skeletons rápidos
+- timeouts defensivos
+- error boundaries
+
+==================================================
+9) MANEJO DE ERRORES Y FALLBACKS
+==================================================
+
+Implementar o corregir:
+- error boundaries por módulos o vistas
+- manejo de errores en servicios
+- loaders con timeout o escape
+- mensajes claros si algo falla
+- recuperación si hay datos corruptos
+- fallback para usuario autenticado sin datos completos
+- fallback para widgets que no cargan
+
+Quiero que nunca más quede la pantalla entera con spinner infinito sin explicación.
+
+==================================================
+10) MODO PRODUCCIÓN
+==================================================
+
+Revisá diferencias entre entorno local y producción.
+
+Buscar:
+- rutas relativas/absolutas mal resueltas
+- assets que no cargan en servidor
+- base path incorrecto
+- variables de entorno no disponibles
+- errores de build
+- diferencias entre npm run dev y build publicado
+- problemas de hydration si aplica
+- archivos estáticos no encontrados
+- imports o case-sensitive path issues
+
+==================================================
+11) VALIDACIÓN FINAL DE FLUJOS
+==================================================
+
+Cuando termines, probá y verificá:
+
+- carga inicial
+- login
+- post-login
+- render del dashboard principal
+- apertura del sidebar
+- navegación entre módulos
+- carga de widgets del home
+- cierre de sesión
+- recarga de página ya autenticado
+- usuario con datos existentes en localStorage
+- usuario con storage vacío
+- usuario con storage corrupto o incompleto
+- rutas protegidas
+- fallback si falla un módulo
+
+==================================================
+12) CRITERIO DE CIERRE
+==================================================
+
+No cierres esta revisión hasta cumplir esto:
+
+- la app entra correctamente luego del login
+- no queda spinner infinito
+- no hay bucles de render detectados
+- no hay redirecciones infinitas
+- no hay loaders eternos
+- si algo falla, la app igual responde
+- la navegación se siente rápida y estable
+
+==================================================
+13) ENTREGABLES OBLIGATORIOS
+==================================================
+
+Al final entregame:
+
+1. causas exactas detectadas del spinner infinito
+2. qué archivos/componentes estaban generando el problema
+3. qué corregiste
+4. qué optimizaciones de performance aplicaste
+5. qué protecciones agregaste para evitar futuros bucles
+6. qué flujos probaste
+7. confirmación de que el dashboard ya entra bien en producción
+8. cualquier pendiente real menor si existiera
+9. checklist final para que yo lo pruebe publicado
