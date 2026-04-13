@@ -34,7 +34,8 @@ A full-stack personal executive dashboard for an Argentine contador/consultor in
 - `/dashboard/weather` — 3-day weather forecast for Neuquén (Open-Meteo)
 - `/dashboard/fiscal` — Monitor Fiscal with card/table view toggle + quality filters
 - `/dashboard/travel` — Travel offers browser (with quality scoring)
-- `/admin` — Admin panel (5 tabs: Users RBAC, Modules toggle, Audit logs, Integrations, Sync logs)
+- `/register` — Public registration request form (name, email, password, optional note)
+- `/admin` — Admin panel (6 tabs: Users RBAC, Solicitudes de Acceso, Modules toggle, Audit logs, Integrations, Sync logs)
 - `/dashboard/due-dates` — Vencimientos: due dates tracker with urgency grouping (overdue/today/3d/week/future/done)
 - `/dashboard/finance` — Finanzas personales: patrimonial summary, editable accounts (caja/banco/cripto/inversiones/deuda), pie chart, configurable alert thresholds
 - `/settings` — Dashboard configuration (incl. Fuentes Externas section)

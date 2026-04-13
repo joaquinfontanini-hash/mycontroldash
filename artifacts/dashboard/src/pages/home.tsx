@@ -60,13 +60,21 @@ export default function Home() {
               noticias clave y viajes — todo en un solo lugar seguro.
             </p>
 
-            <Link
-              href="/sign-in"
-              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-[#0c1220] font-semibold px-8 py-3.5 rounded-lg transition-all duration-200 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:-translate-y-0.5 text-sm"
-            >
-              Ingresar al Dashboard
-              <ArrowRight className="h-4 w-4" />
-            </Link>
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <Link
+                href="/sign-in"
+                className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-[#0c1220] font-semibold px-8 py-3.5 rounded-lg transition-all duration-200 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:-translate-y-0.5 text-sm"
+              >
+                Ingresar al Dashboard
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/register"
+                className="inline-flex items-center gap-2 border border-white/20 hover:border-amber-500/40 text-white/70 hover:text-amber-400 px-6 py-3.5 rounded-lg transition-all duration-200 text-sm"
+              >
+                Solicitar acceso
+              </Link>
+            </div>
 
             <div className="mt-20 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl w-full px-4">
               {FEATURES.map(({ icon: Icon, label, desc }) => (

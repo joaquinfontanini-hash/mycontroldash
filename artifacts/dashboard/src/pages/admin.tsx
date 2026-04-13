@@ -12,6 +12,7 @@ import {
   Mail, CloudSun, Newspaper, Briefcase, MoreHorizontal, Clock,
   Trash2, Lock, Unlock, Crown, LayoutDashboard, Search,
   AlertTriangle, FileText, ToggleLeft, ToggleRight, Filter,
+  UserPlus, ThumbsUp, ThumbsDown, Hourglass,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -61,6 +62,15 @@ interface UserRecord {
   blockedAt: string | null; blockedReason: string | null;
   lastActivityAt: string | null; createdAt: string;
 }
+
+interface RegistrationRequest {
+  id: number; firstName: string; lastName: string; email: string;
+  note: string | null; status: string; rejectionReason: string | null;
+  reviewedBy: number | null; reviewedAt: string | null;
+  requestedAt: string;
+}
+
+interface RegStats { total: number; pending: number; approved: number; rejected: number; }
 
 const ROLES = ["super_admin", "admin", "editor", "viewer"] as const;
 type Role = typeof ROLES[number];
@@ -146,6 +156,9 @@ export default function AdminPage() {
   const [logAction, setLogAction] = useState("");
   const [logEmail, setLogEmail] = useState("");
   const [logResult, setLogResult] = useState("all");
+  const [regStatusFilter, setRegStatusFilter] = useState("pending");
+  const [rejectTarget, setRejectTarget] = useState<RegistrationRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const { data: syncStatus } = useQuery<SyncStatus>({
     queryKey: ["sync-status"],
@@ -168,6 +181,51 @@ export default function AdminPage() {
   const { data: gmailStatus } = useQuery<{ connected: boolean; email?: string }>({
     queryKey: ["gmail-status"],
     queryFn: () => fetch(`${BASE}/api/emails/oauth/status`).then(r => r.ok ? r.json() : { connected: false }),
+  });
+
+  const { data: regRequests = [], isLoading: regLoading } = useQuery<RegistrationRequest[]>({
+    queryKey: ["registration-requests", regStatusFilter],
+    queryFn: () => fetch(`${BASE}/api/registration-requests?status=${regStatusFilter}`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+    enabled: isAdmin(me),
+    refetchInterval: 30_000,
+  });
+
+  const { data: regStats } = useQuery<RegStats>({
+    queryKey: ["registration-requests-stats"],
+    queryFn: () => fetch(`${BASE}/api/registration-requests/stats`, { credentials: "include" }).then(r => r.ok ? r.json() : { total: 0, pending: 0, approved: 0, rejected: 0 }),
+    enabled: isAdmin(me),
+    refetchInterval: 30_000,
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: number) =>
+      fetch(`${BASE}/api/registration-requests/${id}/approve`, { method: "POST", credentials: "include" }).then(r => r.json()),
+    onSuccess: (data) => {
+      if (data.error) { toast({ title: data.error, variant: "destructive" }); return; }
+      qc.invalidateQueries({ queryKey: ["registration-requests"] });
+      qc.invalidateQueries({ queryKey: ["registration-requests-stats"] });
+      qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      toast({ title: "Solicitud aprobada", description: "El usuario ya puede ingresar al sistema." });
+    },
+    onError: () => toast({ title: "Error al aprobar", variant: "destructive" }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
+      fetch(`${BASE}/api/registration-requests/${id}/reject`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      }).then(r => r.json()),
+    onSuccess: (data) => {
+      if (data.error) { toast({ title: data.error, variant: "destructive" }); return; }
+      qc.invalidateQueries({ queryKey: ["registration-requests"] });
+      qc.invalidateQueries({ queryKey: ["registration-requests-stats"] });
+      toast({ title: "Solicitud rechazada" });
+      setRejectTarget(null);
+      setRejectReason("");
+    },
+    onError: () => toast({ title: "Error al rechazar", variant: "destructive" }),
   });
 
   const { data: modules = [], isLoading: modulesLoading } = useQuery<Module[]>({
@@ -267,12 +325,13 @@ export default function AdminPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-5">
         {[
           { label: "Total usuarios", value: totalUsers, icon: Users, color: "" },
           { label: "Activos", value: activeUsers, icon: CheckCircle2, color: "text-emerald-500" },
           { label: "Admins", value: adminCount, icon: Shield, color: "text-primary" },
           { label: "Bloqueados", value: blockedCount, icon: Lock, color: blockedCount > 0 ? "text-red-500" : "" },
+          { label: "Solicitudes pend.", value: regStats?.pending ?? 0, icon: Hourglass, color: (regStats?.pending ?? 0) > 0 ? "text-amber-500" : "" },
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="p-4">
@@ -289,6 +348,14 @@ export default function AdminPage() {
       <Tabs defaultValue="users">
         <TabsList className="mb-4 flex-wrap h-auto gap-1">
           <TabsTrigger value="users"><Users className="h-3.5 w-3.5 mr-1.5" />Usuarios</TabsTrigger>
+          <TabsTrigger value="solicitudes" className="relative">
+            <UserPlus className="h-3.5 w-3.5 mr-1.5" />Solicitudes
+            {(regStats?.pending ?? 0) > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500 text-[#0c1220] text-[10px] font-bold leading-none h-4 min-w-[1rem] px-1">
+                {regStats!.pending}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="modules"><LayoutDashboard className="h-3.5 w-3.5 mr-1.5" />Módulos</TabsTrigger>
           <TabsTrigger value="security-logs"><FileText className="h-3.5 w-3.5 mr-1.5" />Auditoría</TabsTrigger>
           <TabsTrigger value="integrations"><Activity className="h-3.5 w-3.5 mr-1.5" />Integraciones</TabsTrigger>
@@ -412,6 +479,102 @@ export default function AdminPage() {
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="solicitudes" className="mt-0 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserPlus className="h-4 w-4" /> Solicitudes de Acceso
+              </CardTitle>
+              <CardDescription>
+                Revisá y aprobá o rechazá las solicitudes de registro. Al aprobar, se crea la cuenta del usuario.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2 mb-4">
+                {(["pending", "approved", "rejected", "all"] as const).map(s => (
+                  <button key={s}
+                    onClick={() => setRegStatusFilter(s)}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${regStatusFilter === s ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80 text-muted-foreground"}`}>
+                    {s === "pending" ? `Pendientes${(regStats?.pending ?? 0) > 0 ? ` (${regStats!.pending})` : ""}` : s === "approved" ? "Aprobadas" : s === "rejected" ? "Rechazadas" : "Todas"}
+                  </button>
+                ))}
+              </div>
+
+              {regLoading ? (
+                <p className="text-sm text-muted-foreground py-4">Cargando...</p>
+              ) : regRequests.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground text-sm">
+                  {regStatusFilter === "pending" ? "No hay solicitudes pendientes." : "Sin resultados."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Nota</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Estado</TableHead>
+                        {canManageUsers && <TableHead className="text-right">Acciones</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {regRequests.map(r => (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-medium text-sm">{r.firstName} {r.lastName}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{r.email}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{r.note || "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(r.requestedAt)}</TableCell>
+                          <TableCell>
+                            {r.status === "pending" && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs px-2 py-0.5">
+                                <Hourglass className="h-3 w-3" /> Pendiente
+                              </span>
+                            )}
+                            {r.status === "approved" && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs px-2 py-0.5">
+                                <CheckCircle2 className="h-3 w-3" /> Aprobada
+                              </span>
+                            )}
+                            {r.status === "rejected" && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs px-2 py-0.5">
+                                <XCircle className="h-3 w-3" /> Rechazada
+                              </span>
+                            )}
+                          </TableCell>
+                          {canManageUsers && (
+                            <TableCell className="text-right">
+                              {r.status === "pending" && (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Button size="sm" variant="outline"
+                                    className="h-7 text-xs border-emerald-500/40 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                    onClick={() => approveMutation.mutate(r.id)}
+                                    disabled={approveMutation.isPending}>
+                                    <ThumbsUp className="h-3 w-3 mr-1" /> Aprobar
+                                  </Button>
+                                  <Button size="sm" variant="outline"
+                                    className="h-7 text-xs border-red-500/40 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    onClick={() => setRejectTarget(r)}>
+                                    <ThumbsDown className="h-3 w-3 mr-1" /> Rechazar
+                                  </Button>
+                                </div>
+                              )}
+                              {r.status === "rejected" && r.rejectionReason && (
+                                <span className="text-xs text-muted-foreground italic">{r.rejectionReason}</span>
+                              )}
                             </TableCell>
                           )}
                         </TableRow>
@@ -657,6 +820,31 @@ export default function AdminPage() {
             <Button variant="destructive" onClick={() => blockTarget && blockMutation.mutate({ id: blockTarget.id, reason: blockReason })}
               disabled={blockMutation.isPending}>
               <Lock className="h-3.5 w-3.5 mr-1.5" /> Bloquear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!rejectTarget} onOpenChange={open => { if (!open) { setRejectTarget(null); setRejectReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ThumbsDown className="h-4 w-4 text-red-500" /> Rechazar solicitud
+            </DialogTitle>
+            <DialogDescription>
+              Rechazarás la solicitud de <strong>{rejectTarget?.firstName} {rejectTarget?.lastName}</strong> ({rejectTarget?.email}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="text-sm font-medium">Motivo del rechazo (opcional)</label>
+            <Input placeholder="Ej: Acceso no autorizado para este sistema..." value={rejectReason} onChange={e => setRejectReason(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRejectTarget(null); setRejectReason(""); }}>Cancelar</Button>
+            <Button variant="destructive"
+              onClick={() => rejectTarget && rejectMutation.mutate({ id: rejectTarget.id, reason: rejectReason })}
+              disabled={rejectMutation.isPending}>
+              <ThumbsDown className="h-3.5 w-3.5 mr-1.5" /> Rechazar
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -25,6 +25,7 @@ import SignInPage from "@/pages/sign-in";
 import SignUpPage from "@/pages/sign-up";
 import LocalSignInPage from "@/pages/local-sign-in";
 import ChangePasswordPage from "@/pages/change-password";
+import RegisterPage from "@/pages/register";
 import DashboardLayout from "@/components/layout";
 
 const DashboardSummary    = lazy(() => import("@/pages/dashboard/index"));
@@ -181,6 +182,7 @@ function LocalApp() {
                 <Route path="/"                       component={LocalHome} />
                 <Route path="/sign-in/*?"             component={LocalSignInPage} />
                 <Route path="/change-password"        component={ChangePasswordPage} />
+                <Route path="/register"               component={RegisterPage} />
                 <Route path="/dashboard"              component={RouteDashboard} />
                 <Route path="/dashboard/tasks"        component={RouteTasks} />
                 <Route path="/dashboard/shortcuts"    component={RouteShortcuts} />
@@ -272,6 +274,7 @@ function ClerkProviderWithRoutes() {
               <Route path="/sign-in/*?"             component={SignInPage} />
               <Route path="/sign-up/*?"             component={SignUpPage} />
               <Route path="/change-password"        component={ChangePasswordPage} />
+              <Route path="/register"               component={RegisterPage} />
               <Route path="/dashboard"              component={RouteDashboard} />
               <Route path="/dashboard/tasks"        component={RouteTasks} />
               <Route path="/dashboard/shortcuts"    component={RouteShortcuts} />

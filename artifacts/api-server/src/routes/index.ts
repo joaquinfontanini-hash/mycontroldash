@@ -25,6 +25,7 @@ import goalsRouter from "./goals";
 import userSettingsRouter from "./user-settings";
 import contactsRouter from "./contacts";
 import chatRouter from "./chat";
+import registrationRequestsRouter from "./registration-requests";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(goalsRouter);
 router.use(userSettingsRouter);
 router.use(contactsRouter);
 router.use(chatRouter);
+router.use(registrationRequestsRouter);
 
 export default router;
