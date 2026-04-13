@@ -1,0 +1,251 @@
+Quiero que actúes como un desarrollador senior full stack, experto en seguridad web, autenticación, control de accesos, Cloudflare Pages, Cloudflare Workers, D1 y aplicaciones web administrativas.
+
+Necesito que construyas una aplicación web profesional, auditada, validada y pensada para producción, no un prototipo visual vacío.
+
+OBJETIVO GENERAL
+Crear un panel web con login seguro, gestión de usuarios y suscripción de nuevos usuarios con aprobación manual por parte del administrador.
+
+REQUISITOS FUNCIONALES OBLIGATORIOS
+
+1) AUTENTICACIÓN
+- Debe existir una pantalla de login moderna, clara y profesional.
+- Debe permitir iniciar sesión con:
+  - email + contraseña
+- Preparar la estructura para futura integración con Google OAuth, pero por ahora dejarlo opcional o desacoplado.
+- El sistema NO debe guardar contraseñas en texto plano.
+- Las contraseñas deben almacenarse con hash seguro.
+- Debe existir cierre de sesión.
+- Debe existir control de sesión.
+- Debe evitar acceso a páginas internas sin autenticación.
+
+2) ROLES DE USUARIO
+Debe haber al menos estos roles:
+- superadmin
+- admin
+- user
+
+Permisos:
+- superadmin:
+  - acceso total
+  - puede crear admins y users
+  - puede aprobar o rechazar solicitudes de registro
+  - puede activar o desactivar usuarios
+  - puede editar usuarios
+  - puede eliminar usuarios
+- admin:
+  - puede crear usuarios comunes
+  - puede ver solicitudes pendientes
+  - puede aprobar o rechazar usuarios si así se configura
+  - no puede modificar al superadmin
+- user:
+  - solo puede ingresar al panel que le corresponda
+  - sin acceso a administración
+
+3) ALTA MANUAL DE USUARIOS DESDE ADMIN
+- Desde el panel de administración debe existir una sección “Usuarios”.
+- El admin o superadmin debe poder:
+  - crear usuario manualmente
+  - definir nombre
+  - definir email
+  - definir rol
+  - asignar contraseña temporal o enviar invitación
+  - activar o desactivar acceso
+  - editar datos básicos
+- Validar que no se repitan emails.
+
+4) SUSCRIPCIÓN PÚBLICA CON APROBACIÓN
+- Debe existir una pantalla pública de “Registrarse” o “Solicitar acceso”.
+- Cualquier persona puede completar:
+  - nombre
+  - apellido
+  - email
+  - contraseña
+  - confirmación de contraseña
+  - opcional: motivo o comentario de solicitud
+- Cuando alguien se registra:
+  - NO debe quedar habilitado automáticamente
+  - debe quedar en estado “pendiente”
+  - el admin debe ver esa solicitud en una bandeja de aprobaciones
+- El admin o superadmin debe poder:
+  - aprobar solicitud
+  - rechazar solicitud
+  - ver fecha de solicitud
+  - ver datos del solicitante
+- Si se aprueba:
+  - el usuario pasa a estado “activo”
+  - ya puede iniciar sesión
+- Si se rechaza:
+  - el usuario queda como rechazado o eliminado según el diseño elegido
+
+5) ESTADOS DE USUARIO
+Cada usuario o solicitud debe poder tener estados:
+- pending
+- active
+- suspended
+- rejected
+
+6) PANEL DE ADMINISTRACIÓN
+El dashboard admin debe tener como mínimo:
+- resumen de usuarios totales
+- usuarios activos
+- usuarios pendientes de aprobación
+- usuarios suspendidos
+- listado de usuarios
+- listado de solicitudes pendientes
+- acciones rápidas:
+  - aprobar
+  - rechazar
+  - editar
+  - suspender
+  - reactivar
+  - eliminar
+
+7) EXPERIENCIA DE USUARIO
+- Diseño moderno, profesional y limpio
+- Responsive
+- Preparado para desktop y mobile
+- Interfaz clara, sin errores visuales
+- Mensajes de éxito y error bien hechos
+- Formularios con validaciones visibles
+- Buen manejo de estados de carga
+- Evitar pantallas rotas o vacías
+
+REQUISITOS TÉCNICOS OBLIGATORIOS
+
+8) SEGURIDAD
+Implementar buenas prácticas reales, no simuladas:
+- hash seguro de contraseñas
+- validación backend de permisos
+- sanitización de inputs
+- validación de formularios en frontend y backend
+- protección de rutas
+- manejo correcto de sesiones o JWT con cookies seguras
+- no exponer secretos en frontend
+- no hardcodear credenciales inseguras
+- prevenir elevación de privilegios desde frontend
+- prevenir creación de usuarios duplicados
+- prevenir que un user acceda a endpoints admin
+- si proponés JWT o cookies, justificar la elección y usar la opción más segura para Cloudflare
+
+9) ARQUITECTURA
+Quiero una solución lista para desplegar en Cloudflare:
+- frontend en Cloudflare Pages
+- backend en Cloudflare Workers
+- base de datos en Cloudflare D1
+
+10) BASE DE DATOS
+Crear el esquema necesario para:
+- users
+- registration_requests o equivalente
+- sessions si hace falta
+- audit_logs opcional pero recomendado
+
+Campos recomendados:
+USERS
+- id
+- name
+- last_name
+- email
+- password_hash
+- role
+- status
+- created_at
+- updated_at
+- approved_at
+- approved_by
+
+REGISTRATION_REQUESTS
+- id
+- name
+- last_name
+- email
+- password_hash
+- requested_at
+- status
+- note
+
+AUDIT_LOGS
+- id
+- actor_user_id
+- action
+- target_type
+- target_id
+- details
+- created_at
+
+11) AUDITORÍA Y TRAZABILIDAD
+Necesito que quede registro de acciones importantes:
+- alta de usuarios
+- aprobación de solicitudes
+- rechazo de solicitudes
+- suspensiones
+- reactivaciones
+- eliminaciones
+- cambios de rol
+
+12) PRIMER USUARIO ADMINISTRADOR
+- Debe existir mecanismo claro para crear el primer superadmin de forma segura.
+- Puede ser mediante seed controlado o script de inicialización.
+- No quiero credenciales inseguras tiradas dentro del frontend.
+
+13) ENTREGABLES
+Quiero que me entregues TODO el proyecto completo y funcional, no una explicación abstracta.
+
+Entregame:
+- estructura de carpetas
+- todos los archivos completos
+- código listo para usar
+- instrucciones exactas de despliegue en Cloudflare
+- comandos necesarios
+- SQL de creación de tablas
+- variables de entorno necesarias
+- explicación breve y concreta de cómo desplegar
+
+14) MUY IMPORTANTE SOBRE EL FRONTEND
+Quiero que generes una interfaz visual lista para subir, con diseño prolijo.
+Usá una opción simple y robusta.
+
+Prioridad:
+- HTML, CSS y JavaScript bien organizados
+o
+- si preferís framework, que sea uno compatible y fácil de desplegar en Cloudflare
+
+Pero necesito que al final también me generes una versión clara del archivo principal visual, especialmente el `index.html` o la entrada principal equivalente.
+
+15) NO QUIERO ESTO
+- no quiero pseudocódigo
+- no quiero “acá iría tal cosa”
+- no quiero partes sin terminar
+- no quiero mocks falsos que aparenten funcionar
+- no quiero guardar usuarios solo en localStorage como solución final
+- no quiero un demo inseguro disfrazado de producción
+
+16) QUIERO QUE VERIFIQUES TODO
+Antes de dar la respuesta final:
+- revisá que las rutas coincidan
+- revisá que los formularios llamen a endpoints reales
+- revisá que los endpoints existan
+- revisá que los nombres de archivos coincidan
+- revisá que no haya imports rotos
+- revisá que la lógica de aprobación funcione de punta a punta
+- revisá que el login respete estado active / pending / suspended / rejected
+- revisá que el admin vea las solicitudes pendientes
+- revisá que el alta manual y la aprobación funcionen ambas
+- revisá que el proyecto quede coherente para desplegar
+
+17) FORMA DE ENTREGA
+Quiero que me respondas en este orden:
+
+A. Resumen de la arquitectura elegida  
+B. Estructura completa de archivos  
+C. Código completo de cada archivo  
+D. SQL de base de datos  
+E. Instrucciones exactas para desplegar en Cloudflare Pages + Workers + D1  
+F. Cómo crear el primer superadmin  
+G. Cómo probar paso a paso que funciona  
+H. Finalmente, generame el archivo visual principal listo para subir, con el HTML completo
+
+18) SI HAY UNA LIMITACIÓN TÉCNICA
+Si detectás que algo no puede resolverse con un único HTML estático, decilo explícitamente y proponé la solución real correcta dentro de Cloudflare sin simplificar de forma insegura.
+
+Construí esto como si fuera un entregable profesional serio, estable, seguro y realmente usable.
