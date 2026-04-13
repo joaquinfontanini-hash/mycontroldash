@@ -1,33 +1,40 @@
 import { Router, type IRouter } from "express";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { db, dueDatesTable, dueDateCategoriesTable } from "@workspace/db";
-import { requireModule } from "../middleware/require-auth.js";
+import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 
 // ── Categories ─────────────────────────────────────────────────────────────────
 
-router.get("/due-date-categories", async (_req, res): Promise<void> => {
-  const cats = await db.select().from(dueDateCategoriesTable).orderBy(asc(dueDateCategoriesTable.name));
+router.get("/due-date-categories", requireAuth, async (req, res): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const cats = await db.select().from(dueDateCategoriesTable)
+    .where(eq(dueDateCategoriesTable.userId, userId))
+    .orderBy(asc(dueDateCategoriesTable.name));
   res.json(cats);
 });
 
-router.post("/due-date-categories", async (req, res): Promise<void> => {
+router.post("/due-date-categories", requireAuth, async (req, res): Promise<void> => {
+  const userId = getCurrentUserId(req);
   const { name, color } = req.body ?? {};
   if (!name || typeof name !== "string") {
-    res.status(400).json({ error: "name is required" });
+    res.status(400).json({ error: "name es requerido" });
     return;
   }
   const [cat] = await db
     .insert(dueDateCategoriesTable)
-    .values({ name: name.trim(), color: color ?? "blue" })
+    .values({ userId, name: name.trim(), color: color ?? "blue" })
     .returning();
   res.status(201).json(cat);
 });
 
-router.delete("/due-date-categories/:id", async (req, res): Promise<void> => {
+router.delete("/due-date-categories/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const [existing] = await db.select().from(dueDateCategoriesTable).where(eq(dueDateCategoriesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+  if (!assertOwnership(req, res, existing.userId)) return;
   await db.delete(dueDateCategoriesTable).where(eq(dueDateCategoriesTable.id, id));
   res.status(204).end();
 });
@@ -56,12 +63,16 @@ function validateDueDate(body: any): { error?: string; data?: any } {
   return { data: body };
 }
 
-router.get("/due-dates", async (_req, res): Promise<void> => {
-  const items = await db.select().from(dueDatesTable).orderBy(asc(dueDatesTable.dueDate));
+router.get("/due-dates", requireAuth, async (req, res): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const items = await db.select().from(dueDatesTable)
+    .where(eq(dueDatesTable.userId, userId))
+    .orderBy(asc(dueDatesTable.dueDate));
   res.json(items);
 });
 
-router.post("/due-dates", async (req, res): Promise<void> => {
+router.post("/due-dates", requireAuth, async (req, res): Promise<void> => {
+  const userId = getCurrentUserId(req);
   const { error, data } = validateDueDate(req.body);
   if (error) { res.status(400).json({ error }); return; }
   if (!data.title || !data.dueDate) {
@@ -76,7 +87,7 @@ router.post("/due-dates", async (req, res): Promise<void> => {
     priority: data.priority ?? "medium",
     status: data.status ?? "pending",
     alertEnabled: data.alertEnabled ?? true,
-    userId: data.userId ?? null,
+    userId,
     recurrenceType: data.recurrenceType ?? "none",
     recurrenceRule: data.recurrenceRule ?? null,
     recurrenceEndDate: data.recurrenceEndDate ?? null,
@@ -84,9 +95,13 @@ router.post("/due-dates", async (req, res): Promise<void> => {
   res.status(201).json(item);
 });
 
-router.put("/due-dates/:id", async (req, res): Promise<void> => {
+router.put("/due-dates/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const [existing] = await db.select().from(dueDatesTable).where(eq(dueDatesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+  if (!assertOwnership(req, res, existing.userId)) return;
+
   const { error, data } = validateDueDate(req.body);
   if (error) { res.status(400).json({ error }); return; }
 
@@ -103,13 +118,15 @@ router.put("/due-dates/:id", async (req, res): Promise<void> => {
   if (data.recurrenceEndDate !== undefined) updateData["recurrenceEndDate"] = data.recurrenceEndDate ?? null;
 
   const [updated] = await db.update(dueDatesTable).set(updateData).where(eq(dueDatesTable.id, id)).returning();
-  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(updated);
 });
 
-router.delete("/due-dates/:id", async (req, res): Promise<void> => {
+router.delete("/due-dates/:id", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const [existing] = await db.select().from(dueDatesTable).where(eq(dueDatesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+  if (!assertOwnership(req, res, existing.userId)) return;
   await db.delete(dueDatesTable).where(eq(dueDatesTable.id, id));
   res.status(204).end();
 });

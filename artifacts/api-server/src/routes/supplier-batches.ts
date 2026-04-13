@@ -2,8 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db, supplierPaymentBatchesTable, supplierPaymentBatchItemsTable, dueDatesTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { getAuth } from "@clerk/express";
-import { requireModule } from "../middleware/require-auth.js";
+import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 
@@ -25,11 +24,11 @@ function getPreviousSaturday(fromDate?: string): string {
   return saturday.toISOString().split("T")[0]!;
 }
 
-router.get("/supplier-batches", async (req, res): Promise<void> => {
+router.get("/supplier-batches", requireAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getAuth(req)?.userId;
+    const userId = getCurrentUserId(req);
     const batches = await db.select().from(supplierPaymentBatchesTable)
-      .where(userId ? eq(supplierPaymentBatchesTable.userId, userId) : undefined)
+      .where(eq(supplierPaymentBatchesTable.userId, userId))
       .orderBy(desc(supplierPaymentBatchesTable.createdAt));
     res.json(batches);
   } catch (err) {
@@ -38,13 +37,14 @@ router.get("/supplier-batches", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/supplier-batches/:id", async (req, res): Promise<void> => {
+router.get("/supplier-batches/:id", requireAuth, async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
     const [batch] = await db.select().from(supplierPaymentBatchesTable)
       .where(eq(supplierPaymentBatchesTable.id, id));
     if (!batch) { res.status(404).json({ error: "Lote no encontrado" }); return; }
+    if (!assertOwnership(req, res, batch.userId)) return;
     const items = await db.select().from(supplierPaymentBatchItemsTable)
       .where(eq(supplierPaymentBatchItemsTable.batchId, id));
     res.json({ ...batch, items });
@@ -54,9 +54,9 @@ router.get("/supplier-batches/:id", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/supplier-batches", async (req, res): Promise<void> => {
+router.post("/supplier-batches", requireAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getAuth(req)?.userId;
+    const userId = getCurrentUserId(req);
     const { fileName, items, weekStart, weekEnd, notes } = req.body;
     if (!fileName) { res.status(400).json({ error: "fileName es requerido" }); return; }
 
@@ -73,21 +73,19 @@ router.post("/supplier-batches", async (req, res): Promise<void> => {
 
     const existingBatches = await db.select().from(supplierPaymentBatchesTable)
       .where(eq(supplierPaymentBatchesTable.paymentDate, paymentDate));
-    if (userId) {
-      const userExisting = existingBatches.filter(b => b.userId === userId);
-      if (userExisting.length > 0) {
-        await db.delete(supplierPaymentBatchItemsTable)
-          .where(eq(supplierPaymentBatchItemsTable.batchId, userExisting[0]!.id));
-        await db.delete(supplierPaymentBatchesTable)
-          .where(eq(supplierPaymentBatchesTable.id, userExisting[0]!.id));
-      }
+    const userExisting = existingBatches.filter(b => b.userId === userId);
+    if (userExisting.length > 0) {
+      await db.delete(supplierPaymentBatchItemsTable)
+        .where(eq(supplierPaymentBatchItemsTable.batchId, userExisting[0]!.id));
+      await db.delete(supplierPaymentBatchesTable)
+        .where(eq(supplierPaymentBatchesTable.id, userExisting[0]!.id));
     }
 
     const [batch] = await db.insert(supplierPaymentBatchesTable).values({
       fileName, weekStart: ws, weekEnd: we, paymentDate,
       totalAmount, itemCount: parsedItems.length,
       status: "processed", notes,
-      userId: userId ?? null,
+      userId,
     }).returning();
 
     for (const item of parsedItems) {
@@ -115,7 +113,7 @@ router.post("/supplier-batches", async (req, res): Promise<void> => {
         status: "pending",
         alertEnabled: true,
         source: "supplier-batch",
-        userId: userId ?? null,
+        userId,
       }).returning();
       dueDateId = dd.id;
     } else {
@@ -133,10 +131,14 @@ router.post("/supplier-batches", async (req, res): Promise<void> => {
   }
 });
 
-router.delete("/supplier-batches/:id", async (req, res): Promise<void> => {
+router.delete("/supplier-batches/:id", requireAuth, async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+    const [existing] = await db.select().from(supplierPaymentBatchesTable)
+      .where(eq(supplierPaymentBatchesTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Lote no encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
     await db.delete(supplierPaymentBatchItemsTable).where(eq(supplierPaymentBatchItemsTable.batchId, id));
     await db.delete(supplierPaymentBatchesTable).where(eq(supplierPaymentBatchesTable.id, id));
     res.json({ ok: true });

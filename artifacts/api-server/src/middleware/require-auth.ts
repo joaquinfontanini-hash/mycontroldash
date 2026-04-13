@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { db, usersTable, modulesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, modulesTable, userModulePermissionsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 
 export type AuthenticatedRequest = Request & {
@@ -94,7 +94,12 @@ export const requireAdmin = requireRole("super_admin", "admin");
 export const requireSuperAdmin = requireRole("super_admin");
 
 // ── Module-level access guard ─────────────────────────────────────────────────
-// Super-admin always passes. Other roles checked against modulesTable.allowedRoles.
+// Checks in order:
+//  1. User is authenticated, active, not blocked
+//  2. Super-admin → always passes
+//  3. Module must be globally active
+//  4. User-level override (user_module_permissions): explicit disable overrides role
+//  5. Role-level check (modules.allowed_roles)
 export function requireModule(key: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -110,14 +115,38 @@ export function requireModule(key: string) {
 
       const [mod] = await db.select().from(modulesTable).where(eq(modulesTable.key, key));
 
-      // Module not found in DB → allow (fail-open for unknown modules)
-      if (!mod) { next(); return; }
+      // Module not found in DB → deny (fail-closed for unknown modules)
+      if (!mod) {
+        res.status(403).json({ error: "Módulo no encontrado." });
+        return;
+      }
 
       if (!mod.isActive) {
         res.status(403).json({ error: "Este módulo no está disponible. Contactá al administrador." });
         return;
       }
 
+      // Check user-level override (explicit grant or revoke per user)
+      const [userPerm] = await db
+        .select()
+        .from(userModulePermissionsTable)
+        .where(and(
+          eq(userModulePermissionsTable.userId, user.id),
+          eq(userModulePermissionsTable.moduleKey, key),
+        ));
+
+      if (userPerm !== undefined) {
+        // Explicit override exists
+        if (!userPerm.isEnabled) {
+          res.status(403).json({ error: "No tenés permiso para acceder a este módulo." });
+          return;
+        }
+        // isEnabled = true → access granted regardless of role
+        next();
+        return;
+      }
+
+      // No user-level override → fall back to role-level check
       if (!mod.allowedRoles.includes(user.role)) {
         res.status(403).json({ error: "No tenés permiso para acceder a este módulo." });
         return;
@@ -129,4 +158,27 @@ export function requireModule(key: string) {
       res.status(500).json({ error: "Error de autorización" });
     }
   };
+}
+
+// ── Helper: get current user's string ID for data ownership ───────────────────
+// All functional routes use this to scope queries to the authenticated user.
+export function getCurrentUserId(req: Request): string {
+  return String((req as AuthenticatedRequest).dbUser.id);
+}
+
+// ── Ownership assertion helper ────────────────────────────────────────────────
+// Returns 403/404 if the record's userId doesn't match the current user.
+// Super-admin always passes (they can access all data for admin purposes).
+export function assertOwnership(
+  req: Request,
+  res: Response,
+  recordUserId: string | null | undefined,
+): boolean {
+  const dbUser = (req as AuthenticatedRequest).dbUser;
+  if (dbUser.role === "super_admin") return true;
+  if (recordUserId !== String(dbUser.id)) {
+    res.status(404).json({ error: "No encontrado" });
+    return false;
+  }
+  return true;
 }

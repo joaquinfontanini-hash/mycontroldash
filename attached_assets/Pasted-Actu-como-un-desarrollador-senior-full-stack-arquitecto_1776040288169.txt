@@ -1,0 +1,418 @@
+Actuá como un desarrollador senior full stack, arquitecto de software y especialista en seguridad web, control de acceso, autorización por roles, aislamiento de datos por usuario y despliegue en Cloudflare.
+
+Necesito que construyas una aplicación web profesional, coherente, auditada, verificada, controlada y realmente funcional. No quiero una demo visual vacía ni un prototipo inseguro.
+
+OBJETIVO GENERAL
+
+Construir una plataforma web multiusuario con:
+- login seguro
+- solicitud pública de registro con aprobación manual
+- gestión de usuarios por superadmin/admin
+- control de acceso por módulos del sidebar
+- dashboard privado por usuario
+- aislamiento total de datos por usuario
+- sin colaboración entre usuarios en esta primera etapa
+
+IMPORTANTE: MODELO FUNCIONAL CORRECTO
+
+La aplicación NO debe diseñarse como sistema colaborativo en esta versión.
+Debe diseñarse como una plataforma multiusuario con administración central, pero con experiencia privada e individual para cada usuario.
+
+Esto significa:
+- la app es compartida
+- el login es compartido
+- la administración de usuarios es compartida
+- la lista de módulos existe a nivel global
+- pero los datos funcionales de cada módulo son privados por usuario
+- ningún usuario debe ver datos de otro usuario
+- ningún módulo debe compartir información entre usuarios en esta etapa
+
+ARQUITECTURA OBLIGATORIA
+
+Usar:
+- frontend en Cloudflare Pages
+- backend/API en Cloudflare Workers
+- base de datos en Cloudflare D1
+
+No resolver seguridad real con localStorage.
+No guardar contraseñas en texto plano.
+No usar mocks como solución final.
+
+1) AUTENTICACIÓN Y SESIONES
+
+Implementar:
+- login con email y contraseña
+- logout
+- sesiones seguras
+- protección de rutas
+- bloqueo de acceso sin autenticación
+- contraseñas hasheadas de forma segura
+- estructura preparada para futura integración con Google OAuth, pero desacoplada por ahora
+
+Estados válidos del usuario:
+- pending
+- active
+- suspended
+- rejected
+
+Comportamiento:
+- pending: no puede ingresar
+- active: puede ingresar según permisos
+- suspended: no puede ingresar
+- rejected: no puede ingresar
+
+2) ROLES
+
+Roles mínimos:
+- superadmin
+- admin
+- user
+
+Permisos generales:
+- superadmin:
+  - acceso total al sistema
+  - gestión total de usuarios
+  - aprobación o rechazo de solicitudes
+  - habilitación o bloqueo de módulos
+  - edición de roles
+  - no puede perder acceso al panel Admin
+- admin:
+  - gestiona usuarios según alcance definido
+  - nunca puede modificar privilegios críticos del superadmin
+- user:
+  - solo accede a su dashboard y a los módulos que tenga habilitados
+
+3) REGISTRO PÚBLICO CON APROBACIÓN
+
+Debe existir una pantalla pública de solicitud de acceso con:
+- nombre
+- apellido
+- email
+- contraseña
+- confirmación de contraseña
+- comentario o motivo opcional
+
+Comportamiento:
+- el registro no habilita acceso inmediato
+- crea una solicitud pendiente
+- admin/superadmin la revisan
+- pueden aprobar o rechazar
+- recién al aprobar pasa a usuario activo
+
+4) ALTA MANUAL DE USUARIOS DESDE ADMIN
+
+Desde Admin debe poder:
+- crear usuarios manualmente
+- definir nombre, apellido, email
+- definir rol
+- asignar contraseña temporal o inicial
+- activar o desactivar acceso
+- editar datos básicos
+- evitar emails duplicados
+
+5) CONTROL DE VISIBILIDAD Y ACCESO A MÓDULOS
+
+Necesito control por módulos del sidebar.
+
+Módulos a contemplar:
+- Dashboard
+- Tareas
+- Accesos Directos
+- Noticias
+- Emails
+- Clima
+- Monitor Fiscal
+- Viajes
+- Vencimientos
+- Clientes
+- Proveedores
+- Calendarios
+- Finanzas
+- Objetivos
+- Estrategia
+- Decisiones
+- Contactos
+- Chat
+- Admin
+
+Requisitos:
+- el superadmin ve todos los módulos
+- admin y user ven solo los módulos habilitados
+- si un módulo no está habilitado:
+  - no aparece en el sidebar
+  - no aparece en menús secundarios
+  - no puede abrirse por URL directa
+  - no puede consumir endpoints relacionados
+
+Esto es clave:
+No quiero solo ocultar botones.
+Quiero autorización real en frontend y backend.
+
+6) DASHBOARD PRIVADO POR USUARIO
+
+Cada usuario debe tener su propio dashboard privado.
+
+Eso implica:
+- sus propios widgets
+- su propia configuración
+- sus propios filtros
+- sus propios datos
+- su propio estado
+- su propia experiencia de uso
+
+Aunque dos usuarios tengan acceso al mismo módulo, cada uno debe ver solo su propia información.
+
+En esta primera etapa NO quiero módulos compartidos entre usuarios.
+Más adelante algunos módulos podrán evolucionar a colaboración, pero no ahora.
+
+7) AISLAMIENTO TOTAL DE DATOS POR USUARIO
+
+Este punto es estructural.
+
+Todo dato funcional debe tener owner.
+En esta etapa, ese owner debe ser un único `user_id`.
+
+Todas las entidades funcionales privadas deben quedar asociadas al usuario dueño.
+Esto aplica a módulos como:
+- tareas
+- accesos directos
+- objetivos
+- finanzas
+- contactos
+- clientes
+- proveedores
+- vencimientos
+- viajes
+- decisiones
+- estrategia
+- configuraciones del dashboard
+- widgets del dashboard
+- y cualquier otro dato funcional personal
+
+Regla obligatoria:
+- ningún usuario común debe poder ver, editar o eliminar datos de otro usuario
+- el backend debe validar ownership real
+- no confiar en el frontend
+- no deben existir consultas globales inseguras
+
+8) LÓGICA DE AUTORIZACIÓN
+
+Cada acceso debe pasar por estas validaciones:
+- sesión válida
+- usuario activo
+- permiso de módulo
+- ownership del recurso cuando corresponda
+
+Si falla permiso de módulo:
+- devolver 403 Forbidden
+
+Si el recurso no pertenece al usuario:
+- devolver 403 o 404 según la estrategia de seguridad que elijas, pero justificarla
+
+9) PANEL DE ADMINISTRACIÓN
+
+El panel Admin debe incluir como mínimo:
+- métricas de usuarios totales
+- usuarios activos
+- usuarios pendientes
+- usuarios suspendidos
+- listado de usuarios
+- listado de solicitudes pendientes
+- gestión de roles
+- gestión de permisos de módulos
+- acciones:
+  - aprobar
+  - rechazar
+  - editar
+  - suspender
+  - reactivar
+  - eliminar
+  - habilitar módulo
+  - deshabilitar módulo
+
+10) MODELO DE DATOS
+
+Crear estructura consistente para al menos:
+
+USERS
+- id
+- name
+- last_name
+- email
+- password_hash
+- role
+- status
+- created_at
+- updated_at
+- approved_at
+- approved_by
+
+REGISTRATION_REQUESTS
+- id
+- name
+- last_name
+- email
+- password_hash
+- requested_at
+- status
+- note
+
+MODULES
+- id
+- key
+- name
+- description
+- is_active
+- created_at
+- updated_at
+
+ROLE_MODULE_PERMISSIONS
+- id
+- role
+- module_key
+- can_view
+- can_access
+- created_at
+- updated_at
+
+USER_MODULE_PERMISSIONS
+- id
+- user_id
+- module_key
+- can_view
+- can_access
+- created_at
+- updated_at
+
+DASHBOARD_PREFERENCES
+- id
+- user_id
+- layout
+- settings_json
+- created_at
+- updated_at
+
+DASHBOARD_WIDGETS
+- id
+- user_id
+- module_key
+- widget_key
+- position
+- config_json
+- created_at
+- updated_at
+
+AUDIT_LOGS
+- id
+- actor_user_id
+- action
+- target_type
+- target_id
+- details
+- created_at
+
+Agregar también tablas privadas por usuario para los módulos que dejes implementados de ejemplo, siempre con `user_id`.
+
+11) AUDITORÍA
+
+Registrar en audit_logs como mínimo:
+- creación de usuario
+- aprobación de solicitud
+- rechazo de solicitud
+- suspensión y reactivación
+- cambio de rol
+- habilitación o bloqueo de módulos
+- creación, edición o eliminación de datos sensibles
+- accesos administrativos relevantes
+
+12) PRIMER SUPERADMIN
+
+Debe existir un mecanismo seguro y claro para crear el primer superadmin:
+- seed controlado
+o
+- script de inicialización
+o
+- comando manual seguro
+
+No dejar credenciales inseguras hardcodeadas en frontend.
+
+13) FRONTEND
+
+Quiero diseño moderno, limpio, responsive y profesional.
+
+Requisitos:
+- sidebar dinámico según permisos reales
+- pantalla de login
+- pantalla de solicitud de acceso
+- dashboard del usuario
+- panel Admin
+- listado de usuarios
+- gestión de solicitudes pendientes
+- gestión de permisos por módulos
+- manejo claro de errores y estados de carga
+- si se intenta entrar a un módulo no permitido, mostrar 403 o redirigir correctamente
+- nada de pantallas rotas o vacías
+
+14) SEGURIDAD
+
+Aplicar buenas prácticas reales:
+- hash seguro de contraseñas
+- validación backend de permisos
+- sanitización de inputs
+- validación frontend y backend
+- cookies seguras o estrategia equivalente bien justificada
+- no exponer secretos
+- no permitir elevación de privilegios desde frontend
+- no permitir duplicados de email
+- no permitir acceso admin por manipulación del cliente
+- no permitir acceso a datos de otros usuarios
+
+15) NO QUIERO
+
+- pseudocódigo
+- partes sin terminar
+- “acá iría...”
+- demos falsas
+- persistencia final en localStorage
+- seguridad simulada
+- rutas o imports rotos
+- pantallas que aparenten funcionar pero no estén conectadas
+
+16) AUTOAUDITORÍA OBLIGATORIA ANTES DE ENTREGAR
+
+Antes de cerrar la respuesta final, revisá y confirmá expresamente:
+- cómo se crea el primer superadmin
+- qué endpoint usa el registro público
+- qué endpoint usa login
+- cómo se bloquea pending / suspended / rejected
+- cómo se resuelven permisos de módulos
+- cómo se renderiza el sidebar según permisos
+- cómo se impide abrir rutas no autorizadas
+- cómo se bloquea la API con 403
+- cómo se garantiza que cada usuario vea solo sus datos
+- qué tablas usan user_id
+- qué archivos van a Cloudflare Pages
+- qué archivos van a Workers
+- qué SQL debo ejecutar en D1
+- cómo pruebo paso a paso que funciona
+
+17) FORMA DE ENTREGA
+
+Respondé en este orden:
+
+A. Resumen de arquitectura elegida
+B. Estructura completa de carpetas
+C. Código completo de cada archivo
+D. SQL de creación de tablas
+E. Variables de entorno necesarias
+F. Instrucciones exactas para desplegar en Cloudflare Pages + Workers + D1
+G. Cómo crear el primer superadmin
+H. Plan de pruebas paso a paso
+I. Autoauditoría final de consistencia
+J. Archivo visual principal del frontend listo para subir
+
+18) LIMITACIONES TÉCNICAS
+
+Si algo no puede resolverse seriamente con un único HTML estático, decilo explícitamente y proponé la solución correcta sin simplificar de forma insegura.
+
+Construí esto como un entregable profesional serio, estable, revisado y usable.

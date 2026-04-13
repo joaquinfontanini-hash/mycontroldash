@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const dailyGoalsTable = pgTable("daily_goals", {
   id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
   title: text("title").notNull(),
   date: text("date").notNull(),
   priority: text("priority").notNull().default("medium"),
@@ -14,6 +15,7 @@ export const dailyGoalsTable = pgTable("daily_goals", {
 
 export const strategyGoalsTable = pgTable("strategy_goals", {
   id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
   title: text("title").notNull(),
   category: text("category").notNull().default("profesional"),
   priority: text("priority").notNull().default("medium"),

@@ -122,7 +122,7 @@ Disabled: AFIP (404), Boletín Oficial (SPA), El Cronista (HTML)
 1. **Local email/password** (primary): `POST /api/auth/login` verifies bcrypt hash → creates Express session cookie (`connect.sid`, 30-day, stored in PostgreSQL `session` table). Fully independent of Clerk — always works even without internet.
 2. **Google OAuth** (via Clerk): after Clerk OAuth completes, `use-user-sync.ts` calls `POST /api/auth/google-session` with the Clerk Bearer token → backend creates a parallel Express session.
 
-**Super admin**: `joaquin.fontanini@gmail.com`, password `Felipe$10` (bcrypt-hashed in DB, id=2, role=`super_admin`).
+**Super admin**: `joaquin.fontanini@gmail.com`, password `12345678` (bcrypt-hashed in DB, id=2, role=`super_admin`).
 
 **Key files:**
 - `artifacts/api-server/src/routes/auth.ts` — login, google-session, logout, me routes
@@ -132,6 +132,26 @@ Disabled: AFIP (404), Boletín Oficial (SPA), El Cronista (HTML)
 - `artifacts/dashboard/src/hooks/use-user-sync.ts` — registers Google user + establishes backend session
 
 User roles: super_admin, admin, editor, viewer. All dashboard routes require a valid session.
+
+## Data Isolation & Security
+
+**Per-user data isolation** is enforced on all functional tables. Every resource is scoped to the authenticated user:
+
+- **Tables with `user_id TEXT` column**: `tasks`, `shortcuts`, `daily_goals`, `strategy_goals`, `finance_accounts`, `due_dates`, `clients`, `supplier_payment_batches`
+- **`userId` strategy**: stored as `String(dbUser.id)` (internal integer ID cast to string), consistent across local + Clerk auth.
+- **`getCurrentUserId(req)`**: reads from `req.dbUser` (set by `requireAuth` middleware) — always returns the correct integer ID as string, for both local and Clerk sessions.
+- **`assertOwnership(req, res, recordUserId)`**: returns 404 (not 403) if `recordUserId !== String(dbUser.id)`. Super_admin always passes (sees all data for admin purposes).
+- **Super_admin bypass**: skips both module permission checks AND ownership checks.
+
+**Module permission guard (`requireModule`):**
+1. Auth + active/blocked check → 2) super_admin bypass → 3) module isActive → 4) `user_module_permissions` override (per-user grant/revoke) → 5) role-level `allowedRoles` check
+- Unknown module keys fail-closed (403).
+- Guards are applied in `routes/index.ts` with explicit path prefixes: `router.use("/path", requireModule("key"))`.
+
+**Tables intentionally without `user_id`** (shared/global data):
+- `travel_offers` — scraped travel deals (like a news feed)
+- `finance_config` — shared alert thresholds
+- `tax_calendars` — shared AFIP calendar data
 
 ## Data Quality System (v3)
 

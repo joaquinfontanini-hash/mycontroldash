@@ -1,7 +1,7 @@
 import { Router, type IRouter, Request, Response } from "express";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { db, dailyGoalsTable, strategyGoalsTable } from "@workspace/db";
-import { requireAuth, requireModule } from "../middleware/require-auth.js";
+import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -17,9 +17,10 @@ function todayStr() {
 
 router.get("/daily-goals", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
+    const userId = getCurrentUserId(req);
     const date = (req.query.date as string) || todayStr();
     const goals = await db.select().from(dailyGoalsTable)
-      .where(eq(dailyGoalsTable.date, date))
+      .where(and(eq(dailyGoalsTable.userId, userId), eq(dailyGoalsTable.date, date)))
       .orderBy(asc(dailyGoalsTable.orderIndex), asc(dailyGoalsTable.createdAt));
     res.json(goals);
   } catch (err) {
@@ -28,9 +29,12 @@ router.get("/daily-goals", requireAuth, async (req: Request, res: Response): Pro
   }
 });
 
-router.get("/daily-goals/history", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+router.get("/daily-goals/history", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const all = await db.select().from(dailyGoalsTable).orderBy(desc(dailyGoalsTable.date), asc(dailyGoalsTable.orderIndex));
+    const userId = getCurrentUserId(req);
+    const all = await db.select().from(dailyGoalsTable)
+      .where(eq(dailyGoalsTable.userId, userId))
+      .orderBy(desc(dailyGoalsTable.date), asc(dailyGoalsTable.orderIndex));
     const grouped: Record<string, typeof all> = {};
     for (const g of all) {
       if (!grouped[g.date]) grouped[g.date] = [];
@@ -50,6 +54,7 @@ router.get("/daily-goals/history", requireAuth, async (_req: Request, res: Respo
 });
 
 router.post("/daily-goals", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
   const { title, date, priority, orderIndex } = req.body ?? {};
   if (!title || typeof title !== "string") {
     res.status(400).json({ error: "title es requerido" });
@@ -57,6 +62,7 @@ router.post("/daily-goals", requireAuth, async (req: Request, res: Response): Pr
   }
   try {
     const [goal] = await db.insert(dailyGoalsTable).values({
+      userId,
       title,
       date: (typeof date === "string" ? date : null) ?? todayStr(),
       priority: VALID_PRIORITIES.includes(priority) ? priority : "medium",
@@ -72,15 +78,18 @@ router.post("/daily-goals", requireAuth, async (req: Request, res: Response): Pr
 router.patch("/daily-goals/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
-  const { title, isDone, priority, orderIndex } = req.body ?? {};
   try {
+    const [existing] = await db.select().from(dailyGoalsTable).where(eq(dailyGoalsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
+    const { title, isDone, priority, orderIndex } = req.body ?? {};
     const updates: Record<string, unknown> = {};
     if (typeof title === "string") updates.title = title;
     if (typeof isDone === "boolean") updates.isDone = isDone;
     if (VALID_PRIORITIES.includes(priority)) updates.priority = priority;
     if (typeof orderIndex === "number") updates.orderIndex = orderIndex;
     const [updated] = await db.update(dailyGoalsTable).set(updates as any).where(eq(dailyGoalsTable.id, id)).returning();
-    if (!updated) { res.status(404).json({ error: "No encontrado" }); return; }
     res.json(updated);
   } catch (err) {
     logger.error({ err }, "daily goal update error");
@@ -92,6 +101,10 @@ router.delete("/daily-goals/:id", requireAuth, async (req: Request, res: Respons
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
   try {
+    const [existing] = await db.select().from(dailyGoalsTable).where(eq(dailyGoalsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
     await db.delete(dailyGoalsTable).where(eq(dailyGoalsTable.id, id));
     res.json({ ok: true });
   } catch (err) {
@@ -100,9 +113,12 @@ router.delete("/daily-goals/:id", requireAuth, async (req: Request, res: Respons
   }
 });
 
-router.get("/strategy-goals", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+router.get("/strategy-goals", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const goals = await db.select().from(strategyGoalsTable).orderBy(asc(strategyGoalsTable.startDate));
+    const userId = getCurrentUserId(req);
+    const goals = await db.select().from(strategyGoalsTable)
+      .where(eq(strategyGoalsTable.userId, userId))
+      .orderBy(asc(strategyGoalsTable.startDate));
     res.json(goals);
   } catch (err) {
     logger.error({ err }, "strategy goals fetch error");
@@ -111,6 +127,7 @@ router.get("/strategy-goals", requireAuth, async (_req: Request, res: Response):
 });
 
 router.post("/strategy-goals", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
   const { title, category, priority, status, progress, startDate, endDate, notes } = req.body ?? {};
   if (!title || !startDate || !endDate) {
     res.status(400).json({ error: "title, startDate y endDate son requeridos" });
@@ -118,6 +135,7 @@ router.post("/strategy-goals", requireAuth, async (req: Request, res: Response):
   }
   try {
     const [goal] = await db.insert(strategyGoalsTable).values({
+      userId,
       title,
       category: VALID_CATEGORIES.includes(category) ? category : "profesional",
       priority: VALID_PRIORITIES.includes(priority) ? priority : "medium",
@@ -137,8 +155,12 @@ router.post("/strategy-goals", requireAuth, async (req: Request, res: Response):
 router.patch("/strategy-goals/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
-  const { title, category, priority, status, progress, startDate, endDate, notes } = req.body ?? {};
   try {
+    const [existing] = await db.select().from(strategyGoalsTable).where(eq(strategyGoalsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
+    const { title, category, priority, status, progress, startDate, endDate, notes } = req.body ?? {};
     const updates: Record<string, unknown> = {};
     if (typeof title === "string") updates.title = title;
     if (VALID_CATEGORIES.includes(category)) updates.category = category;
@@ -149,7 +171,6 @@ router.patch("/strategy-goals/:id", requireAuth, async (req: Request, res: Respo
     if (typeof endDate === "string") updates.endDate = endDate;
     if (notes !== undefined) updates.notes = notes;
     const [updated] = await db.update(strategyGoalsTable).set(updates as any).where(eq(strategyGoalsTable.id, id)).returning();
-    if (!updated) { res.status(404).json({ error: "No encontrado" }); return; }
     res.json(updated);
   } catch (err) {
     logger.error({ err }, "strategy goal update error");
@@ -161,6 +182,10 @@ router.delete("/strategy-goals/:id", requireAuth, async (req: Request, res: Resp
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
   try {
+    const [existing] = await db.select().from(strategyGoalsTable).where(eq(strategyGoalsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
     await db.delete(strategyGoalsTable).where(eq(strategyGoalsTable.id, id));
     res.json({ ok: true });
   } catch (err) {

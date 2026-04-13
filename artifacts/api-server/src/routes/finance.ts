@@ -1,7 +1,7 @@
 import { Router, type IRouter, Request, Response } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db, financeAccountsTable, financeConfigTable } from "@workspace/db";
-import { requireAuth, requireModule } from "../middleware/require-auth.js";
+import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -23,9 +23,12 @@ async function ensureDefaultConfig() {
   }
 }
 
-router.get("/finance/accounts", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+router.get("/finance/accounts", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const accounts = await db.select().from(financeAccountsTable).orderBy(financeAccountsTable.createdAt);
+    const userId = getCurrentUserId(req);
+    const accounts = await db.select().from(financeAccountsTable)
+      .where(eq(financeAccountsTable.userId, userId))
+      .orderBy(financeAccountsTable.createdAt);
     res.json(accounts);
   } catch (err) {
     logger.error({ err }, "finance accounts fetch error");
@@ -34,6 +37,7 @@ router.get("/finance/accounts", requireAuth, async (_req: Request, res: Response
 });
 
 router.post("/finance/accounts", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
   const { type, label, amount, currency, notes } = req.body ?? {};
   if (!type || !VALID_TYPES.includes(type) || !label) {
     res.status(400).json({ error: "type y label son requeridos" });
@@ -41,6 +45,7 @@ router.post("/finance/accounts", requireAuth, async (req: Request, res: Response
   }
   try {
     const [account] = await db.insert(financeAccountsTable).values({
+      userId,
       type,
       label,
       amount: String(amount ?? 0),
@@ -57,8 +62,12 @@ router.post("/finance/accounts", requireAuth, async (req: Request, res: Response
 router.put("/finance/accounts/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
-  const { type, label, amount, currency, notes } = req.body ?? {};
   try {
+    const [existing] = await db.select().from(financeAccountsTable).where(eq(financeAccountsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Cuenta no encontrada" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
+    const { type, label, amount, currency, notes } = req.body ?? {};
     const updates: Record<string, unknown> = {};
     if (type && VALID_TYPES.includes(type)) updates.type = type;
     if (label) updates.label = label;
@@ -69,7 +78,6 @@ router.put("/finance/accounts/:id", requireAuth, async (req: Request, res: Respo
       .set(updates as any)
       .where(eq(financeAccountsTable.id, id))
       .returning();
-    if (!updated) { res.status(404).json({ error: "Cuenta no encontrada" }); return; }
     res.json(updated);
   } catch (err) {
     logger.error({ err }, "finance account update error");
@@ -81,8 +89,11 @@ router.delete("/finance/accounts/:id", requireAuth, async (req: Request, res: Re
   const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
   try {
-    const [deleted] = await db.delete(financeAccountsTable).where(eq(financeAccountsTable.id, id)).returning();
-    if (!deleted) { res.status(404).json({ error: "Cuenta no encontrada" }); return; }
+    const [existing] = await db.select().from(financeAccountsTable).where(eq(financeAccountsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Cuenta no encontrada" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
+    await db.delete(financeAccountsTable).where(eq(financeAccountsTable.id, id));
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "finance account delete error");
@@ -90,10 +101,13 @@ router.delete("/finance/accounts/:id", requireAuth, async (req: Request, res: Re
   }
 });
 
-router.get("/finance/summary", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+router.get("/finance/summary", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
+    const userId = getCurrentUserId(req);
     await ensureDefaultConfig();
-    const accounts = await db.select().from(financeAccountsTable).orderBy(financeAccountsTable.createdAt);
+    const accounts = await db.select().from(financeAccountsTable)
+      .where(eq(financeAccountsTable.userId, userId))
+      .orderBy(financeAccountsTable.createdAt);
     const config = await db.select().from(financeConfigTable);
     const configMap: Record<string, string> = {};
     for (const c of config) configMap[c.key] = c.value;

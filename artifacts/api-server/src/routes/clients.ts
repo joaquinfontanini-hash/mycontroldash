@@ -3,16 +3,15 @@ import { eq, desc } from "drizzle-orm";
 import { db, clientsTable, clientTaxAssignmentsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { generateDueDatesForClient, regenerateAllDueDatesForClient } from "../services/afip-engine.js";
-import { getAuth } from "@clerk/express";
-import { requireModule } from "../middleware/require-auth.js";
+import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 
-router.get("/clients", async (req, res): Promise<void> => {
+router.get("/clients", requireAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getAuth(req)?.userId;
+    const userId = getCurrentUserId(req);
     const clients = await db.select().from(clientsTable)
-      .where(userId ? eq(clientsTable.userId, userId) : undefined)
+      .where(eq(clientsTable.userId, userId))
       .orderBy(desc(clientsTable.createdAt));
     const assignments = await db.select().from(clientTaxAssignmentsTable);
     const result = clients.map(c => ({
@@ -26,12 +25,13 @@ router.get("/clients", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/clients/:id", async (req, res): Promise<void> => {
+router.get("/clients/:id", requireAuth, async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
     if (!client) { res.status(404).json({ error: "Cliente no encontrado" }); return; }
+    if (!assertOwnership(req, res, client.userId)) return;
     const taxAssignments = await db.select().from(clientTaxAssignmentsTable)
       .where(eq(clientTaxAssignmentsTable.clientId, id));
     res.json({ ...client, taxAssignments });
@@ -41,9 +41,9 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/clients", async (req, res): Promise<void> => {
+router.post("/clients", requireAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getAuth(req)?.userId;
+    const userId = getCurrentUserId(req);
     const { name, cuit, email, phone, status, notes, taxTypes } = req.body;
     if (!name || !cuit) { res.status(400).json({ error: "Nombre y CUIT son requeridos" }); return; }
     const cleanCuit = cuit.replace(/[-\s]/g, "");
@@ -51,7 +51,7 @@ router.post("/clients", async (req, res): Promise<void> => {
     const [client] = await db.insert(clientsTable).values({
       name, cuit: cleanCuit, email, phone,
       status: status ?? "active", notes,
-      userId: userId ?? null,
+      userId,
     }).returning();
     if (taxTypes && Array.isArray(taxTypes)) {
       for (const taxType of taxTypes) {
@@ -71,10 +71,14 @@ router.post("/clients", async (req, res): Promise<void> => {
   }
 });
 
-router.put("/clients/:id", async (req, res): Promise<void> => {
+router.put("/clients/:id", requireAuth, async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+    const [existing] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Cliente no encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
     const { name, cuit, email, phone, status, notes, taxTypes } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
@@ -104,10 +108,14 @@ router.put("/clients/:id", async (req, res): Promise<void> => {
   }
 });
 
-router.delete("/clients/:id", async (req, res): Promise<void> => {
+router.delete("/clients/:id", requireAuth, async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+    const [existing] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Cliente no encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+
     await db.delete(clientTaxAssignmentsTable).where(eq(clientTaxAssignmentsTable.clientId, id));
     await db.delete(clientsTable).where(eq(clientsTable.id, id));
     res.json({ ok: true });
@@ -119,7 +127,7 @@ router.delete("/clients/:id", async (req, res): Promise<void> => {
 
 router.post("/clients/:id/generate-due-dates", async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
     const result = await generateDueDatesForClient(id);
     res.json(result);
@@ -131,7 +139,7 @@ router.post("/clients/:id/generate-due-dates", async (req, res): Promise<void> =
 
 router.post("/clients/:id/regenerate-due-dates", async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
     const result = await regenerateAllDueDatesForClient(id);
     res.json(result);
