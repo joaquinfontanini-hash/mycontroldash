@@ -70,3 +70,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 SUPER_ADMIN_EMAIL = "joaquin.fontanini@gmail.com"
+SUPER_ADMIN_PASSWORD = "529NfT97sT8x"
