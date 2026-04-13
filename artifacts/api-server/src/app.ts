@@ -29,10 +29,14 @@ const sessionMiddleware = (session as any)(
     resave: false,
     saveUninitialized: false,
     cookie: {
+      // Fix 2: sameSite "none" required for cross-domain cookie delivery
+      // (frontend y backend están en dominios distintos en Replit autoscale).
+      // "none" requiere secure:true (cumplido en producción).
+      // En dev usamos "lax" (mismo dominio, no necesita "none").
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000,
-      sameSite: process.env.NODE_ENV === "production" ? ("strict" as const) : ("lax" as const),
+      sameSite: process.env.NODE_ENV === "production" ? ("none" as const) : ("lax" as const),
     },
   } satisfies session.SessionOptions,
 );

@@ -1,3 +1,4 @@
+import { execSync } from "child_process";
 import app from "./app";
 import { logger } from "./lib/logger";
 
@@ -13,6 +14,24 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+// ── Fix 1: DB schema push at startup ─────────────────────────────────────────
+// Runs drizzle-kit push --force before the server accepts connections.
+// Idempotent: safe on every start (no-op if schema is already in sync).
+// This ensures production works correctly even when the start script is
+// bypassed (e.g. artifact.toml running the binary directly).
+try {
+  logger.info("DB schema push: starting...");
+  execSync("pnpm --filter @workspace/db run push-force", {
+    stdio: "pipe",
+    cwd: process.cwd(),
+    timeout: 60_000,
+  });
+  logger.info("DB schema push: completed successfully");
+} catch (err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  logger.error({ message }, "DB schema push failed — continuing startup (schema may be out of sync)");
 }
 
 const server = app.listen(port, (err) => {

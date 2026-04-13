@@ -1,0 +1,152 @@
+Necesito que corrijas y estabilices completamente este proyecto full-stack (React + Express + PostgreSQL) teniendo en cuenta problemas reales de producción.
+
+OBJETIVO:
+Dejar el sistema funcionando correctamente en producción con login operativo, base de datos inicializada y sesiones persistentes.
+
+---
+
+1. FIX CRÍTICO: DATABASE INIT EN PRODUCCIÓN
+
+---
+
+Problema actual:
+El schema push de Drizzle NO se ejecuta en producción porque el deployment corre directamente el binario.
+
+Solución requerida:
+
+* Integrar el schema push automáticamente en el arranque del servidor.
+
+Implementar:
+
+* En el entry point del backend (index.ts o app.ts), ejecutar programáticamente:
+
+  * push del schema (drizzle)
+  * seed de datos
+  * creación del super admin si no existe
+
+Debe ser:
+
+* idempotente (no duplicar datos)
+* seguro en producción
+
+---
+
+2. FIX CRÍTICO: COOKIES Y SESIÓN
+
+---
+
+Problema:
+Las cookies no funcionan entre frontend y backend (cross-domain).
+
+Cambiar configuración de sesión:
+
+* sameSite: "none"
+* secure: true
+* httpOnly: true
+
+Además:
+
+* asegurar CORS correcto:
+
+  * credentials: true
+  * origin dinámico basado en env
+
+---
+
+3. FIX DE SEGURIDAD
+
+---
+
+Mover estas variables a entorno seguro:
+
+* SUPER_ADMIN_PASSWORD
+* SESSION_SECRET
+
+NO deben estar en:
+
+* .replit
+* código fuente
+
+Usar:
+
+* Secrets de Replit
+
+---
+
+4. FIX DE AUTH
+
+---
+
+Validar y corregir:
+
+* Login local (bcrypt)
+* Login Google (Clerk)
+* Sincronización Clerk → session backend
+
+Asegurar:
+
+* que siempre exista req.dbUser
+* fallback correcto si Clerk o sesión falla
+
+---
+
+5. FIX DE DEPLOY
+
+---
+
+Corregir artifact.toml:
+
+Opción recomendada:
+
+* ejecutar script previo al start:
+
+pnpm --filter @workspace/db run push-force
+
+Alternativa:
+
+* incluir lógica en build step
+
+---
+
+6. LOGGING Y DEBUG
+
+---
+
+Agregar logs claros:
+
+* login attempts
+* session creation
+* errores de auth
+* errores de DB
+
+Usar pino (ya instalado)
+
+---
+
+7. VALIDACIÓN FINAL
+
+---
+
+El sistema debe:
+
+✔ Permitir login con email/password
+✔ Permitir login con Google
+✔ Mantener sesión entre requests
+✔ Crear automáticamente el super admin
+✔ Funcionar con base de datos inicializada
+✔ No tener errores de cookie
+✔ No exponer credenciales
+
+---
+
+NO REESCRIBIR TODO EL PROYECTO
+NO CAMBIAR LA ARQUITECTURA
+SOLO CORREGIR Y ESTABILIZAR
+
+---
+
+Entregar:
+
+* código corregido
+* cambios específicos
+* explicación breve por cada fix
