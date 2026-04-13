@@ -4,7 +4,7 @@ import {
   db, usersTable, userProfilesTable,
   conversationsTable, conversationParticipantsTable, messagesTable,
 } from "@workspace/db";
-import { requireAuth, AuthenticatedRequest } from "../middleware/require-auth.js";
+import { requireAuth, requireModule, AuthenticatedRequest } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();

@@ -10,6 +10,7 @@ import { refreshFiscalSources, ensureFiscalUpToDate, FISCAL_RSS_SOURCES } from "
 import { getLastSync } from "../services/sync.service.js";
 import { DEFAULT_QUALITY_THRESHOLD } from "../services/data-quality.service.js";
 import { logger } from "../lib/logger.js";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

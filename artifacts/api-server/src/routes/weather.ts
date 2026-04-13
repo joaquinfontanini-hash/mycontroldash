@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { getWeatherForecast, refreshWeather } from "../services/weather.service.js";
 import { getLastSync } from "../services/sync.service.js";
 import { logger } from "../lib/logger.js";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

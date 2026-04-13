@@ -4,6 +4,7 @@ import { db, clientsTable, clientTaxAssignmentsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { generateDueDatesForClient, regenerateAllDueDatesForClient } from "../services/afip-engine.js";
 import { getAuth } from "@clerk/express";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

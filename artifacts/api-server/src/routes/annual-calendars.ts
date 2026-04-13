@@ -6,6 +6,7 @@ import {
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { getAuth } from "@clerk/express";
+import { requireModule } from "../middleware/require-auth.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";

@@ -3,6 +3,7 @@ import { eq, desc } from "drizzle-orm";
 import { db, supplierPaymentBatchesTable, supplierPaymentBatchItemsTable, dueDatesTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { getAuth } from "@clerk/express";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

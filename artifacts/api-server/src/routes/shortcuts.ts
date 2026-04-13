@@ -7,6 +7,7 @@ import {
   UpdateShortcutParams,
   DeleteShortcutParams,
 } from "@workspace/api-zod";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

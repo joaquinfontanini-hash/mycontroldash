@@ -1,6 +1,7 @@
 import { Router, type IRouter, Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import { db, modulesTable } from "@workspace/db";
+import { db, modulesTable, usersTable } from "@workspace/db";
+import { getAuth } from "@clerk/express";
 import { logger } from "../lib/logger.js";
 import { requireAdmin } from "../middleware/require-auth.js";
 import { logSecurityEvent, getClientIp } from "../lib/security-logger.js";
@@ -8,10 +9,32 @@ import { AuthenticatedRequest } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 
-router.get("/modules", async (_req: Request, res: Response): Promise<void> => {
+router.get("/modules", async (req: Request, res: Response): Promise<void> => {
   try {
-    const modules = await db.select().from(modulesTable).orderBy(modulesTable.orderIndex);
-    res.json(modules);
+    const all = await db.select().from(modulesTable).orderBy(modulesTable.orderIndex);
+
+    // Resolve caller's role (best-effort — endpoint is accessible without auth)
+    let userRole: string | null = null;
+    try {
+      const sessionUserId = req.session?.userId;
+      if (sessionUserId) {
+        const [u] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, sessionUserId));
+        userRole = u?.role ?? null;
+      } else {
+        const clerkId = getAuth(req)?.userId;
+        if (clerkId) {
+          const [u] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.clerkId, clerkId));
+          userRole = u?.role ?? null;
+        }
+      }
+    } catch { /* unauthenticated → return public-visible set */ }
+
+    // Super admin sees everything (including inactive/restricted modules)
+    const visible = userRole === "super_admin"
+      ? all
+      : all.filter(m => m.isActive && (userRole ? m.allowedRoles.includes(userRole) : false));
+
+    res.json(visible);
   } catch (err) {
     logger.error({ err }, "Modules fetch error");
     res.status(500).json({ error: "Error al cargar módulos" });

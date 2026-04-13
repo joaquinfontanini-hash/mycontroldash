@@ -140,16 +140,26 @@ function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: Rea
   return <>{children}</>;
 }
 
-// ── Local auth version: checks localStorage, no API calls ──────────────────────
+// ── Local auth version: checks session then applies ModuleGuard ────────────────
 
 function ProtectedRouteLocal({
   component: Component,
+  moduleKey,
 }: {
   component: React.ComponentType;
   moduleKey?: string;
 }) {
   const session = getLocalSession();
   if (!session) return <Redirect to="/sign-in" />;
+
+  if (moduleKey) {
+    return (
+      <ModuleGuard moduleKey={moduleKey}>
+        <Component />
+      </ModuleGuard>
+    );
+  }
+
   return <Component />;
 }
 

@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-zod";
 import { scoreTravelOffer, logDiscard, DEFAULT_QUALITY_THRESHOLD } from "../services/data-quality.service.js";
 import { logger } from "../lib/logger.js";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

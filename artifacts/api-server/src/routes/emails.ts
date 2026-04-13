@@ -10,6 +10,7 @@ import {
 } from "../services/email.service.js";
 import { ListEmailsQueryParams } from "@workspace/api-zod";
 import { logger } from "../lib/logger.js";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

@@ -3,6 +3,7 @@ import { getNews, refreshNews, ensureNewsUpToDate, RSS_SOURCES } from "../servic
 import { getLastSync } from "../services/sync.service.js";
 import { ListNewsQueryParams } from "@workspace/api-zod";
 import { logger } from "../lib/logger.js";
+import { requireModule } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 

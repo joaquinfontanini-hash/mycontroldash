@@ -245,12 +245,26 @@ export default function AdminPage() {
 
   const toggleModuleMutation = useMutation({
     mutationFn: (key: string) =>
-      fetch(`${BASE}/api/modules/${key}/toggle`, { method: "PUT" }).then(r => r.json()),
+      fetch(`${BASE}/api/modules/${key}/toggle`, { method: "PUT", credentials: "include" }).then(r => r.json()),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["modules"] });
       toast({ title: data.isActive ? "Módulo activado" : "Módulo desactivado", description: data.name });
     },
     onError: () => toast({ title: "Error al cambiar módulo", variant: "destructive" }),
+  });
+
+  const updateRolesMutation = useMutation({
+    mutationFn: ({ key, allowedRoles }: { key: string; allowedRoles: string[] }) =>
+      fetch(`${BASE}/api/modules/${key}/roles`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowedRoles }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["modules"] });
+      toast({ title: "Roles del módulo actualizados" });
+    },
+    onError: () => toast({ title: "Error al actualizar roles", variant: "destructive" }),
   });
 
   const blockMutation = useMutation({
@@ -602,38 +616,70 @@ export default function AdminPage() {
                 <div className="space-y-3">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
               ) : (
                 <div className="space-y-2">
-                  {modules.map(mod => (
-                    <div key={mod.key} className={`flex items-center gap-4 p-3.5 rounded-lg border transition-colors ${mod.isActive ? "bg-card" : "bg-muted/30 opacity-70"}`}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{mod.name}</span>
-                          {mod.isActive
-                            ? <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px]">Activo</Badge>
-                            : <Badge variant="secondary" className="text-[10px]">Inactivo</Badge>
-                          }
+                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-3 px-3.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span>Módulo</span>
+                    <span className="text-center w-14">Admin</span>
+                    <span className="text-center w-14">Editor</span>
+                    <span className="text-center w-14">Viewer</span>
+                    <span className="text-center w-8">On/Off</span>
+                  </div>
+                  {modules.map(mod => {
+                    const toggleRole = (role: string) => {
+                      if (!canManageUsers) return;
+                      const current = mod.allowedRoles.filter(r => r !== "super_admin");
+                      const next = current.includes(role)
+                        ? current.filter(r => r !== role)
+                        : [...current, role];
+                      updateRolesMutation.mutate({ key: mod.key, allowedRoles: ["super_admin", ...next] });
+                    };
+                    const hasRole = (role: string) => mod.allowedRoles.includes(role);
+                    return (
+                      <div key={mod.key} className={`grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-x-3 p-3.5 rounded-lg border transition-colors ${mod.isActive ? "bg-card" : "bg-muted/30"}`}>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-medium text-sm ${!mod.isActive ? "text-muted-foreground" : ""}`}>{mod.name}</span>
+                            {!mod.isActive && <Badge variant="secondary" className="text-[10px]">Inactivo</Badge>}
+                          </div>
+                          {mod.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{mod.description}</p>}
+                          <p className="text-[10px] text-muted-foreground/50 font-mono mt-0.5">{mod.key}</p>
                         </div>
-                        {mod.description && <p className="text-xs text-muted-foreground mt-0.5">{mod.description}</p>}
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {mod.allowedRoles.map(r => (
-                            <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{r}</span>
-                          ))}
+                        {(["admin", "editor", "viewer"] as const).map(role => (
+                          <div key={role} className="flex justify-center w-14">
+                            <button
+                              disabled={!canManageUsers || updateRolesMutation.isPending}
+                              onClick={() => toggleRole(role)}
+                              className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-all ${
+                                hasRole(role)
+                                  ? "bg-primary border-primary text-primary-foreground"
+                                  : "border-muted-foreground/30 hover:border-muted-foreground/60"
+                              } ${!canManageUsers ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                              title={`${hasRole(role) ? "Quitar" : "Dar"} acceso a ${role}`}
+                            >
+                              {hasRole(role) && <CheckCircle2 className="h-3 w-3" />}
+                            </button>
+                          </div>
+                        ))}
+                        <div className="flex justify-center w-8">
+                          {canManageUsers && (
+                            <button
+                              onClick={() => toggleModuleMutation.mutate(mod.key)}
+                              disabled={toggleModuleMutation.isPending}
+                              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                              title={mod.isActive ? "Desactivar módulo" : "Activar módulo"}
+                            >
+                              {mod.isActive
+                                ? <ToggleRight className="h-6 w-6 text-emerald-500" />
+                                : <ToggleLeft className="h-6 w-6" />
+                              }
+                            </button>
+                          )}
                         </div>
                       </div>
-                      {canManageUsers && (
-                        <button
-                          onClick={() => toggleModuleMutation.mutate(mod.key)}
-                          disabled={toggleModuleMutation.isPending}
-                          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                          title={mod.isActive ? "Desactivar módulo" : "Activar módulo"}
-                        >
-                          {mod.isActive
-                            ? <ToggleRight className="h-7 w-7 text-emerald-500" />
-                            : <ToggleLeft className="h-7 w-7" />
-                          }
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
+                  <p className="text-[10px] text-muted-foreground/60 pt-1 px-1">
+                    Super Admin siempre tiene acceso a todos los módulos, independientemente de esta configuración.
+                  </p>
                 </div>
               )}
             </CardContent>

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, tasksTable, fiscalUpdatesTable, travelOffersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { requireModule } from "../middleware/require-auth.js";
 
 const MOCK_EMAIL_COUNT_24H = 8;
 const MOCK_NEWS_COUNT = 8;
