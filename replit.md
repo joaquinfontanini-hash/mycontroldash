@@ -122,7 +122,7 @@ Disabled: AFIP (404), Boletín Oficial (SPA), El Cronista (HTML)
 1. **Local email/password** (primary): `POST /api/auth/login` verifies bcrypt hash → creates Express session cookie (`connect.sid`, 30-day, stored in PostgreSQL `session` table). Fully independent of Clerk — always works even without internet.
 2. **Google OAuth** (via Clerk): after Clerk OAuth completes, `use-user-sync.ts` calls `POST /api/auth/google-session` with the Clerk Bearer token → backend creates a parallel Express session.
 
-**Super admin**: `joaquin.fontanini@gmail.com`, password `12345678` (bcrypt-hashed in DB, id=2, role=`super_admin`).
+**Super admin**: `joaquin.fontanini@gmail.com`, password `529NfT97sT8x` (bcrypt-hashed in DB, id=2, role=`super_admin`).
 
 **Key files:**
 - `artifacts/api-server/src/routes/auth.ts` — login, google-session, logout, me routes
