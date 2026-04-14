@@ -3,6 +3,19 @@ import { LOCAL_AUTH_MODE, LOCAL_NAME, LOCAL_EMAIL, getLocalSession } from "@/lib
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
+// ── Custom error class so callers can inspect the HTTP status ─────────────────
+export class HttpError extends Error {
+  status: number;
+  constructor(status: number, body?: string) {
+    super(body ?? `HTTP ${status}`);
+    this.status = status;
+  }
+}
+
+export function isUnauthenticatedError(err: unknown): boolean {
+  return err instanceof HttpError && err.status === 401;
+}
+
 export interface CurrentUser {
   id: number;
   clerkId: string | null;
@@ -44,18 +57,29 @@ export function useCurrentUser() {
       : undefined
     : undefined;
 
-  return useQuery<CurrentUser>({
+  return useQuery<CurrentUser, HttpError>({
     queryKey: ["current-user"],
     queryFn: async () => {
       if (LOCAL_AUTH_MODE) return localUser!;
       const r = await fetch(`${BASE}/api/users/me`, { credentials: "include" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) {
+        // Capture the body message if available for better debugging
+        const body = await r.json().catch(() => ({}));
+        throw new HttpError(r.status, body?.error ?? `HTTP ${r.status}`);
+      }
       return r.json();
     },
     enabled: !LOCAL_AUTH_MODE || !!session,
     initialData: LOCAL_AUTH_MODE ? localUser : undefined,
-    staleTime: LOCAL_AUTH_MODE ? Infinity : 30_000,
-    retry: LOCAL_AUTH_MODE ? false : 1,
+    // Keep stale data while refetching — avoids flicker and transient redirects.
+    // Session lasts 30 days so 5 minutes is a safe revalidation window.
+    staleTime: LOCAL_AUTH_MODE ? Infinity : 5 * 60 * 1000,
+    // Only retry on non-auth errors; a 401 is definitive, no point retrying.
+    retry: (failureCount, error) => {
+      if (LOCAL_AUTH_MODE) return false;
+      if (isUnauthenticatedError(error)) return false;
+      return failureCount < 2;
+    },
     retryDelay: 3000,
   });
 }

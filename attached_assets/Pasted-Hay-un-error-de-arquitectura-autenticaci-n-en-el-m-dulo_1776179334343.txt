@@ -1,0 +1,43 @@
+Hay un error de arquitectura/autenticación en el módulo Tareas.
+
+Problema actual:
+Cuando ingreso al módulo Tareas, el sistema vuelve a pedirme el email, no toma la sesión ya iniciada y termina regresando a la página principal.
+
+Esto no debe pasar.
+
+Quiero que corrijas la autenticación para que exista una única sesión global para toda la aplicación.
+
+REQUERIMIENTO CORRECTO
+
+1. El usuario debe iniciar sesión una sola vez en toda la plataforma.
+2. Todos los módulos, incluido Tareas, deben reutilizar esa misma sesión.
+3. El módulo Tareas no debe mostrar una pantalla de login propia.
+4. Al entrar a Tareas, debe validar la sesión global ya existente.
+5. Si la sesión es válida y el usuario tiene permiso para el módulo, debe ingresar directamente.
+6. Si la sesión no existe o expiró, recién ahí debe redirigir al login general.
+7. No quiero reautenticación por módulo.
+8. No quiero pedir email nuevamente dentro de Tareas.
+9. Revisá cookies, session context, auth middleware, route guards y navegación del módulo.
+
+PUNTOS A AUDITAR Y CORREGIR
+
+- revisar si Tareas está montado como app separada
+- revisar si Tareas usa otro formulario/login incorrecto
+- revisar si la cookie de sesión no está llegando a esa ruta
+- revisar si el auth guard de Tareas está mal implementado
+- revisar si el frontend pierde el estado de sesión al navegar
+- revisar si hay redirección automática al home por fallo de auth
+- revisar si el módulo usa localStorage/sessionStorage distinto al login principal
+- revisar si la ruta de Tareas está fuera del layout autenticado principal
+
+COMPORTAMIENTO ESPERADO
+
+- login único al entrar al sistema
+- navegación directa entre módulos
+- Tareas abre sin pedir email otra vez
+- si el usuario no tiene permiso, mostrar 403
+- si no tiene sesión, redirigir al login general
+- nunca volver al home silenciosamente sin explicar el error
+
+QUIERO QUE LO SOLUCIONES DE FORMA REAL, NO OCULTANDO EL FORMULARIO.
+Quiero corregir la causa raíz en frontend + backend + rutas + sesión.

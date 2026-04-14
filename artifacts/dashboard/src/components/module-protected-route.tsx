@@ -1,15 +1,22 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Redirect } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useCurrentUser } from "@/hooks/use-current-user";
+import { useCurrentUser, isUnauthenticatedError } from "@/hooks/use-current-user";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LOCAL_AUTH_MODE, getLocalSession } from "@/lib/local-auth";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const RETRY_DELAY = (attempt: number) => Math.min(1000 * 2 ** attempt, 8000);
+
+// After GUARD_TIMEOUT_MS of loading, show an error with retry instead of
+// spinning forever. This catches stuck network requests.
 const GUARD_TIMEOUT_MS = 12_000;
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ModuleData {
   key: string;
@@ -17,15 +24,7 @@ interface ModuleData {
   allowedRoles: string[];
 }
 
-function useModules() {
-  return useQuery<ModuleData[]>({
-    queryKey: ["modules"],
-    queryFn: () => fetch(`${BASE}/api/modules`).then(r => r.ok ? r.json() : []),
-    staleTime: 60_000,
-    retry: 2,
-    retryDelay: RETRY_DELAY,
-  });
-}
+// ── Shared UI ─────────────────────────────────────────────────────────────────
 
 function Spinner() {
   return (
@@ -64,6 +63,24 @@ function AccessDenied({ title, message }: { title: string; message: ReactNode })
     </div>
   );
 }
+
+// ── Modules query (used inside ModuleGuard) ───────────────────────────────────
+
+function useModules() {
+  return useQuery<ModuleData[]>({
+    queryKey: ["modules"],
+    queryFn: () =>
+      fetch(`${BASE}/api/modules`, { credentials: "include" })
+        .then(r => (r.ok ? r.json() : [])),
+    staleTime: 60_000,
+    retry: 2,
+    retryDelay: RETRY_DELAY,
+  });
+}
+
+// ── ModuleGuard ───────────────────────────────────────────────────────────────
+// Checks that the user has access to the specific module key.
+// Only runs after ProtectedRoute has already confirmed the session is valid.
 
 function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: ReactNode }) {
   const {
@@ -140,7 +157,8 @@ function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: Rea
   return <>{children}</>;
 }
 
-// ── Local auth version: checks session then applies ModuleGuard ────────────────
+// ── LOCAL AUTH version ────────────────────────────────────────────────────────
+// Checks localStorage session synchronously, then applies ModuleGuard.
 
 function ProtectedRouteLocal({
   component: Component,
@@ -163,7 +181,26 @@ function ProtectedRouteLocal({
   return <Component />;
 }
 
-// ── Clerk+Session version: validates backend session + module guards ────────────
+// ── CLERK + EXPRESS SESSION version ──────────────────────────────────────────
+//
+// IMPORTANT — unified session logic:
+//
+//   The global session is stored in PostgreSQL (table: "session", managed by
+//   connect-pg-simple) and is carried by the HTTP-only cookie "connect.sid".
+//
+//   Validation route: GET /api/users/me with credentials: "include".
+//   The backend reads req.session.userId and returns the user row.
+//
+//   Protection layers:
+//     1. ProtectedRouteClerk (this component) — verifies the session is valid.
+//     2. ModuleGuard — verifies the user has permission for the specific module.
+//     3. requireAuth middleware — enforces auth on every API endpoint.
+//
+//   Redirect policy:
+//     • HTTP 401  → session does not exist or expired → redirect to /sign-in.
+//     • Other errors (network, 5xx) → show retry button, DO NOT redirect.
+//       Redirecting on transient errors is the root cause of spurious re-logins.
+//     • No data, no error, not loading → treat the same as 401 (no session).
 
 function ProtectedRouteClerk({
   component: Component,
@@ -172,12 +209,33 @@ function ProtectedRouteClerk({
   component: React.ComponentType;
   moduleKey?: string;
 }) {
-  const { data: me, isLoading, isError } = useCurrentUser();
+  const {
+    data: me,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useCurrentUser();
 
+  // Still fetching the session — show a spinner, never redirect prematurely.
   if (isLoading) return <Spinner />;
 
-  if (isError || !me) return <Redirect to="/sign-in" />;
+  if (isError) {
+    // Only a real "not authenticated" response (HTTP 401) warrants a redirect.
+    // Network failures, 500s, etc. should NOT log the user out — they would be
+    // sent to /sign-in and forced to re-enter credentials even though their
+    // session is perfectly valid.
+    if (isUnauthenticatedError(error)) return <Redirect to="/sign-in" />;
+    // For all other errors: show a retry UI so the user can reconnect.
+    return <LoadError onRetry={() => refetch()} />;
+  }
 
+  // Explicit absence of a session (query succeeded, no user returned) — only
+  // happens if /api/users/me returns 200 with null/undefined, which shouldn't
+  // occur but we guard it anyway.
+  if (!me) return <Redirect to="/sign-in" />;
+
+  // The user needs to set a new password before accessing any module.
   if (me.mustChangePassword) return <Redirect to="/change-password" />;
 
   if (moduleKey) {
@@ -190,6 +248,8 @@ function ProtectedRouteClerk({
 
   return <Component />;
 }
+
+// ── Public export ─────────────────────────────────────────────────────────────
 
 export const ProtectedRoute: React.FC<{
   component: React.ComponentType;
