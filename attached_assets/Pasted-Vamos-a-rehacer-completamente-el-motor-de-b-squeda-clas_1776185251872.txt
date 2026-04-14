@@ -1,0 +1,268 @@
+Vamos a rehacer completamente el motor de búsqueda, clasificación y relevancia del módulo Noticias.
+
+No quiero ajustes superficiales.
+Quiero un rediseño estructural del pipeline de procesamiento de noticias, con criterio editorial, control de calidad y scoring real.
+
+PROBLEMA ACTUAL
+
+El sistema está clasificando incorrectamente noticias irrelevantes (ej: farándula o entretenimiento) dentro de categorías como economía o regional, y además las está priorizando.
+
+Esto es un error de arquitectura.
+
+OBJETIVO
+
+Construir un motor de noticias inteligente que:
+- filtre ruido
+- clasifique correctamente
+- priorice contenido relevante
+- elimine noticias irrelevantes
+- funcione con lógica consistente y auditable
+
+---
+
+1) CAMBIO DE ENFOQUE (CRÍTICO)
+
+El sistema debe pasar de:
+“clasificar todo lo que entra”
+
+a:
+“primero decidir si la noticia pertenece al dominio del módulo, y recién después clasificarla”
+
+Esto es obligatorio.
+
+---
+
+2) PIPELINE OBLIGATORIO DE PROCESAMIENTO
+
+Implementar el siguiente flujo:
+
+Paso 1: Ingesta de noticias (fuentes: Infobae, LM Neuquén)
+
+Paso 2: Normalización
+- limpiar texto
+- unificar formato
+- extraer título, resumen, fuente, fecha
+
+Paso 3: EVALUACIÓN DE PERTINENCIA (NUEVO BLOQUE CRÍTICO)
+Calcular:
+- domain_fit_score (0 a 1)
+
+Este score mide si la noticia pertenece al universo del módulo.
+
+---
+
+3) DEFINICIÓN DE DOMINIO DEL MÓDULO
+
+El módulo Noticias debe enfocarse en:
+
+INCLUIR:
+- economía
+- política
+- laboral
+- justicia
+- regulación
+- empresas
+- mercado
+- finanzas
+- impuestos
+- gestión pública
+- conflictos sindicales
+- actividad productiva
+- energía (especial foco en Neuquén / Vaca Muerta)
+
+EXCLUIR:
+- farándula
+- celebridades
+- entretenimiento
+- espectáculos
+- chimentos
+- relaciones personales
+- rumores
+- lifestyle
+- viralidad
+- curiosidades
+- deporte sin impacto económico o político
+
+---
+
+4) SISTEMA DE SCORING DE PERTINENCIA
+
+Calcular `domain_fit_score` usando:
+
+A. PALABRAS POSITIVAS (sumar peso)
+Ejemplos:
+- inflación
+- dólar
+- impuestos
+- AFIP / ARCA
+- mercado
+- exportaciones
+- empresas
+- inversión
+- petróleo
+- Vaca Muerta
+- empleo
+- salarios
+- paritarias
+- gobierno
+- ley
+- fallo
+- tribunal
+
+B. PALABRAS NEGATIVAS (restar peso fuerte)
+Ejemplos:
+- actor
+- actriz
+- cantante
+- famoso
+- celebridad
+- romance
+- hija
+- escándalo
+- show
+- televisión
+- influencer
+- Hollywood
+
+C. CONTEXTO
+- analizar título + resumen juntos
+- no usar palabras aisladas
+- priorizar intención dominante del texto
+
+REGLA:
+Si `domain_fit_score` < umbral (ej: 0.4):
+→ DESCARTAR noticia (no mostrar)
+
+---
+
+5) CLASIFICACIÓN SOLO SI PASA EL FILTRO
+
+Solo si la noticia es pertinente:
+
+Clasificar en:
+
+A. REGIÓN
+- regional → si foco claro en Neuquén / Río Negro o fuente LM Neuquén
+- nacional → si foco en Argentina
+- internacional → resto
+
+B. CATEGORÍA
+
+economia:
+- mercado, inflación, dólar, finanzas, empresas, consumo
+
+politica:
+- gobierno, elecciones, leyes, gestión pública
+
+laboral:
+- empleo, salarios, sindicatos, paritarias
+
+juicios:
+- justicia, fallos, causas, tribunales
+
+IMPORTANTE:
+- no clasificar por keyword aislada
+- calcular `category_confidence`
+- si confidence es baja → no forzar categoría
+
+---
+
+6) CÁLCULO DE IMPACTO
+
+Crear `impact_score` basado en:
+- palabras clave sensibles
+- impacto económico o legal
+- cercanía geográfica
+- tipo de evento (crisis, cambio normativo, conflicto)
+
+Mapear a:
+- bajo
+- medio
+- alto
+
+---
+
+7) SCORING FINAL DE PRIORIDAD
+
+Crear `priority_score` combinando:
+
+- domain_fit_score (peso alto)
+- category_confidence
+- impact_score
+- recencia
+- cercanía geográfica
+- coincidencia con alertas del usuario
+
+Reglas:
+- si domain_fit_score es bajo → prioridad casi 0
+- noticias irrelevantes nunca deben rankear alto
+- noticias útiles deben subir naturalmente
+
+---
+
+8) CAMPOS INTERNOS (OBLIGATORIOS)
+
+Cada noticia debe tener:
+
+- domain_fit_score
+- category_confidence
+- impact_score
+- priority_score
+- region_level
+- category
+- tags
+- classification_reason
+- exclusion_flags
+
+Estos campos no son solo decorativos: deben usarse realmente.
+
+---
+
+9) DEBUG Y TRAZABILIDAD
+
+El sistema debe poder explicar:
+
+- por qué una noticia fue incluida
+- por qué fue descartada
+- por qué fue clasificada en cierta categoría
+- por qué tiene cierto nivel de prioridad
+
+---
+
+10) VALIDACIÓN OBLIGATORIA
+
+Probar con casos reales:
+
+- noticias de farándula → NO deben aparecer
+- noticias irrelevantes → NO deben rankear
+- noticias económicas → deben clasificarse bien
+- noticias regionales reales → deben detectarse correctamente
+- ninguna noticia absurda debe quedar como “economía” o “prioritaria”
+
+---
+
+11) UI (AJUSTE MENOR)
+
+Mantener UI actual pero:
+
+- usar `priority_score` para ordenar
+- usar `impact_score` para badges
+- usar tags reales
+- no mostrar noticias descartadas
+
+---
+
+12) RESULTADO FINAL ESPERADO
+
+Quiero un sistema que:
+
+- filtre ruido automáticamente
+- clasifique con criterio
+- priorice lo importante
+- elimine lo irrelevante
+- sea consistente
+- sea explicable
+- funcione con datos reales
+
+No quiero heurísticas simples.
+Quiero lógica sólida de motor de información.

@@ -1,6 +1,7 @@
 import { execSync } from "child_process";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { reclassifyAllNews } from "./services/news.service.js";
 
 const rawPort = process.env["PORT"];
 
@@ -41,6 +42,17 @@ const server = app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Reclasifica artículos existentes con el nuevo motor v3 (domain-first pipeline).
+  // Se ejecuta en segundo plano — no bloquea el inicio del servidor.
+  // Solo actualiza artículos que aún no tienen classification_reason (campo vacío).
+  setImmediate(() => {
+    // Solo procesa artículos con classification_reason vacía (nuevos sin clasificar).
+    // Los artículos ya clasificados por el motor v3 se omiten.
+    reclassifyAllNews(false).catch(err => {
+      logger.error({ err }, "News reclassification failed");
+    });
+  });
 });
 
 function gracefulShutdown(signal: string) {
