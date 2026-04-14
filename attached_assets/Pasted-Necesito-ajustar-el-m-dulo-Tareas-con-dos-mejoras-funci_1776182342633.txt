@@ -1,0 +1,86 @@
+Necesito ajustar el módulo Tareas con dos mejoras funcionales concretas y bien implementadas.
+
+Quiero que lo resuelvas como desarrollador senior, con lógica consistente, UI clara y comportamiento real, no solo visual.
+
+1) TARJETAS SUPERIORES COMO FILTROS ACTIVOS
+
+Las tarjetas superiores del módulo:
+- Total
+- Pend. Aceptación
+- En Progreso
+- Vencidas
+- Completadas
+- Rechazadas
+
+deben dejar de ser solo métricas visuales y pasar a funcionar también como filtros rápidos clickeables del listado de tareas.
+
+COMPORTAMIENTO REQUERIDO
+- al hacer click en “Total”, mostrar todas las tareas
+- al hacer click en “Pend. Aceptación”, mostrar solo tareas en ese grupo
+- al hacer click en “En Progreso”, mostrar solo tareas en progreso
+- al hacer click en “Vencidas”, mostrar solo tareas vencidas
+- al hacer click en “Completadas”, mostrar solo tareas completadas
+- al hacer click en “Rechazadas”, mostrar solo tareas rechazadas
+
+REQUISITOS DE UX
+- la tarjeta seleccionada debe quedar visualmente activa
+- debe ser claro qué filtro está aplicado
+- debe existir forma de volver a ver todo
+- los filtros de las tarjetas deben convivir correctamente con:
+  - buscador
+  - filtro por prioridad
+  - pestañas actuales
+- no debe romper la lógica actual del módulo
+
+RECOMENDACIÓN DE IMPLEMENTACIÓN
+- usar estado de filtro centralizado
+- evitar duplicar lógica
+- el listado debe renderizarse a partir de una única fuente filtrada
+- las tarjetas deben actualizar el filtro y refrescar la vista inmediatamente
+
+2) ASIGNACIÓN EDITABLE DESDE “SIN ASIGNAR”
+
+En cada tarea, donde hoy aparece el texto “Sin asignar”, quiero que deje de ser un texto estático y pase a ser una acción interactiva.
+
+COMPORTAMIENTO REQUERIDO
+- si la tarea no tiene usuario asignado, mostrar “Sin asignar” como vínculo o botón inline
+- al hacer click, debe permitir asignar un usuario
+- si la tarea ya tiene usuario asignado, mostrar su nombre como vínculo editable
+- al hacer click sobre el nombre o la asignación, debe permitir:
+  - cambiar usuario asignado
+  - quitar asignación
+  - guardar cambios
+
+REQUISITOS DE UI
+- resolverlo con popover, dropdown o modal pequeño
+- debe ser rápido y claro
+- debe mostrar lista de usuarios válidos
+- debe permitir confirmar o cancelar
+- si se cambia la asignación, actualizar la tarjeta inmediatamente sin recargar toda la página
+- si corresponde por la lógica del módulo, disparar estado pending_acceptance al asignar a otro usuario
+
+REGLAS FUNCIONALES
+- validar permisos reales para asignar o reasignar
+- no permitir que cualquier usuario cambie asignaciones si no corresponde
+- si la tarea requiere aceptación y se asigna a otro usuario, aplicar el flujo correcto
+- si se quita la asignación, reflejarlo correctamente en la tarea y en auditoría
+
+BACKEND Y SEGURIDAD
+- no resolver solo en frontend
+- crear o ajustar endpoints reales para asignar, reasignar o desasignar
+- validar permisos en backend
+- auditar:
+  - asignación
+  - cambio de asignado
+  - eliminación de asignación
+
+ENTREGA
+Quiero que me entregues:
+- lógica frontend actualizada
+- lógica backend actualizada
+- componentes corregidos
+- comportamiento de filtros funcionando
+- asignación inline funcionando
+- validación de permisos
+- actualización visual inmediata
+- revisión final para asegurar que no se rompa el flujo del módulo

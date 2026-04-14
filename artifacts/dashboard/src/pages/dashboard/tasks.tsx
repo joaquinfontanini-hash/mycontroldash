@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,11 +25,14 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, CheckSquare, Clock, AlertCircle, MoreHorizontal, LayoutList, LayoutGrid,
   User, UserCheck, CheckCheck, XCircle, Archive, ArrowRightLeft, MessageSquare,
-  History, ChevronDown, Loader2, Search, Flag,
+  History, ChevronDown, Loader2, Search, Flag, X,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -128,9 +131,34 @@ const PRIORITY_MAP: Record<string, { label: string; cls: string }> = {
 const HISTORY_LABELS: Record<string, string> = {
   created: "Tarea creada", edited: "Tarea editada", status_changed: "Estado cambiado",
   progress_updated: "Avance actualizado", assigned: "Asignada", reassigned: "Reasignada",
+  unassigned: "Desasignada",
   accepted: "Aceptada", rejected: "Rechazada", cancelled: "Cancelada",
   archived: "Archivada", completed: "Completada", commented: "Comentario agregado",
 };
+
+// Card filter keys and their task filter predicates
+type CardFilterKey = "total" | "pending_acceptance" | "in_progress" | "overdue" | "completed" | "rejected";
+
+const CARD_FILTER_LABELS: Record<CardFilterKey, string> = {
+  total: "Total",
+  pending_acceptance: "Pend. Aceptación",
+  in_progress: "En Progreso",
+  overdue: "Vencidas",
+  completed: "Completadas",
+  rejected: "Rechazadas",
+};
+
+function applyCardFilter(tasks: Task[], key: CardFilterKey, me: string | null): Task[] {
+  switch (key) {
+    case "total":              return tasks;
+    case "pending_acceptance": return tasks.filter(t => t.status === "pending_acceptance" && t.assignedToUserId === me);
+    case "in_progress":        return tasks.filter(t => (t.status === "in_progress" || t.status === "in-progress") && isActive(t));
+    case "overdue":            return tasks.filter(t => isOverdue(t));
+    case "completed":          return tasks.filter(t => isCompleted(t));
+    case "rejected":           return tasks.filter(t => t.status === "rejected");
+    default:                   return tasks;
+  }
+}
 
 function sInfo(s: string) { return STATUS_MAP[s] ?? { label: s, cls: "bg-gray-100 text-gray-600 border-gray-200" }; }
 function pInfo(p: string) { return PRIORITY_MAP[p] ?? { label: p, cls: "bg-gray-100 text-gray-600 border-gray-200" }; }
@@ -194,6 +222,148 @@ const fetchCurrentUser = () => apiFetch<CurrentUser>("/api/users/me");
 const fetchAssignableUsers = () => apiFetch<AssignableUser[]>("/api/users/assignable");
 const fetchComments = (id: number) => apiFetch<TaskComment[]>(`/api/tasks/${id}/comments`);
 const fetchHistory = (id: number) => apiFetch<TaskHistoryItem[]>(`/api/tasks/${id}/history`);
+
+// ── Assignee Popover ──────────────────────────────────────────────────────────
+// Inline, clickable assignee cell — shows a popover to assign, reassign or
+// remove the assignee without opening the full ReassignModal.
+
+function AssigneePopover({ task, users, currentUser, onRefresh }: {
+  task: Task;
+  users: AssignableUser[];
+  currentUser: CurrentUser | null;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<string>(task.assignedToUserId ?? "");
+  const [reqAcc, setReqAcc] = useState(task.requiresAcceptance ?? false);
+  const [loading, setLoading] = useState(false);
+
+  const me = currentUser ? String(currentUser.id) : null;
+  const isAdmin = currentUser?.role === "super_admin" || currentUser?.role === "admin";
+  const isCreator = me !== null && task.userId === me;
+  const canReassign = isCreator || isAdmin;
+
+  // Reset local state whenever the popover opens
+  const handleOpenChange = (v: boolean) => {
+    if (v) {
+      setSelectedUser(task.assignedToUserId ?? "");
+      setReqAcc(task.requiresAcceptance ?? false);
+    }
+    setOpen(v);
+  };
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/reassign`, {
+        method: "POST",
+        body: JSON.stringify({
+          assignedToUserId: selectedUser || null,
+          requiresAcceptance: reqAcc,
+        }),
+      });
+      setOpen(false);
+      onRefresh();
+      const target = users.find(u => String(u.id) === selectedUser);
+      toast({ title: target ? `Asignada a ${userName(target)}` : "Asignación eliminada" });
+    } catch (e: unknown) {
+      toast({ title: "Error al reasignar", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Non-admins who are not the creator can only view the assignee, not change it
+  if (!canReassign) {
+    if (task.assigneeName) {
+      return (
+        <span className="flex items-center gap-1 text-xs">
+          <UserCheck className="h-3 w-3 text-muted-foreground shrink-0" />
+          {task.assigneeName}
+        </span>
+      );
+    }
+    return <span className="text-xs text-muted-foreground italic">Sin asignar</span>;
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          className="flex items-center gap-1 text-xs rounded px-1 -mx-1 py-0.5 hover:bg-muted transition-colors group"
+          title="Cambiar asignación"
+        >
+          {task.assigneeName ? (
+            <>
+              <UserCheck className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="group-hover:underline underline-offset-2">{task.assigneeName}</span>
+            </>
+          ) : (
+            <>
+              <User className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="italic text-muted-foreground group-hover:text-foreground">Sin asignar</span>
+            </>
+          )}
+          <ChevronDown className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3" align="start" side="bottom">
+        <div className="space-y-3">
+          <p className="text-xs font-semibold">Asignar tarea</p>
+          <Select
+            value={selectedUser === "" ? "_none" : selectedUser}
+            onValueChange={v => setSelectedUser(v === "_none" ? "" : v)}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Sin asignar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">
+                <span className="italic text-muted-foreground">Sin asignar</span>
+              </SelectItem>
+              {users.map(u => (
+                <SelectItem key={u.id} value={String(u.id)}>
+                  {userName(u)}{u.id === currentUser?.id ? " (Yo)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {selectedUser && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`req-acc-pop-${task.id}`}
+                checked={reqAcc}
+                onChange={e => setReqAcc(e.target.checked)}
+                className="h-3.5 w-3.5 rounded"
+              />
+              <label htmlFor={`req-acc-pop-${task.id}`} className="text-xs cursor-pointer select-none leading-tight">
+                Requiere aceptación del asignado
+              </label>
+            </div>
+          )}
+
+          {task.requiresAcceptance && selectedUser && selectedUser !== task.assignedToUserId && (
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight">
+              Al asignar a otro usuario con aceptación requerida, la tarea pasará a "Pend. Aceptación".
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 pt-1 border-t">
+            <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleSave} disabled={loading}>
+              {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Guardar"}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setOpen(false)} disabled={loading}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 // ── New Task Modal ────────────────────────────────────────────────────────────
 
@@ -573,7 +743,7 @@ function TaskDetailSheet({
     } finally { setAddingComment(false); }
   };
 
-  const { label: stLabel, cls: stCls } = sInfo(task.status);
+  const { cls: stCls } = sInfo(task.status);
   const overdue = isOverdue(task);
 
   return (
@@ -639,7 +809,9 @@ function TaskDetailSheet({
             </div>
             <div className="space-y-0.5">
               <p className="text-xs text-muted-foreground">Asignada a</p>
-              <p className="font-medium">{task.assigneeName ?? <span className="text-muted-foreground italic">Sin asignar</span>}</p>
+              <div className="font-medium">
+                <AssigneePopover task={task} users={users} currentUser={currentUser} onRefresh={onAction} />
+              </div>
             </div>
             <div className="space-y-0.5">
               <p className="text-xs text-muted-foreground">Vencimiento</p>
@@ -739,7 +911,7 @@ function TaskDetailSheet({
             {history && history.length > 0 ? (
               <div className="relative pl-5 space-y-3">
                 <div className="absolute left-2 top-1 bottom-1 w-px bg-border" />
-                {history.map((h, i) => (
+                {history.map(h => (
                   <div key={h.id} className="relative flex gap-2.5">
                     <div className="absolute -left-3.5 top-1 h-2.5 w-2.5 rounded-full bg-muted border-2 border-border" />
                     <div className="flex-1 min-w-0">
@@ -905,9 +1077,10 @@ function TaskActions({
 
 // ── Task Table ────────────────────────────────────────────────────────────────
 
-function TaskTable({ tasks, currentUser, onDetail, onProgress, onReject, onReassign, onRefresh }: {
+function TaskTable({ tasks, currentUser, users, onDetail, onProgress, onReject, onReassign, onRefresh }: {
   tasks: Task[];
   currentUser: CurrentUser | null;
+  users: AssignableUser[];
   onDetail: (t: Task) => void;
   onProgress: (t: Task) => void;
   onReject: (t: Task) => void;
@@ -955,8 +1128,8 @@ function TaskTable({ tasks, currentUser, onDetail, onProgress, onReject, onReass
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap"><PriorityBadge priority={task.priority} /></td>
                 <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{task.creatorName ?? "—"}</td>
-                <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
-                  {task.assigneeName ?? <span className="italic">Sin asignar</span>}
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  <AssigneePopover task={task} users={users} currentUser={currentUser} onRefresh={onRefresh} />
                 </td>
                 <td className="px-3 py-2.5 w-28">
                   <div className="flex items-center gap-1.5">
@@ -989,9 +1162,10 @@ function TaskTable({ tasks, currentUser, onDetail, onProgress, onReject, onReass
 
 // ── Task Cards ────────────────────────────────────────────────────────────────
 
-function TaskCards({ tasks, currentUser, onDetail, onProgress, onReject, onReassign, onRefresh }: {
+function TaskCards({ tasks, currentUser, users, onDetail, onProgress, onReject, onReassign, onRefresh }: {
   tasks: Task[];
   currentUser: CurrentUser | null;
+  users: AssignableUser[];
   onDetail: (t: Task) => void;
   onProgress: (t: Task) => void;
   onReject: (t: Task) => void;
@@ -1044,13 +1218,10 @@ function TaskCards({ tasks, currentUser, onDetail, onProgress, onReject, onReass
                 <ProgressBar value={task.progress} />
               </div>
 
-              <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-2">
-                <div className="flex items-center gap-1 min-w-0">
-                  <User className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{task.assigneeName ?? "Sin asignar"}</span>
-                </div>
+              <div className="flex items-center justify-between text-xs border-t pt-2">
+                <AssigneePopover task={task} users={users} currentUser={currentUser} onRefresh={onRefresh} />
                 {task.dueDate && (
-                  <div className={`flex items-center gap-0.5 ${overdue ? "text-red-500 font-medium" : ""}`}>
+                  <div className={`flex items-center gap-0.5 ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
                     <Clock className="h-3 w-3" />
                     {fmtDateShort(task.dueDate)}
                     {overdue && " ⚠"}
@@ -1081,20 +1252,41 @@ function TaskCards({ tasks, currentUser, onDetail, onProgress, onReject, onReass
   );
 }
 
-// ── Metric Card ───────────────────────────────────────────────────────────────
+// ── Metric Card (clickable filter) ────────────────────────────────────────────
 
-function MetricCard({ label, value, icon: Icon, color }: {
-  label: string; value: number; icon: React.ElementType; color: string;
+function MetricCard({ label, value, icon: Icon, color, filterKey, activeFilter, onFilterClick }: {
+  label: string;
+  value: number;
+  icon: React.ElementType;
+  color: string;
+  filterKey: CardFilterKey;
+  activeFilter: CardFilterKey | null;
+  onFilterClick: (key: CardFilterKey) => void;
 }) {
+  const isActive = activeFilter === filterKey;
   return (
-    <Card className="shadow-none">
+    <Card
+      className={`shadow-none cursor-pointer select-none transition-all hover:shadow-sm ${
+        isActive
+          ? "ring-2 ring-primary border-primary/30"
+          : "hover:border-border/80"
+      }`}
+      onClick={() => onFilterClick(filterKey)}
+      role="button"
+      aria-pressed={isActive}
+    >
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">{label}</p>
+          <div className="min-w-0">
+            {isActive && (
+              <span className="text-[9px] uppercase font-bold tracking-widest text-primary block mb-0.5">
+                Filtro activo
+              </span>
+            )}
+            <p className="text-xs text-muted-foreground font-medium truncate">{label}</p>
             <p className="text-2xl font-bold tabular-nums mt-0.5">{value}</p>
           </div>
-          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${color}`}>
+          <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ml-2 ${color} ${isActive ? "ring-2 ring-primary/30" : ""}`}>
             <Icon className="h-5 w-5" />
           </div>
         </div>
@@ -1113,6 +1305,10 @@ export default function TasksPage() {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [search, setSearch] = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
+
+  // Card filter — null means no card filter applied; otherwise overrides tab filter
+  const [cardFilter, setCardFilter] = useState<CardFilterKey | null>(null);
+
   const [newOpen, setNewOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [progressTask, setProgressTask] = useState<Task | null>(null);
@@ -1139,9 +1335,8 @@ export default function TasksPage() {
   };
 
   const me = currentUser ? String(currentUser.id) : null;
-  const isAdmin = currentUser?.role === "super_admin" || currentUser?.role === "admin";
 
-  // Metrics (from all tasks)
+  // ── Metrics (always computed from all tasks) ──────────────────────────────
   const metrics = useMemo(() => ({
     total: tasks.length,
     pendingAcceptance: tasks.filter(t => t.status === "pending_acceptance" && t.assignedToUserId === me).length,
@@ -1151,7 +1346,7 @@ export default function TasksPage() {
     rejected: tasks.filter(t => t.status === "rejected").length,
   }), [tasks, me]);
 
-  // Tab filtering
+  // ── Tab filtering ──────────────────────────────────────────────────────────
   const tabTasks = useMemo(() => {
     let list = tasks;
     switch (activeTab) {
@@ -1165,9 +1360,17 @@ export default function TasksPage() {
     return list;
   }, [tasks, activeTab, me]);
 
-  // Search + priority filter
+  // ── Card filter layer ──────────────────────────────────────────────────────
+  // When a card filter is active it works on ALL tasks (not just the current
+  // tab) so the count displayed on the card always matches the filtered list.
+  const cardFilteredTasks = useMemo(() => {
+    if (!cardFilter) return tabTasks;
+    return applyCardFilter(tasks, cardFilter, me);
+  }, [tasks, tabTasks, cardFilter, me]);
+
+  // ── Search + priority filter ───────────────────────────────────────────────
   const filteredTasks = useMemo(() => {
-    let list = tabTasks;
+    let list = cardFilteredTasks;
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(t => t.title.toLowerCase().includes(q) || (t.description ?? "").toLowerCase().includes(q));
@@ -1176,7 +1379,7 @@ export default function TasksPage() {
       list = list.filter(t => t.priority === filterPriority);
     }
     return list;
-  }, [tabTasks, search, filterPriority]);
+  }, [cardFilteredTasks, search, filterPriority]);
 
   const tabCount = (tab: string) => {
     switch (tab) {
@@ -1188,6 +1391,11 @@ export default function TasksPage() {
       case "archived":    return tasks.filter(t => !isActive(t) && !isCompleted(t)).length;
       default: return 0;
     }
+  };
+
+  const handleCardFilter = (key: CardFilterKey) => {
+    // Toggle off if clicking the same card
+    setCardFilter(prev => prev === key ? null : key);
   };
 
   if (isLoading) {
@@ -1218,6 +1426,7 @@ export default function TasksPage() {
   const taskListProps = {
     tasks: filteredTasks,
     currentUser: currentUser ?? null,
+    users: assignableUsers,
     onDetail: setDetailTask,
     onProgress: setProgressTask,
     onReject: setRejectTask,
@@ -1241,20 +1450,64 @@ export default function TasksPage() {
         </Button>
       </div>
 
-      {/* Metrics */}
+      {/* Metric Cards — clickable quick filters */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MetricCard label="Total" value={metrics.total} icon={CheckSquare} color="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" />
-        <MetricCard label="Pend. Aceptación" value={metrics.pendingAcceptance} icon={UserCheck} color="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" />
-        <MetricCard label="En Progreso" value={metrics.inProgress} icon={Loader2} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
-        <MetricCard label="Vencidas" value={metrics.overdue} icon={AlertCircle} color="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" />
-        <MetricCard label="Completadas" value={metrics.completed} icon={CheckCheck} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" />
-        <MetricCard label="Rechazadas" value={metrics.rejected} icon={XCircle} color="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" />
+        <MetricCard
+          label="Total" value={metrics.total}
+          icon={CheckSquare} color="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+          filterKey="total" activeFilter={cardFilter} onFilterClick={handleCardFilter}
+        />
+        <MetricCard
+          label="Pend. Aceptación" value={metrics.pendingAcceptance}
+          icon={UserCheck} color="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+          filterKey="pending_acceptance" activeFilter={cardFilter} onFilterClick={handleCardFilter}
+        />
+        <MetricCard
+          label="En Progreso" value={metrics.inProgress}
+          icon={Loader2} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+          filterKey="in_progress" activeFilter={cardFilter} onFilterClick={handleCardFilter}
+        />
+        <MetricCard
+          label="Vencidas" value={metrics.overdue}
+          icon={AlertCircle} color="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+          filterKey="overdue" activeFilter={cardFilter} onFilterClick={handleCardFilter}
+        />
+        <MetricCard
+          label="Completadas" value={metrics.completed}
+          icon={CheckCheck} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+          filterKey="completed" activeFilter={cardFilter} onFilterClick={handleCardFilter}
+        />
+        <MetricCard
+          label="Rechazadas" value={metrics.rejected}
+          icon={XCircle} color="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+          filterKey="rejected" activeFilter={cardFilter} onFilterClick={handleCardFilter}
+        />
       </div>
 
+      {/* Active card-filter indicator */}
+      {cardFilter && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium border border-primary/20">
+            Filtrando: {CARD_FILTER_LABELS[cardFilter]}
+            <button
+              onClick={() => setCardFilter(null)}
+              className="ml-1 hover:text-primary/70 transition-colors"
+              aria-label="Quitar filtro"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+          <span className="text-muted-foreground">
+            {filteredTasks.length} tarea{filteredTasks.length !== 1 ? "s" : ""}
+            {(search || filterPriority !== "all") ? " (filtros adicionales activos)" : ""}
+          </span>
+        </div>
+      )}
+
       {/* Tabs + controls */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setCardFilter(null); }}>
         <div className="flex items-center gap-3 flex-wrap">
-          <TabsList className="h-9 flex-1 min-w-0 overflow-x-auto justify-start">
+          <TabsList className={`h-9 flex-1 min-w-0 overflow-x-auto justify-start ${cardFilter ? "opacity-60" : ""}`}>
             {[
               { value: "all",         label: "Activas" },
               { value: "created",     label: "Creadas por mí" },
@@ -1313,7 +1566,7 @@ export default function TasksPage() {
           </Select>
         </div>
 
-        {/* Tab content - same UI for all tabs */}
+        {/* Tab content — shared render for all tabs */}
         {["all", "created", "assigned", "pending_acc", "completed", "archived"].map(tab => (
           <TabsContent key={tab} value={tab} className="mt-3">
             {viewMode === "table"

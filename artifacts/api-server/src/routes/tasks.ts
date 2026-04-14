@@ -558,11 +558,24 @@ router.post("/tasks/:id/reassign", requireAuth, async (req: Request, res): Promi
       .where(eq(tasksTable.id, id))
       .returning();
 
+    // Determine the audit action based on previous and new state
+    const hadAssignee = !!existing.assignedToUserId;
+    const hasNewAssignee = !!newAssignee;
+    const auditAction = !hasNewAssignee ? "unassigned"
+      : !hadAssignee ? "assigned"
+      : "reassigned";
+
     const assigneeName = newAssignee ? await getUserName(newAssignee) : "sin asignar";
-    await logHistory(id, userId, "reassigned", {
+    const auditComment = !hasNewAssignee
+      ? "Asignación eliminada"
+      : !hadAssignee
+        ? `Asignada a ${assigneeName}`
+        : `Reasignada a ${assigneeName}`;
+
+    await logHistory(id, userId, auditAction, {
       previous: existing.assignedToUserId ?? "sin asignar",
       next: newAssignee ?? "sin asignar",
-      comment: `Reasignada a ${assigneeName}`,
+      comment: auditComment,
     });
 
     const [enriched] = await enrichTasks([task]);
