@@ -47,7 +47,7 @@ The project is built as a monorepo using `pnpm workspaces`.
     - Real-time data refresh mechanisms for fiscal and news data.
     - Header controls include "Modo HOY" for priority overview, "Actualizar datos" for cache invalidation, and an alert bell for urgent items.
     - Data quality system with scoring (0-100) for fiscal updates and travel offers, including discard thresholds and logging.
-    - News deduplication logic based on title similarity and normative filtering for Tributum sources.
+    - News module redesigned: sources updated to Infobae + LM Neuquén (primary) + Ámbito, La Nación, Diario Río Negro, Clarín (supplementary); Tributum and Contadores en Red disabled. Automatic classification by regionLevel (internacional/nacional/regional), newsCategory (economia/politica/laboral/juicios), impactLevel (alto/medio/bajo), priorityScore. New tables: `saved_news` (per-user saved articles), `user_alerts` (per-user alert configurations). New endpoints: POST/DELETE /news/:id/save, GET /news/saved, GET/POST /news/alerts, PATCH/DELETE /news/alerts/:id.
     - Clients module with CUIT validation and AFIP category engine.
     - Annual calendar with drag-and-drop reordering.
     - Supplier payment batches with CSV import functionality.
@@ -66,7 +66,7 @@ The project is built as a monorepo using `pnpm workspaces`.
 - **dolarapi.com:** For fetching real-time dollar quotes (Blue, MEP, Cripto, Oficial).
 - **Clerk:** For Google OAuth authentication and user management.
 - **Open-Meteo:** For weather forecasts.
-- **RSS Feeds:** Integrated for news articles (e.g., Ámbito, La Nación, Clarín, Tributum, Contadores en Red).
+- **RSS Feeds:** Infobae, LM Neuquén (primary sources), Ámbito, La Nación, Diario Río Negro, Clarín (supplementary). Tributum and Contadores en Red removed.
 - **Google APIs (googleapis npm package):** Potentially for Google Sheets integration (requires `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`).
 - **PostgreSQL:** Primary database.
 - **Zod:** Schema validation library.

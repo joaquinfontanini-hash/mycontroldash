@@ -1,0 +1,256 @@
+Vamos a rediseñar el módulo Noticias como un sistema inteligente de monitoreo y filtrado de información relevante.
+
+Quiero una solución real, funcional, con backend + frontend + lógica de clasificación. No quiero simulaciones.
+
+1) FUENTES
+
+Eliminar completamente:
+- Tributum
+- Contadores en Red
+
+Agregar:
+- Infobae
+- LM Neuquén
+
+Las noticias deben obtenerse desde estas fuentes de forma real (scraping o API si aplica).
+
+---
+
+2) CLASIFICACIÓN DE NOTICIAS (OBLIGATORIO)
+
+Cada noticia debe clasificarse automáticamente en dos niveles:
+
+A. NIVEL GEOGRÁFICO
+- internacional
+- nacional
+- regional (Neuquén + Río Negro)
+
+B. CATEGORÍA
+- economia
+- politica
+- laboral
+- juicios
+
+Cada noticia debe tener:
+- region_level
+- category
+- tags (array)
+
+---
+
+3) LÓGICA DE CLASIFICACIÓN
+
+Implementar lógica automática en backend:
+
+REGIÓN:
+- LM Neuquén → regional
+- si menciona “Neuquén” o “Río Negro” → regional
+- si menciona “Argentina” → nacional
+- resto → internacional
+
+CATEGORÍA (por keywords):
+- economia: dolar, inflacion, mercado, finanzas
+- politica: gobierno, elecciones, ley, congreso
+- laboral: salarios, empleo, paritarias, sindicatos
+- juicios: justicia, fallo, tribunal, causa
+
+No quiero clasificación manual en frontend.
+
+---
+
+4) FILTROS EN UI
+
+Crear filtros accesibles y combinables:
+
+Grupo 1: Región
+- Todos
+- Internacional
+- Nacional
+- Regional
+
+Grupo 2: Categoría
+- Todas
+- Economía
+- Política
+- Laboral
+- Juicios
+
+REQUISITOS:
+- deben combinarse entre sí
+- deben funcionar en tiempo real
+- no deben recargar la página
+- deben reflejar datos reales filtrados
+
+---
+
+5) VISUALIZACIÓN DE NOTICIAS
+
+Cada noticia debe mostrar:
+- título
+- resumen
+- fuente
+- fecha
+- link original
+- tags visibles (región + categoría)
+
+Agregar:
+- botón ⭐ Guardar
+- botón 🔗 Ver noticia
+
+---
+
+6) ⭐ GUARDAR NOTICIAS
+
+Cada usuario debe poder:
+- guardar noticias
+- ver una sección “Guardadas”
+- eliminar de guardadas
+
+REQUISITOS:
+- persistencia por usuario (user_id)
+- no compartir entre usuarios
+- actualización inmediata en UI
+
+---
+
+7) 🔔 ALERTAS PERSONALIZADAS
+
+Permitir que cada usuario configure alertas combinando filtros.
+
+Ejemplo:
+- economia + nacional
+- politica + regional
+- laboral + internacional
+
+FUNCIONALIDAD:
+- el usuario selecciona filtros
+- guarda alerta
+- el sistema detecta nuevas noticias que coincidan
+
+REQUISITOS:
+- cada alerta debe guardarse por usuario
+- posibilidad de activar/desactivar
+- opción de eliminar alerta
+
+---
+
+8) 🧠 PRIORIZACIÓN AUTOMÁTICA
+
+El sistema debe ordenar noticias según relevancia.
+
+Criterios sugeridos:
+- coincidencia con alertas del usuario
+- keywords importantes (ej: dólar, AFIP, impuestos)
+- actualidad (más recientes primero)
+- impacto del contenido
+
+Debe existir:
+- score de prioridad interno
+- orden dinámico del listado
+
+---
+
+9) 📊 RELEVANCIA POR IMPACTO
+
+Cada noticia debe tener un indicador de impacto:
+
+niveles sugeridos:
+- bajo
+- medio
+- alto
+
+Criterios:
+- palabras clave sensibles
+- impacto económico o legal
+- cercanía geográfica al usuario
+
+Mostrar en UI como badge o indicador visual.
+
+---
+
+10) BACKEND
+
+Implementar:
+- ingestion de noticias (scraping o API)
+- procesamiento y clasificación
+- asignación de region_level y category
+- cálculo de score de prioridad
+- detección de coincidencia con alertas
+
+Estructura mínima de datos:
+
+NOTICIAS
+- id
+- title
+- summary
+- source
+- url
+- published_at
+- region_level
+- category
+- tags
+- impact_level
+- priority_score
+
+SAVED_NEWS
+- id
+- user_id
+- news_id
+- created_at
+
+USER_ALERTS
+- id
+- user_id
+- region_level
+- category
+- active
+- created_at
+
+---
+
+11) FRONTEND
+
+- filtros claros y accesibles
+- UI moderna y consistente
+- actualización dinámica
+- sección de guardadas
+- sección de alertas
+- indicadores visuales:
+  - región
+  - categoría
+  - impacto
+
+---
+
+12) SEGURIDAD Y MULTIUSUARIO
+
+- noticias guardadas deben ser privadas por usuario
+- alertas deben ser privadas por usuario
+- no compartir datos entre usuarios
+
+---
+
+13) VALIDACIÓN
+
+Antes de entregar, verificar:
+- que los filtros funcionen realmente
+- que la clasificación sea coherente
+- que guardar noticias funcione
+- que alertas detecten nuevas noticias
+- que la priorización ordene correctamente
+- que no haya datos falsos o simulados
+
+---
+
+14) ENTREGA
+
+Quiero:
+- lógica backend completa
+- modelo de datos
+- endpoints
+- UI funcional
+- filtros funcionando
+- guardado funcionando
+- alertas funcionando
+- priorización activa
+- ejemplo real integrado con Infobae y LM Neuquén
