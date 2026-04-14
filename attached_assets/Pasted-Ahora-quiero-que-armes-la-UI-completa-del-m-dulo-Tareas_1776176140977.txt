@@ -1,0 +1,121 @@
+Ahora quiero que armes la UI completa del módulo Tareas, manteniendo la arquitectura segura ya definida.
+
+Necesito una interfaz moderna, clara, profesional y usable para gestionar tareas como primer módulo colaborativo controlado.
+
+REQUISITOS DE UI
+
+1. ESTRUCTURA GENERAL
+- encabezado con título “Tareas”
+- subtítulo breve
+- botón principal “Nueva tarea”
+- buscador general
+- filtros rápidos
+- tarjetas de métricas
+
+2. MÉTRICAS SUPERIORES
+Mostrar tarjetas con:
+- total tareas
+- pendientes de aceptación
+- en progreso
+- vencidas
+- completadas
+- rechazadas
+
+3. PESTAÑAS
+Agregar pestañas:
+- Mis tareas
+- Asignadas a mí
+- Creadas por mí
+- Pendientes de aceptación
+- Completadas
+- Archivadas o canceladas
+
+4. LISTADO PRINCIPAL
+Crear vista tabla y vista cards.
+En la tabla mostrar:
+- estado
+- título
+- prioridad
+- creador
+- asignado
+- avance
+- fecha límite
+- última actualización
+- acciones
+
+5. ACCIONES
+Según rol y contexto, permitir:
+- ver detalle
+- editar
+- aceptar
+- rechazar
+- actualizar avance
+- completar
+- cancelar
+- reasignar
+
+6. FORMULARIO NUEVA TAREA
+Crear modal o panel lateral con:
+- título
+- descripción
+- asignado
+- prioridad
+- fecha límite
+- requiere aceptación
+- observaciones iniciales
+
+7. DETALLE DE TAREA
+Crear vista detallada con:
+- cabecera con estado, prioridad y avance
+- descripción completa
+- datos de creador y asignado
+- fechas importantes
+- historial de cambios
+- comentarios
+
+8. ACEPTAR / RECHAZAR
+Si una tarea está en pending_acceptance, mostrar botones visibles para aceptar o rechazar.
+Si se rechaza, pedir motivo.
+
+9. ACTUALIZAR AVANCE
+Crear modal para actualizar:
+- porcentaje de avance
+- estado
+- comentario
+Mostrar barra de progreso en tabla y cards.
+
+10. FILTROS
+Agregar filtros por:
+- estado
+- prioridad
+- asignado
+- creador
+- vencimiento
+- texto
+
+11. UX
+- responsive
+- clara
+- moderna
+- consistente con el resto del dashboard
+- sin pantallas vacías rotas
+- con estados de carga y mensajes de error
+
+12. IMPORTANTE
+No quiero solo diseño visual.
+Quiero que la UI quede conectada de forma coherente con:
+- creación de tarea
+- asignación
+- aceptación/rechazo
+- actualización de avance
+- edición
+- cierre
+- historial
+
+Entregame:
+- estructura visual del módulo
+- componentes o archivos frontend necesarios
+- vistas completas
+- modales
+- lógica de interacción esperada
+- todo consistente con frontend + backend + base de datos

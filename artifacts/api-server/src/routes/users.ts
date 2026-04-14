@@ -1,13 +1,30 @@
 import { Router, type IRouter, Request } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { UpdateUserBody, UpdateUserParams } from "@workspace/api-zod";
 import { getAuth } from "@clerk/express";
-import { requireAdmin, requireSuperAdmin, AuthenticatedRequest } from "../middleware/require-auth.js";
+import { requireAuth, requireAdmin, requireSuperAdmin, AuthenticatedRequest } from "../middleware/require-auth.js";
 import { logSecurityEvent, getClientIp } from "../lib/security-logger.js";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
+
+// ── GET /users/assignable ─────────────────────────────────────────────────────
+// Returns minimal user info for all active, non-blocked users.
+// Used by the tasks module to populate assignment dropdowns.
+router.get("/users/assignable", requireAuth, async (_req, res): Promise<void> => {
+  try {
+    const users = await db
+      .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+      .from(usersTable)
+      .where(and(eq(usersTable.isActive, true), eq(usersTable.isBlocked, false)))
+      .orderBy(usersTable.name);
+    res.json(users);
+  } catch (err) {
+    logger.error({ err }, "users/assignable error");
+    res.status(500).json({ error: "Error al cargar usuarios" });
+  }
+});
 
 router.get("/users/me", async (req, res): Promise<void> => {
   const sessionUserId = req.session?.userId;

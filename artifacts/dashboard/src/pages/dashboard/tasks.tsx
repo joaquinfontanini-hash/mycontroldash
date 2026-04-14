@@ -1,161 +1,1207 @@
-import { useState } from "react";
-import {
-  useListTasks, useCreateTask, useUpdateTask, useDeleteTask, getListTasksQueryKey,
-} from "@workspace/api-client-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  CheckSquare, Plus, Clock, Trash2, MoreHorizontal, AlertCircle, Star,
-  ChevronRight, ChevronLeft, CheckCheck,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Plus, CheckSquare, Clock, AlertCircle, MoreHorizontal, LayoutList, LayoutGrid,
+  User, UserCheck, CheckCheck, XCircle, Archive, ArrowRightLeft, MessageSquare,
+  History, ChevronDown, Loader2, Search, Flag,
+} from "lucide-react";
 
-const PRIORITY_LABELS: Record<string, string> = { high: "Alta", medium: "Media", low: "Baja" };
-const PRIORITY_BADGE: Record<string, string> = {
-  high: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
-  medium: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
-  low: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error ?? `HTTP ${res.status}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Task = {
+  id: number;
+  title: string;
+  description?: string | null;
+  status: string;
+  priority: string;
+  progress: number;
+  dueDate?: string | null;
+  userId?: string | null;
+  assignedToUserId?: string | null;
+  requiresAcceptance: boolean;
+  rejectionReason?: string | null;
+  initialObservations?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  creatorName?: string;
+  assigneeName?: string;
 };
 
-const COLUMNS = [
-  {
-    key: "pending",
-    label: "Pendiente",
-    color: "border-t-amber-400",
-    headerBg: "bg-amber-50 dark:bg-amber-950/30",
-    headerText: "text-amber-700 dark:text-amber-400",
-    countBg: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-400",
-  },
-  {
-    key: "in-progress",
-    label: "En progreso",
-    color: "border-t-blue-400",
-    headerBg: "bg-blue-50 dark:bg-blue-950/30",
-    headerText: "text-blue-700 dark:text-blue-400",
-    countBg: "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-400",
-  },
-  {
-    key: "done",
-    label: "Terminado",
-    color: "border-t-emerald-400",
-    headerBg: "bg-emerald-50 dark:bg-emerald-950/30",
-    headerText: "text-emerald-700 dark:text-emerald-400",
-    countBg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-400",
-  },
-] as const;
+type TaskComment = {
+  id: number;
+  taskId: number;
+  userId: string;
+  content: string;
+  createdAt: string;
+  authorName?: string;
+};
 
-type ColumnKey = typeof COLUMNS[number]["key"];
+type TaskHistoryItem = {
+  id: number;
+  taskId: number;
+  userId: string;
+  action: string;
+  previousValue?: string | null;
+  newValue?: string | null;
+  comment?: string | null;
+  createdAt: string;
+  actorName?: string;
+};
 
-interface FormErrors { title?: string }
+type AssignableUser = {
+  id: number;
+  name?: string | null;
+  email: string;
+};
 
-function validateForm(form: { title: string }): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.title.trim()) errors.title = "El título es obligatorio.";
-  else if (form.title.trim().length < 3) errors.title = "Al menos 3 caracteres.";
-  else if (form.title.trim().length > 200) errors.title = "Máximo 200 caracteres.";
-  return errors;
+type CurrentUser = {
+  id: number;
+  name?: string | null;
+  email: string;
+  role: string;
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  pending:            { label: "Pendiente",         cls: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800" },
+  pending_acceptance: { label: "Pend. Aceptación",  cls: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800" },
+  in_progress:        { label: "En progreso",       cls: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800" },
+  "in-progress":      { label: "En progreso",       cls: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800" },
+  completed:          { label: "Completada",        cls: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" },
+  done:               { label: "Completada",        cls: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800" },
+  rejected:           { label: "Rechazada",         cls: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800" },
+  cancelled:          { label: "Cancelada",         cls: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700" },
+  archived:           { label: "Archivada",         cls: "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" },
+};
+
+const PRIORITY_MAP: Record<string, { label: string; cls: string }> = {
+  urgent: { label: "Urgente", cls: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400" },
+  high:   { label: "Alta",    cls: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400" },
+  medium: { label: "Media",   cls: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400" },
+  low:    { label: "Baja",    cls: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400" },
+};
+
+const HISTORY_LABELS: Record<string, string> = {
+  created: "Tarea creada", edited: "Tarea editada", status_changed: "Estado cambiado",
+  progress_updated: "Avance actualizado", assigned: "Asignada", reassigned: "Reasignada",
+  accepted: "Aceptada", rejected: "Rechazada", cancelled: "Cancelada",
+  archived: "Archivada", completed: "Completada", commented: "Comentario agregado",
+};
+
+function sInfo(s: string) { return STATUS_MAP[s] ?? { label: s, cls: "bg-gray-100 text-gray-600 border-gray-200" }; }
+function pInfo(p: string) { return PRIORITY_MAP[p] ?? { label: p, cls: "bg-gray-100 text-gray-600 border-gray-200" }; }
+
+function isOverdue(t: Task): boolean {
+  if (!t.dueDate) return false;
+  if (["completed", "done", "archived", "cancelled", "rejected"].includes(t.status)) return false;
+  return new Date(t.dueDate) < new Date();
 }
 
-function getNextStatus(current: ColumnKey): ColumnKey | null {
-  const keys: ColumnKey[] = ["pending", "in-progress", "done"];
-  const idx = keys.indexOf(current);
-  return idx < keys.length - 1 ? keys[idx + 1] : null;
+function isActive(t: Task): boolean {
+  return !["archived", "cancelled", "rejected"].includes(t.status);
 }
 
-function getPrevStatus(current: ColumnKey): ColumnKey | null {
-  const keys: ColumnKey[] = ["pending", "in-progress", "done"];
-  const idx = keys.indexOf(current);
-  return idx > 0 ? keys[idx - 1] : null;
+function isCompleted(t: Task): boolean {
+  return t.status === "completed" || t.status === "done";
 }
 
-export default function TasksPage() {
-  const { data: tasks, isLoading, error } = useListTasks();
-  const createTask = useCreateTask();
-  const updateTask = useUpdateTask();
-  const deleteTask = useDeleteTask();
-  const queryClient = useQueryClient();
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
+}
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", priority: "medium", dueDate: "" });
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [search, setSearch] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  const [defaultColumn, setDefaultColumn] = useState<ColumnKey>("pending");
+function fmtDateShort(d: string) {
+  return new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+}
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+function fmtDateTime(d: string) {
+  return new Date(d).toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
-  const handleCreate = () => {
-    const errors = validateForm(form);
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-    createTask.mutate(
-      {
-        data: {
+function userName(u: AssignableUser) {
+  return u.name && u.name.trim() ? u.name.trim() : u.email;
+}
+
+// ── Shared UI pieces ──────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: string }) {
+  const { label, cls } = sInfo(status);
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{label}</span>;
+}
+
+function PriorityBadge({ priority }: { priority: string }) {
+  const { label, cls } = pInfo(priority);
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{label}</span>;
+}
+
+function ProgressBar({ value, className = "" }: { value: number; className?: string }) {
+  const pct = Math.min(100, Math.max(0, value));
+  const color = pct === 100 ? "bg-emerald-500" : pct >= 70 ? "bg-blue-500" : pct >= 30 ? "bg-amber-500" : "bg-slate-300";
+  return (
+    <div className={`w-full bg-muted rounded-full overflow-hidden ${className}`} style={{ height: 6 }}>
+      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+// ── API calls ─────────────────────────────────────────────────────────────────
+
+const fetchTasks = () => apiFetch<Task[]>("/api/tasks?view=all");
+const fetchCurrentUser = () => apiFetch<CurrentUser>("/api/users/me");
+const fetchAssignableUsers = () => apiFetch<AssignableUser[]>("/api/users/assignable");
+const fetchComments = (id: number) => apiFetch<TaskComment[]>(`/api/tasks/${id}/comments`);
+const fetchHistory = (id: number) => apiFetch<TaskHistoryItem[]>(`/api/tasks/${id}/history`);
+
+// ── New Task Modal ────────────────────────────────────────────────────────────
+
+interface NewTaskModalProps {
+  open: boolean;
+  onClose: () => void;
+  users: AssignableUser[];
+  currentUserId: number;
+  onCreated: () => void;
+}
+
+function NewTaskModal({ open, onClose, users, currentUserId, onCreated }: NewTaskModalProps) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    title: "", description: "", priority: "medium", dueDate: "",
+    assignedToUserId: "", requiresAcceptance: false, initialObservations: "",
+  });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const reset = () => {
+    setForm({ title: "", description: "", priority: "medium", dueDate: "", assignedToUserId: "", requiresAcceptance: false, initialObservations: "" });
+    setError("");
+  };
+
+  const handleClose = () => { reset(); onClose(); };
+
+  const handleCreate = async () => {
+    if (!form.title.trim()) { setError("El título es obligatorio"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await apiFetch("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
           title: form.title.trim(),
-          description: form.description.trim() || undefined,
-          priority: form.priority as "high" | "medium" | "low",
-          dueDate: form.dueDate || undefined,
-          status: defaultColumn,
-        },
-      },
-      {
-        onSuccess: () => {
-          invalidate();
-          setCreateOpen(false);
-          setForm({ title: "", description: "", priority: "medium", dueDate: "" });
-          setFormErrors({});
-        },
-      },
-    );
-  };
-
-  const handleMove = (id: number, newStatus: ColumnKey) => {
-    updateTask.mutate(
-      { id, data: { status: newStatus } },
-      { onSuccess: invalidate },
-    );
-  };
-
-  const handleDelete = (id: number) => {
-    deleteTask.mutate({ id }, { onSuccess: invalidate });
-  };
-
-  const handleCloseDialog = (open: boolean) => {
-    setCreateOpen(open);
-    if (!open) {
-      setForm({ title: "", description: "", priority: "medium", dueDate: "" });
-      setFormErrors({});
+          description: form.description.trim() || null,
+          priority: form.priority,
+          dueDate: form.dueDate || null,
+          assignedToUserId: form.assignedToUserId || null,
+          requiresAcceptance: form.requiresAcceptance,
+          initialObservations: form.initialObservations.trim() || null,
+        }),
+      });
+      toast({ title: "Tarea creada exitosamente" });
+      handleClose();
+      onCreated();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al crear tarea");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const openCreate = (col: ColumnKey) => {
-    setDefaultColumn(col);
-    setCreateOpen(true);
+  return (
+    <Dialog open={open} onOpenChange={v => !v && handleClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Nueva Tarea</DialogTitle>
+          <DialogDescription>Completá los datos de la nueva tarea.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-1">
+          <div className="space-y-1.5">
+            <Label>Título *</Label>
+            <Input placeholder="Ej: Presentar declaración jurada" value={form.title}
+              onChange={e => { setForm(f => ({ ...f, title: e.target.value })); setError(""); }}
+              className={error && !form.title.trim() ? "border-destructive" : ""} />
+            {error && <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3" />{error}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Descripción</Label>
+            <Textarea placeholder="Detalles adicionales..." value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} className="resize-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Prioridad</Label>
+              <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="urgent">🔴 Urgente</SelectItem>
+                  <SelectItem value="high">🟠 Alta</SelectItem>
+                  <SelectItem value="medium">🟡 Media</SelectItem>
+                  <SelectItem value="low">⚪ Baja</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Vencimiento</Label>
+              <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Asignar a</Label>
+            <Select value={form.assignedToUserId}
+              onValueChange={v => setForm(f => ({ ...f, assignedToUserId: v === "_none" ? "" : v }))}>
+              <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">Sin asignar</SelectItem>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={String(u.id)}>
+                    {userName(u)} {u.id === currentUserId ? "(Yo)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {form.assignedToUserId && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+              <input type="checkbox" id="req-acceptance" checked={form.requiresAcceptance}
+                onChange={e => setForm(f => ({ ...f, requiresAcceptance: e.target.checked }))}
+                className="h-4 w-4 rounded" />
+              <Label htmlFor="req-acceptance" className="cursor-pointer text-sm font-normal">
+                Requiere aceptación del asignado antes de iniciar
+              </Label>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label>Observaciones iniciales</Label>
+            <Textarea placeholder="Notas para el asignado..." value={form.initialObservations}
+              onChange={e => setForm(f => ({ ...f, initialObservations: e.target.value }))} rows={2} className="resize-none" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose} disabled={loading}>Cancelar</Button>
+          <Button onClick={handleCreate} disabled={loading}>
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Guardando...</> : "Crear Tarea"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Progress Modal ────────────────────────────────────────────────────────────
+
+function ProgressModal({ task, onClose, onUpdated }: { task: Task | null; onClose: () => void; onUpdated: () => void }) {
+  const { toast } = useToast();
+  const [progress, setProgress] = useState(task?.progress ?? 0);
+  const [comment, setComment] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (!task) return null;
+
+  const handle = async () => {
+    setLoading(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/progress`, {
+        method: "PATCH",
+        body: JSON.stringify({ progress, comment: comment.trim() || null }),
+      });
+      toast({ title: `Avance actualizado: ${progress}%` });
+      onClose();
+      onUpdated();
+    } catch (e: unknown) {
+      toast({ title: "Error al actualizar avance", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Actualizar avance</DialogTitle>
+          <DialogDescription className="line-clamp-2">{task.title}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Porcentaje completado</Label>
+              <span className="text-2xl font-bold tabular-nums">{progress}%</span>
+            </div>
+            <input type="range" min={0} max={100} step={5} value={progress}
+              onChange={e => setProgress(Number(e.target.value))}
+              className="w-full accent-primary" />
+            <ProgressBar value={progress} className="mt-1" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Comentario (opcional)</Label>
+            <Textarea placeholder="¿Qué avanzaste?" value={comment}
+              onChange={e => setComment(e.target.value)} rows={2} className="resize-none" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
+          <Button onClick={handle} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Reject Modal ──────────────────────────────────────────────────────────────
+
+function RejectModal({ task, onClose, onRejected }: { task: Task | null; onClose: () => void; onRejected: () => void }) {
+  const { toast } = useToast();
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (!task) return null;
+
+  const handle = async () => {
+    setLoading(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reason.trim() || null }),
+      });
+      toast({ title: "Tarea rechazada" });
+      onClose();
+      onRejected();
+    } catch (e: unknown) {
+      toast({ title: "Error al rechazar", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Rechazar tarea</DialogTitle>
+          <DialogDescription className="line-clamp-2">{task.title}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          <Label>Motivo de rechazo (opcional)</Label>
+          <Textarea placeholder="Explicá por qué rechazás esta tarea..." value={reason}
+            onChange={e => setReason(e.target.value)} rows={3} className="resize-none" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
+          <Button variant="destructive" onClick={handle} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Rechazar tarea"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Reassign Modal ────────────────────────────────────────────────────────────
+
+function ReassignModal({ task, users, currentUserId, onClose, onReassigned }: {
+  task: Task | null; users: AssignableUser[]; currentUserId: number; onClose: () => void; onReassigned: () => void;
+}) {
+  const { toast } = useToast();
+  const [assignedTo, setAssignedTo] = useState(task?.assignedToUserId ?? "");
+  const [reqAcc, setReqAcc] = useState(task?.requiresAcceptance ?? false);
+  const [loading, setLoading] = useState(false);
+
+  if (!task) return null;
+
+  const handle = async () => {
+    setLoading(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/reassign`, {
+        method: "POST",
+        body: JSON.stringify({
+          assignedToUserId: assignedTo || null,
+          requiresAcceptance: reqAcc,
+        }),
+      });
+      toast({ title: "Tarea reasignada" });
+      onClose();
+      onReassigned();
+    } catch (e: unknown) {
+      toast({ title: "Error al reasignar", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Reasignar tarea</DialogTitle>
+          <DialogDescription className="line-clamp-2">{task.title}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label>Asignar a</Label>
+            <Select value={assignedTo} onValueChange={v => setAssignedTo(v === "_none" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">Sin asignar</SelectItem>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={String(u.id)}>
+                    {userName(u)} {u.id === currentUserId ? "(Yo)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {assignedTo && (
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="req-acc-r" checked={reqAcc}
+                onChange={e => setReqAcc(e.target.checked)} className="h-4 w-4 rounded" />
+              <Label htmlFor="req-acc-r" className="cursor-pointer text-sm font-normal">
+                Requiere aceptación
+              </Label>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
+          <Button onClick={handle} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Reasignar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Task Detail Sheet ─────────────────────────────────────────────────────────
+
+function TaskDetailSheet({
+  task, currentUser, users, onClose, onAction,
+}: {
+  task: Task | null;
+  currentUser: CurrentUser | null;
+  users: AssignableUser[];
+  onClose: () => void;
+  onAction: () => void;
+}) {
+  const { toast } = useToast();
+  const [comment, setComment] = useState("");
+  const [addingComment, setAddingComment] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const qc = useQueryClient();
+  const { data: comments } = useQuery<TaskComment[]>({
+    queryKey: ["task-comments", task?.id],
+    queryFn: () => fetchComments(task!.id),
+    enabled: !!task,
+  });
+  const { data: history } = useQuery<TaskHistoryItem[]>({
+    queryKey: ["task-history", task?.id],
+    queryFn: () => fetchHistory(task!.id),
+    enabled: !!task,
+  });
+
+  if (!task) return null;
+
+  const me = currentUser ? String(currentUser.id) : null;
+  const isAdmin = currentUser?.role === "super_admin" || currentUser?.role === "admin";
+  const isCreator = me !== null && task.userId === me;
+  const isAssignee = me !== null && task.assignedToUserId === me;
+  const canAct = isCreator || isAssignee || isAdmin;
+
+  const doAction = async (action: string, method = "POST") => {
+    setActionLoading(action);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/${action}`, { method });
+      toast({ title: `Acción completada` });
+      qc.invalidateQueries({ queryKey: ["task-comments", task.id] });
+      qc.invalidateQueries({ queryKey: ["task-history", task.id] });
+      onAction();
+    } catch (e: unknown) {
+      toast({ title: "Error", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setActionLoading(null); }
+  };
+
+  const submitComment = async () => {
+    if (!comment.trim()) return;
+    setAddingComment(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ content: comment.trim() }),
+      });
+      setComment("");
+      qc.invalidateQueries({ queryKey: ["task-comments", task.id] });
+      qc.invalidateQueries({ queryKey: ["task-history", task.id] });
+    } catch (e: unknown) {
+      toast({ title: "Error al comentar", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setAddingComment(false); }
+  };
+
+  const { label: stLabel, cls: stCls } = sInfo(task.status);
+  const overdue = isOverdue(task);
+
+  return (
+    <Sheet open={!!task} onOpenChange={v => !v && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto p-0">
+        {/* Header */}
+        <div className="sticky top-0 bg-background border-b px-6 py-4 z-10">
+          <SheetHeader className="pb-0">
+            <SheetTitle className="text-left text-base font-semibold leading-snug pr-8">{task.title}</SheetTitle>
+            <SheetDescription className="text-left">
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <StatusBadge status={task.status} />
+                <PriorityBadge priority={task.priority} />
+                {overdue && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-red-100 text-red-700 border-red-200">
+                    <AlertCircle className="h-2.5 w-2.5 mr-1" />Vencida
+                  </span>
+                )}
+              </div>
+            </SheetDescription>
+          </SheetHeader>
+        </div>
+
+        <div className="px-6 py-4 space-y-5">
+          {/* Progress */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground font-medium">Avance</span>
+              <span className="font-semibold tabular-nums">{task.progress}%</span>
+            </div>
+            <ProgressBar value={task.progress} />
+          </div>
+
+          {/* Description */}
+          {task.description && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Descripción</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{task.description}</p>
+            </div>
+          )}
+
+          {/* Initial observations */}
+          {task.initialObservations && (
+            <div className="space-y-1 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Observaciones iniciales</p>
+              <p className="text-sm text-amber-900 dark:text-amber-300 leading-relaxed">{task.initialObservations}</p>
+            </div>
+          )}
+
+          {/* Rejection reason */}
+          {task.rejectionReason && (
+            <div className="space-y-1 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900">
+              <p className="text-xs font-medium text-red-700 dark:text-red-400">Motivo de rechazo</p>
+              <p className="text-sm text-red-900 dark:text-red-300">{task.rejectionReason}</p>
+            </div>
+          )}
+
+          {/* Meta grid */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Creada por</p>
+              <p className="font-medium">{task.creatorName ?? "—"}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Asignada a</p>
+              <p className="font-medium">{task.assigneeName ?? <span className="text-muted-foreground italic">Sin asignar</span>}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Vencimiento</p>
+              <p className={`font-medium ${overdue ? "text-red-600 dark:text-red-400" : ""}`}>
+                {task.dueDate ? fmtDate(task.dueDate) : "—"}
+              </p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Completada el</p>
+              <p className="font-medium">{task.completedAt ? fmtDate(task.completedAt) : "—"}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Creada el</p>
+              <p className="font-medium">{fmtDate(task.createdAt)}</p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Última actualización</p>
+              <p className="font-medium">{fmtDate(task.updatedAt)}</p>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          {canAct && (
+            <div className="flex flex-wrap gap-2 pt-1 border-t">
+              {task.status === "pending_acceptance" && isAssignee && (
+                <>
+                  <Button size="sm" onClick={() => doAction("accept")} disabled={!!actionLoading}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+                    {actionLoading === "accept" ? "Aceptando..." : "Aceptar"}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => doAction("reject")} disabled={!!actionLoading}>
+                    <XCircle className="h-3.5 w-3.5 mr-1.5" />Rechazar
+                  </Button>
+                </>
+              )}
+              {["in_progress", "in-progress", "pending", "pending_acceptance"].includes(task.status) && canAct && (
+                <Button size="sm" variant="outline" onClick={() => doAction("complete")} disabled={!!actionLoading}>
+                  <CheckCheck className="h-3.5 w-3.5 mr-1.5" />Completar
+                </Button>
+              )}
+              {isActive(task) && !isCompleted(task) && (isCreator || isAdmin) && (
+                <Button size="sm" variant="outline" onClick={() => doAction("cancel")} disabled={!!actionLoading}>
+                  <XCircle className="h-3.5 w-3.5 mr-1.5" />Cancelar
+                </Button>
+              )}
+              {(isCreator || isAdmin) && (
+                <Button size="sm" variant="outline" onClick={() => doAction("archive")} disabled={!!actionLoading}>
+                  <Archive className="h-3.5 w-3.5 mr-1.5" />Archivar
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Comments */}
+          <div className="space-y-3 border-t pt-4">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />Comentarios
+              {comments && comments.length > 0 && <span className="text-xs text-muted-foreground">({comments.length})</span>}
+            </h3>
+            {comments && comments.length > 0 ? (
+              <div className="space-y-3">
+                {comments.map(c => (
+                  <div key={c.id} className="flex gap-2.5">
+                    <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-semibold text-primary">
+                        {(c.authorName ?? c.userId).charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 bg-muted/40 rounded-lg p-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold">{c.authorName ?? c.userId}</span>
+                        <span className="text-[10px] text-muted-foreground">{fmtDateTime(c.createdAt)}</span>
+                      </div>
+                      <p className="text-xs leading-relaxed whitespace-pre-wrap">{c.content}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Sin comentarios aún.</p>
+            )}
+            <div className="flex gap-2">
+              <Textarea placeholder="Escribí un comentario..." value={comment}
+                onChange={e => setComment(e.target.value)} rows={2} className="resize-none text-sm" />
+              <Button size="sm" onClick={submitComment} disabled={addingComment || !comment.trim()} className="self-end">
+                {addingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar"}
+              </Button>
+            </div>
+          </div>
+
+          {/* History */}
+          <div className="space-y-3 border-t pt-4 pb-6">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <History className="h-4 w-4 text-muted-foreground" />Historial
+            </h3>
+            {history && history.length > 0 ? (
+              <div className="relative pl-5 space-y-3">
+                <div className="absolute left-2 top-1 bottom-1 w-px bg-border" />
+                {history.map((h, i) => (
+                  <div key={h.id} className="relative flex gap-2.5">
+                    <div className="absolute -left-3.5 top-1 h-2.5 w-2.5 rounded-full bg-muted border-2 border-border" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-semibold">{HISTORY_LABELS[h.action] ?? h.action}</span>
+                        <span className="text-[10px] text-muted-foreground">por {h.actorName ?? h.userId}</span>
+                        <span className="text-[10px] text-muted-foreground ml-auto">{fmtDateTime(h.createdAt)}</span>
+                      </div>
+                      {h.comment && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{h.comment}</p>
+                      )}
+                      {(h.previousValue || h.newValue) && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {h.previousValue && <span className="line-through opacity-60 mr-1">{h.previousValue}</span>}
+                          {h.newValue && <span className="text-foreground/70">{h.newValue}</span>}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Sin historial.</p>
+            )}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── Task Actions Dropdown ─────────────────────────────────────────────────────
+
+function TaskActions({
+  task, currentUser, onDetail, onProgress, onReject, onReassign, onRefresh,
+}: {
+  task: Task;
+  currentUser: CurrentUser | null;
+  onDetail: () => void;
+  onProgress: () => void;
+  onReject: () => void;
+  onReassign: () => void;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const [confirmAction, setConfirmAction] = useState<string | null>(null);
+
+  const me = currentUser ? String(currentUser.id) : null;
+  const isAdmin = currentUser?.role === "super_admin" || currentUser?.role === "admin";
+  const isCreator = me !== null && task.userId === me;
+  const isAssignee = me !== null && task.assignedToUserId === me;
+
+  const doAction = async (action: string, method = "POST") => {
+    try {
+      await apiFetch(`/api/tasks/${task.id}/${action}`, { method });
+      toast({ title: "Acción realizada" });
+      onRefresh();
+    } catch (e: unknown) {
+      toast({ title: "Error", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    }
+  };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-7 w-7">
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="text-sm w-48">
+          <DropdownMenuItem onClick={onDetail}>
+            <CheckSquare className="h-3.5 w-3.5 mr-2" />Ver detalle
+          </DropdownMenuItem>
+
+          {task.status === "pending_acceptance" && isAssignee && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => doAction("accept")} className="text-emerald-600 dark:text-emerald-400">
+                <UserCheck className="h-3.5 w-3.5 mr-2" />Aceptar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onReject} className="text-destructive">
+                <XCircle className="h-3.5 w-3.5 mr-2" />Rechazar
+              </DropdownMenuItem>
+            </>
+          )}
+
+          {(isCreator || isAssignee || isAdmin) && isActive(task) && !isCompleted(task) && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onProgress}>
+                <ChevronDown className="h-3.5 w-3.5 mr-2" />Actualizar avance
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => doAction("complete")}>
+                <CheckCheck className="h-3.5 w-3.5 mr-2" />Completar
+              </DropdownMenuItem>
+            </>
+          )}
+
+          {(isCreator || isAdmin) && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onReassign}>
+                <ArrowRightLeft className="h-3.5 w-3.5 mr-2" />Reasignar
+              </DropdownMenuItem>
+              {isActive(task) && (
+                <DropdownMenuItem onClick={() => setConfirmAction("cancel")} className="text-amber-600 dark:text-amber-400">
+                  <XCircle className="h-3.5 w-3.5 mr-2" />Cancelar
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setConfirmAction("archive")} className="text-muted-foreground">
+                <Archive className="h-3.5 w-3.5 mr-2" />Archivar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setConfirmAction("delete")} className="text-destructive">
+                <XCircle className="h-3.5 w-3.5 mr-2" />Eliminar
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AlertDialog open={!!confirmAction} onOpenChange={v => !v && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "delete" ? "¿Eliminar tarea?" :
+               confirmAction === "cancel" ? "¿Cancelar tarea?" : "¿Archivar tarea?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "delete" ? "Esta acción no se puede deshacer. Se eliminará la tarea y todo su historial." :
+               confirmAction === "cancel" ? "La tarea pasará al estado Cancelada." : "La tarea pasará al estado Archivada."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, volver</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmAction === "delete" ? "bg-destructive hover:bg-destructive/90" : ""}
+              onClick={async () => {
+                const action = confirmAction!;
+                setConfirmAction(null);
+                if (action === "delete") {
+                  try {
+                    await apiFetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+                    toast({ title: "Tarea eliminada" });
+                    onRefresh();
+                  } catch (e: unknown) {
+                    toast({ title: "Error al eliminar", variant: "destructive", description: e instanceof Error ? e.message : "" });
+                  }
+                } else {
+                  await doAction(action);
+                }
+              }}>
+              {confirmAction === "delete" ? "Sí, eliminar" :
+               confirmAction === "cancel" ? "Sí, cancelar" : "Sí, archivar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ── Task Table ────────────────────────────────────────────────────────────────
+
+function TaskTable({ tasks, currentUser, onDetail, onProgress, onReject, onReassign, onRefresh }: {
+  tasks: Task[];
+  currentUser: CurrentUser | null;
+  onDetail: (t: Task) => void;
+  onProgress: (t: Task) => void;
+  onReject: (t: Task) => void;
+  onReassign: (t: Task) => void;
+  onRefresh: () => void;
+}) {
+  if (tasks.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+        <CheckSquare className="h-10 w-10 mb-3 opacity-30" />
+        <p className="text-sm">No hay tareas en esta vista.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 border-b">
+          <tr>
+            <th className="text-left px-3 py-2.5 font-medium text-muted-foreground text-xs whitespace-nowrap">Estado</th>
+            <th className="text-left px-3 py-2.5 font-medium text-muted-foreground text-xs">Título</th>
+            <th className="text-left px-3 py-2.5 font-medium text-muted-foreground text-xs whitespace-nowrap">Prioridad</th>
+            <th className="text-left px-3 py-2.5 font-medium text-muted-foreground text-xs whitespace-nowrap">Creador</th>
+            <th className="text-left px-3 py-2.5 font-medium text-muted-foreground text-xs whitespace-nowrap">Asignado</th>
+            <th className="text-left px-3 py-2.5 font-medium text-muted-foreground text-xs whitespace-nowrap w-28">Avance</th>
+            <th className="text-left px-3 py-2.5 font-medium text-muted-foreground text-xs whitespace-nowrap">Venc.</th>
+            <th className="px-3 py-2.5 w-10" />
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {tasks.map(task => {
+            const overdue = isOverdue(task);
+            return (
+              <tr key={task.id} className="hover:bg-muted/30 transition-colors group">
+                <td className="px-3 py-2.5 whitespace-nowrap"><StatusBadge status={task.status} /></td>
+                <td className="px-3 py-2.5">
+                  <button onClick={() => onDetail(task)}
+                    className="text-left font-medium hover:underline underline-offset-2 line-clamp-1 max-w-xs text-sm">
+                    {task.title}
+                  </button>
+                  {task.description && (
+                    <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</p>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap"><PriorityBadge priority={task.priority} /></td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{task.creatorName ?? "—"}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
+                  {task.assigneeName ?? <span className="italic">Sin asignar</span>}
+                </td>
+                <td className="px-3 py-2.5 w-28">
+                  <div className="flex items-center gap-1.5">
+                    <ProgressBar value={task.progress} className="flex-1" />
+                    <span className="text-xs tabular-nums text-muted-foreground w-6 text-right">{task.progress}%</span>
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                  {task.dueDate ? (
+                    <span className={overdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}>
+                      {fmtDateShort(task.dueDate)}
+                      {overdue && " ⚠"}
+                    </span>
+                  ) : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="px-3 py-2.5">
+                  <TaskActions task={task} currentUser={currentUser}
+                    onDetail={() => onDetail(task)} onProgress={() => onProgress(task)}
+                    onReject={() => onReject(task)} onReassign={() => onReassign(task)}
+                    onRefresh={onRefresh} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Task Cards ────────────────────────────────────────────────────────────────
+
+function TaskCards({ tasks, currentUser, onDetail, onProgress, onReject, onReassign, onRefresh }: {
+  tasks: Task[];
+  currentUser: CurrentUser | null;
+  onDetail: (t: Task) => void;
+  onProgress: (t: Task) => void;
+  onReject: (t: Task) => void;
+  onReassign: (t: Task) => void;
+  onRefresh: () => void;
+}) {
+  if (tasks.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+        <CheckSquare className="h-10 w-10 mb-3 opacity-30" />
+        <p className="text-sm">No hay tareas en esta vista.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {tasks.map(task => {
+        const overdue = isOverdue(task);
+        return (
+          <Card key={task.id} className={`shadow-none transition-shadow hover:shadow-sm ${
+            task.priority === "urgent" ? "border-l-4 border-l-red-500" :
+            task.priority === "high" ? "border-l-4 border-l-orange-500" : ""}`}>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <button onClick={() => onDetail(task)}
+                  className="text-left text-sm font-semibold leading-snug hover:underline underline-offset-2 flex-1 line-clamp-2">
+                  {task.title}
+                </button>
+                <TaskActions task={task} currentUser={currentUser}
+                  onDetail={() => onDetail(task)} onProgress={() => onProgress(task)}
+                  onReject={() => onReject(task)} onReassign={() => onReassign(task)}
+                  onRefresh={onRefresh} />
+              </div>
+
+              {task.description && (
+                <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
+              )}
+
+              <div className="flex flex-wrap gap-1.5">
+                <StatusBadge status={task.status} />
+                <PriorityBadge priority={task.priority} />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Avance</span>
+                  <span className="tabular-nums font-medium">{task.progress}%</span>
+                </div>
+                <ProgressBar value={task.progress} />
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-2">
+                <div className="flex items-center gap-1 min-w-0">
+                  <User className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{task.assigneeName ?? "Sin asignar"}</span>
+                </div>
+                {task.dueDate && (
+                  <div className={`flex items-center gap-0.5 ${overdue ? "text-red-500 font-medium" : ""}`}>
+                    <Clock className="h-3 w-3" />
+                    {fmtDateShort(task.dueDate)}
+                    {overdue && " ⚠"}
+                  </div>
+                )}
+              </div>
+
+              {task.status === "pending_acceptance" && task.assignedToUserId === String(currentUser?.id) && (
+                <div className="flex gap-1.5 pt-1 border-t">
+                  <Button size="sm" className="flex-1 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={async () => {
+                      await apiFetch(`/api/tasks/${task.id}/accept`, { method: "POST" });
+                      onRefresh();
+                    }}>
+                    <UserCheck className="h-3 w-3 mr-1" />Aceptar
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1 h-7 text-xs text-destructive"
+                    onClick={() => onReject(task)}>
+                    <XCircle className="h-3 w-3 mr-1" />Rechazar
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Metric Card ───────────────────────────────────────────────────────────────
+
+function MetricCard({ label, value, icon: Icon, color }: {
+  label: string; value: number; icon: React.ElementType; color: string;
+}) {
+  return (
+    <Card className="shadow-none">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground font-medium">{label}</p>
+            <p className="text-2xl font-bold tabular-nums mt-0.5">{value}</p>
+          </div>
+          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${color}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function TasksPage() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const [activeTab, setActiveTab] = useState("all");
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [search, setSearch] = useState("");
+  const [filterPriority, setFilterPriority] = useState("all");
+  const [newOpen, setNewOpen] = useState(false);
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [progressTask, setProgressTask] = useState<Task | null>(null);
+  const [rejectTask, setRejectTask] = useState<Task | null>(null);
+  const [reassignTask, setReassignTask] = useState<Task | null>(null);
+
+  const { data: tasks = [], isLoading, error } = useQuery<Task[]>({
+    queryKey: ["tasks"],
+    queryFn: fetchTasks,
+  });
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["current-user"],
+    queryFn: fetchCurrentUser,
+  });
+  const { data: assignableUsers = [] } = useQuery<AssignableUser[]>({
+    queryKey: ["assignable-users"],
+    queryFn: fetchAssignableUsers,
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["tasks"] });
+    qc.invalidateQueries({ queryKey: ["task-comments", detailTask?.id] });
+    qc.invalidateQueries({ queryKey: ["task-history", detailTask?.id] });
+  };
+
+  const me = currentUser ? String(currentUser.id) : null;
+  const isAdmin = currentUser?.role === "super_admin" || currentUser?.role === "admin";
+
+  // Metrics (from all tasks)
+  const metrics = useMemo(() => ({
+    total: tasks.length,
+    pendingAcceptance: tasks.filter(t => t.status === "pending_acceptance" && t.assignedToUserId === me).length,
+    inProgress: tasks.filter(t => (t.status === "in_progress" || t.status === "in-progress") && isActive(t)).length,
+    overdue: tasks.filter(t => isOverdue(t)).length,
+    completed: tasks.filter(t => isCompleted(t)).length,
+    rejected: tasks.filter(t => t.status === "rejected").length,
+  }), [tasks, me]);
+
+  // Tab filtering
+  const tabTasks = useMemo(() => {
+    let list = tasks;
+    switch (activeTab) {
+      case "created":       list = tasks.filter(t => t.userId === me); break;
+      case "assigned":      list = tasks.filter(t => t.assignedToUserId === me); break;
+      case "pending_acc":   list = tasks.filter(t => t.status === "pending_acceptance" && t.assignedToUserId === me); break;
+      case "completed":     list = tasks.filter(t => isCompleted(t)); break;
+      case "archived":      list = tasks.filter(t => !isActive(t) && !isCompleted(t)); break;
+      default:              list = tasks.filter(t => isActive(t)); break;
+    }
+    return list;
+  }, [tasks, activeTab, me]);
+
+  // Search + priority filter
+  const filteredTasks = useMemo(() => {
+    let list = tabTasks;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(t => t.title.toLowerCase().includes(q) || (t.description ?? "").toLowerCase().includes(q));
+    }
+    if (filterPriority !== "all") {
+      list = list.filter(t => t.priority === filterPriority);
+    }
+    return list;
+  }, [tabTasks, search, filterPriority]);
+
+  const tabCount = (tab: string) => {
+    switch (tab) {
+      case "all":         return tasks.filter(t => isActive(t)).length;
+      case "created":     return tasks.filter(t => t.userId === me).length;
+      case "assigned":    return tasks.filter(t => t.assignedToUserId === me).length;
+      case "pending_acc": return tasks.filter(t => t.status === "pending_acceptance" && t.assignedToUserId === me).length;
+      case "completed":   return tasks.filter(t => isCompleted(t)).length;
+      case "archived":    return tasks.filter(t => !isActive(t) && !isCompleted(t)).length;
+      default: return 0;
+    }
   };
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div className="flex items-center justify-between">
           <Skeleton className="h-9 w-36" />
-          <Skeleton className="h-9 w-28" />
+          <Skeleton className="h-9 w-32" />
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-64 rounded-xl" />)}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
@@ -169,284 +1215,157 @@ export default function TasksPage() {
     );
   }
 
-  const allTasks = tasks ?? [];
-
-  let filtered = allTasks;
-  if (search.trim()) {
-    const q = search.toLowerCase();
-    filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
-  }
-  if (priorityFilter !== "all") {
-    filtered = filtered.filter(t => t.priority === priorityFilter);
-  }
-
-  const byColumn = (col: ColumnKey) => filtered.filter(t => t.status === col);
-  const pending = allTasks.filter(t => t.status === "pending").length;
-  const inProgress = allTasks.filter(t => t.status === "in-progress").length;
-  const done = allTasks.filter(t => t.status === "done").length;
-
-  const isOverdue = (dueDate: string | null | undefined) => {
-    if (!dueDate) return false;
-    return new Date(dueDate) < new Date();
+  const taskListProps = {
+    tasks: filteredTasks,
+    currentUser: currentUser ?? null,
+    onDetail: setDetailTask,
+    onProgress: setProgressTask,
+    onReject: setRejectTask,
+    onReassign: setReassignTask,
+    onRefresh: refresh,
   };
 
   return (
     <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Tareas</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            {pending} pendiente{pending !== 1 ? "s" : ""} · {inProgress} en progreso · {done} completada{done !== 1 ? "s" : ""}
+            {metrics.total} tarea{metrics.total !== 1 ? "s" : ""} en total
+            {metrics.pendingAcceptance > 0 && ` · ${metrics.pendingAcceptance} pend. aceptación`}
           </p>
         </div>
-        <Button onClick={() => openCreate("pending")} className="shrink-0">
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva Tarea
+        <Button onClick={() => setNewOpen(true)} className="shrink-0">
+          <Plus className="mr-2 h-4 w-4" />Nueva Tarea
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-48 max-w-sm">
-          <Input
-            placeholder="Buscar tareas..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="h-8 text-sm pl-3 pr-3"
-          />
-        </div>
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="h-8 w-36 text-sm">
-            <SelectValue placeholder="Prioridad" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas las prioridades</SelectItem>
-            <SelectItem value="high">Alta</SelectItem>
-            <SelectItem value="medium">Media</SelectItem>
-            <SelectItem value="low">Baja</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <MetricCard label="Total" value={metrics.total} icon={CheckSquare} color="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" />
+        <MetricCard label="Pend. Aceptación" value={metrics.pendingAcceptance} icon={UserCheck} color="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" />
+        <MetricCard label="En Progreso" value={metrics.inProgress} icon={Loader2} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
+        <MetricCard label="Vencidas" value={metrics.overdue} icon={AlertCircle} color="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" />
+        <MetricCard label="Completadas" value={metrics.completed} icon={CheckCheck} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" />
+        <MetricCard label="Rechazadas" value={metrics.rejected} icon={XCircle} color="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {COLUMNS.map(col => {
-          const colTasks = byColumn(col.key);
-          return (
-            <div key={col.key} className={`rounded-xl border-t-4 ${col.color} bg-muted/30 dark:bg-muted/10 flex flex-col min-h-[400px]`}>
-              <div className={`px-4 py-3 ${col.headerBg} rounded-t-lg flex items-center justify-between`}>
-                <span className={`font-semibold text-sm ${col.headerText}`}>{col.label}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${col.countBg}`}>
-                    {colTasks.length}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => openCreate(col.key)}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
+      {/* Tabs + controls */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex items-center gap-3 flex-wrap">
+          <TabsList className="h-9 flex-1 min-w-0 overflow-x-auto justify-start">
+            {[
+              { value: "all",         label: "Activas" },
+              { value: "created",     label: "Creadas por mí" },
+              { value: "assigned",    label: "Asignadas a mí" },
+              { value: "pending_acc", label: "Pend. Aceptación" },
+              { value: "completed",   label: "Completadas" },
+              { value: "archived",    label: "Archivadas" },
+            ].map(tab => {
+              const count = tabCount(tab.value);
+              return (
+                <TabsTrigger key={tab.value} value={tab.value} className="text-xs gap-1.5 whitespace-nowrap">
+                  {tab.label}
+                  {count > 0 && (
+                    <span className="bg-muted text-muted-foreground text-[10px] px-1.5 rounded-full font-medium">
+                      {count}
+                    </span>
+                  )}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
 
-              <div className="flex-1 p-3 space-y-2 overflow-y-auto">
-                {colTasks.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    {col.key === "done"
-                      ? <CheckCheck className="h-8 w-8 text-muted-foreground/40 mb-2" />
-                      : <CheckSquare className="h-8 w-8 text-muted-foreground/40 mb-2" />
-                    }
-                    <p className="text-xs text-muted-foreground">
-                      {col.key === "done" ? "Ninguna completada aún" : "Sin tareas"}
-                    </p>
-                  </div>
-                ) : (
-                  colTasks.map(task => {
-                    const overdue = isOverdue(task.dueDate) && task.status !== "done";
-                    return (
-                      <Card
-                        key={task.id}
-                        className={`shadow-none border ${task.priority === "high" ? "border-l-4 border-l-red-400" : ""} ${task.status === "done" ? "opacity-60" : ""}`}
-                      >
-                        <CardContent className="p-3">
-                          <div className="flex items-start gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm font-medium leading-snug ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>
-                                {task.title}
-                              </p>
-                              {task.description && (
-                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
-                              )}
-                              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${PRIORITY_BADGE[task.priority] ?? ""}`}>
-                                  {task.priority === "high" && <Star className="h-2.5 w-2.5 mr-0.5 fill-current" />}
-                                  {PRIORITY_LABELS[task.priority] ?? task.priority}
-                                </span>
-                                {task.dueDate && (
-                                  <span className={`flex items-center gap-0.5 text-[10px] ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
-                                    <Clock className="h-2.5 w-2.5" />
-                                    {new Date(task.dueDate).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
-                                    {overdue && " (vencido)"}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="text-sm">
-                                {getPrevStatus(col.key as ColumnKey) && (
-                                  <DropdownMenuItem onClick={() => handleMove(task.id, getPrevStatus(col.key as ColumnKey)!)}>
-                                    <ChevronLeft className="h-3.5 w-3.5 mr-2" />
-                                    Mover a {COLUMNS.find(c => c.key === getPrevStatus(col.key as ColumnKey))?.label}
-                                  </DropdownMenuItem>
-                                )}
-                                {getNextStatus(col.key as ColumnKey) && (
-                                  <DropdownMenuItem onClick={() => handleMove(task.id, getNextStatus(col.key as ColumnKey)!)}>
-                                    <ChevronRight className="h-3.5 w-3.5 mr-2" />
-                                    Mover a {COLUMNS.find(c => c.key === getNextStatus(col.key as ColumnKey))?.label}
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => handleDelete(task.id)}
-                                >
-                                  <Trash2 className="mr-2 h-3.5 w-3.5" />
-                                  Eliminar
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-border/50">
-                            {getPrevStatus(col.key as ColumnKey) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground flex-1"
-                                onClick={() => handleMove(task.id, getPrevStatus(col.key as ColumnKey)!)}
-                              >
-                                <ChevronLeft className="h-3 w-3 mr-0.5" />
-                                {COLUMNS.find(c => c.key === getPrevStatus(col.key as ColumnKey))?.label}
-                              </Button>
-                            )}
-                            {getNextStatus(col.key as ColumnKey) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground flex-1"
-                                onClick={() => handleMove(task.id, getNextStatus(col.key as ColumnKey)!)}
-                              >
-                                {COLUMNS.find(c => c.key === getNextStatus(col.key as ColumnKey))?.label}
-                                <ChevronRight className="h-3 w-3 ml-0.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <Dialog open={createOpen} onOpenChange={handleCloseDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Nueva Tarea</DialogTitle>
-            <DialogDescription>
-              Agregá una tarea a <strong>{COLUMNS.find(c => c.key === defaultColumn)?.label}</strong>.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="task-title">Título *</Label>
-              <Input
-                id="task-title"
-                placeholder="Ej: Presentar declaración jurada"
-                value={form.title}
-                onChange={e => {
-                  setForm(f => ({ ...f, title: e.target.value }));
-                  if (formErrors.title) setFormErrors({});
-                }}
-                className={formErrors.title ? "border-destructive focus-visible:ring-destructive" : ""}
-              />
-              {formErrors.title && (
-                <p className="text-xs text-destructive flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> {formErrors.title}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="task-desc">Descripción</Label>
-              <Textarea
-                id="task-desc"
-                placeholder="Detalles adicionales..."
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                className="resize-none"
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="task-priority">Prioridad</Label>
-                <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
-                  <SelectTrigger id="task-priority">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="high">Alta</SelectItem>
-                    <SelectItem value="medium">Media</SelectItem>
-                    <SelectItem value="low">Baja</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="task-due">Vencimiento</Label>
-                <Input
-                  id="task-due"
-                  type="date"
-                  value={form.dueDate}
-                  onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="task-col">Estado inicial</Label>
-              <Select value={defaultColumn} onValueChange={v => setDefaultColumn(v as ColumnKey)}>
-                <SelectTrigger id="task-col">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {COLUMNS.map(c => (
-                    <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => handleCloseDialog(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={createTask.isPending}>
-              {createTask.isPending ? (
-                <>
-                  <span className="h-3.5 w-3.5 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Guardando...
-                </>
-              ) : "Guardar Tarea"}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant={viewMode === "table" ? "secondary" : "ghost"} size="icon" className="h-9 w-9"
+              onClick={() => setViewMode("table")} title="Vista tabla">
+              <LayoutList className="h-4 w-4" />
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <Button
+              variant={viewMode === "cards" ? "secondary" : "ghost"} size="icon" className="h-9 w-9"
+              onClick={() => setViewMode("cards")} title="Vista tarjetas">
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Search + filters */}
+        <div className="flex items-center gap-2 flex-wrap mt-3">
+          <div className="relative flex-1 min-w-48 max-w-sm">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Buscar tareas..." value={search} onChange={e => setSearch(e.target.value)}
+              className="h-8 text-sm pl-8" />
+          </div>
+          <Select value={filterPriority} onValueChange={setFilterPriority}>
+            <SelectTrigger className="h-8 w-36 text-xs">
+              <Flag className="h-3 w-3 mr-1.5 text-muted-foreground" />
+              <SelectValue placeholder="Prioridad" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las prioridades</SelectItem>
+              <SelectItem value="urgent">Urgente</SelectItem>
+              <SelectItem value="high">Alta</SelectItem>
+              <SelectItem value="medium">Media</SelectItem>
+              <SelectItem value="low">Baja</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Tab content - same UI for all tabs */}
+        {["all", "created", "assigned", "pending_acc", "completed", "archived"].map(tab => (
+          <TabsContent key={tab} value={tab} className="mt-3">
+            {viewMode === "table"
+              ? <TaskTable {...taskListProps} />
+              : <TaskCards {...taskListProps} />
+            }
+          </TabsContent>
+        ))}
+      </Tabs>
+
+      {/* Modals */}
+      <NewTaskModal
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        users={assignableUsers}
+        currentUserId={currentUser?.id ?? 0}
+        onCreated={refresh}
+      />
+
+      <TaskDetailSheet
+        task={detailTask}
+        currentUser={currentUser ?? null}
+        users={assignableUsers}
+        onClose={() => setDetailTask(null)}
+        onAction={() => { refresh(); }}
+      />
+
+      {progressTask && (
+        <ProgressModal
+          task={progressTask}
+          onClose={() => setProgressTask(null)}
+          onUpdated={refresh}
+        />
+      )}
+
+      {rejectTask && (
+        <RejectModal
+          task={rejectTask}
+          onClose={() => setRejectTask(null)}
+          onRejected={refresh}
+        />
+      )}
+
+      {reassignTask && (
+        <ReassignModal
+          task={reassignTask}
+          users={assignableUsers}
+          currentUserId={currentUser?.id ?? 0}
+          onClose={() => setReassignTask(null)}
+          onReassigned={refresh}
+        />
+      )}
     </div>
   );
 }
