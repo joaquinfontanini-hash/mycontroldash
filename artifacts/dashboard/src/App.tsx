@@ -26,9 +26,12 @@ import SignUpPage from "@/pages/sign-up";
 import LocalSignInPage from "@/pages/local-sign-in";
 import ChangePasswordPage from "@/pages/change-password";
 import RegisterPage from "@/pages/register";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
 import DashboardLayout from "@/components/layout";
 
 const DashboardSummary    = lazy(() => import("@/pages/dashboard/index"));
+const NotificationsPage   = lazy(() => import("@/pages/dashboard/notifications"));
 const TasksPage           = lazy(() => import("@/pages/dashboard/tasks"));
 const ShortcutsPage       = lazy(() => import("@/pages/dashboard/shortcuts"));
 const NewsPage            = lazy(() => import("@/pages/dashboard/news"));
@@ -181,6 +184,8 @@ function LocalApp() {
               <Switch>
                 <Route path="/"                       component={LocalHome} />
                 <Route path="/sign-in/*?"             component={LocalSignInPage} />
+                <Route path="/forgot-password"        component={ForgotPasswordPage} />
+                <Route path="/reset-password"         component={ResetPasswordPage} />
                 <Route path="/change-password"        component={ChangePasswordPage} />
                 <Route path="/register"               component={RegisterPage} />
                 <Route path="/dashboard"              component={RouteDashboard} />
@@ -203,6 +208,7 @@ function LocalApp() {
                 <Route path="/settings"               component={RouteSettings} />
                 <Route path="/dashboard/contacts"     component={RouteContacts} />
                 <Route path="/dashboard/chat"         component={RouteChat} />
+                <Route path="/dashboard/notifications" component={() => <Suspense fallback={null}><NotificationsPage /></Suspense>} />
                 <Route component={NotFound} />
               </Switch>
             </TooltipProvider>
@@ -273,6 +279,8 @@ function ClerkProviderWithRoutes() {
               <Route path="/"                       component={Home} />
               <Route path="/sign-in/*?"             component={SignInPage} />
               <Route path="/sign-up/*?"             component={SignUpPage} />
+              <Route path="/forgot-password"        component={ForgotPasswordPage} />
+              <Route path="/reset-password"         component={ResetPasswordPage} />
               <Route path="/change-password"        component={ChangePasswordPage} />
               <Route path="/register"               component={RegisterPage} />
               <Route path="/dashboard"              component={RouteDashboard} />
@@ -295,6 +303,7 @@ function ClerkProviderWithRoutes() {
               <Route path="/settings"               component={RouteSettings} />
               <Route path="/dashboard/contacts"     component={RouteContacts} />
               <Route path="/dashboard/chat"         component={RouteChat} />
+              <Route path="/dashboard/notifications" component={() => <Suspense fallback={null}><NotificationsPage /></Suspense>} />
               <Route component={NotFound} />
             </Switch>
           </TooltipProvider>

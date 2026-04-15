@@ -4,6 +4,7 @@ import { getAuth } from "@clerk/express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import { dispatch } from "../services/notification-engine.js";
 import type { Request } from "express";
 
 const router: IRouter = Router();
@@ -73,6 +74,27 @@ router.post("/auth/login", async (req: Request, res): Promise<void> => {
       .where(eq(usersTable.id, user.id));
 
     logger.info({ ip, userId: user.id, email: user.email, role: user.role }, "Login attempt: success");
+
+    // Fire-and-forget login alert (respects user preferences + deduplication)
+    dispatch({
+      userId:      user.id,
+      eventType:   "login",
+      eventSubtype: "normal",
+      recipientEmail: user.email,
+      dedupeKey:   `login:${user.id}:${new Date().toISOString().slice(0, 13)}`, // dedupe within same hour
+      dedupeWindowMs: 12 * 3600_000,
+      payload: {
+        userName:  user.name ?? user.email,
+        email:     user.email,
+        loginAt:   new Date(),
+        ip,
+        userAgent: req.headers["user-agent"]?.substring(0, 150),
+        isSuspicious: false,
+        isNewDevice:  false,
+        appUrl: process.env["APP_URL"] ?? "",
+      },
+    }).catch(err => logger.warn({ err }, "auth/login: login alert dispatch failed (non-critical)"));
+
     res.json({
       id: user.id,
       email: user.email,

@@ -28,6 +28,9 @@ import contactsRouter from "./contacts";
 import chatRouter from "./chat";
 import registrationRequestsRouter from "./registration-requests";
 import fiscalAdminRouter from "./fiscal-admin";
+import passwordResetRouter from "./password-reset";
+import adminEmailRouter from "./admin-email";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -43,6 +46,11 @@ router.use(securityLogsRouter);
 router.use(settingsRouter);
 router.use(usersRouter);
 router.use(userSettingsRouter);
+
+// ── Email, notifications, password reset (public + auth guarded) ───────────────
+router.use(passwordResetRouter);   // POST /auth/forgot-password, GET+POST /auth/reset-password
+router.use(adminEmailRouter);      // GET/POST /admin/email-provider/*, GET /admin/email-logs
+router.use(notificationsRouter);   // GET/PATCH /me/notification-preferences
 
 // ── Module-guarded routes ──────────────────────────────────────────────────────
 // Pattern: guard middleware applied to matching path prefix (no sub-router path

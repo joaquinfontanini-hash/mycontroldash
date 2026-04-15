@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useClerk } from "@clerk/react";
 import { LOCAL_AUTH_MODE, verifyLocalPassword, saveLocalSession } from "@/lib/local-auth";
@@ -123,6 +123,17 @@ function LocalPasswordForm({ onSuccess }: { onSuccess: (mustChangePassword: bool
           : <><LogIn className="mr-2 h-4 w-4" />Ingresar</>
         }
       </Button>
+
+      {!LOCAL_AUTH_MODE && (
+        <div className="text-center">
+          <Link
+            href="/forgot-password"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
+      )}
     </form>
   );
 }

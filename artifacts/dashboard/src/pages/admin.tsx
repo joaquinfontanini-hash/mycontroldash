@@ -14,6 +14,7 @@ import {
   AlertTriangle, FileText, ToggleLeft, ToggleRight, Filter,
   UserPlus, ThumbsUp, ThumbsDown, Hourglass,
 } from "lucide-react";
+import { AdminEmailPanel } from "@/components/admin-email-panel";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -374,6 +375,7 @@ export default function AdminPage() {
           <TabsTrigger value="security-logs"><FileText className="h-3.5 w-3.5 mr-1.5" />Auditoría</TabsTrigger>
           <TabsTrigger value="integrations"><Activity className="h-3.5 w-3.5 mr-1.5" />Integraciones</TabsTrigger>
           <TabsTrigger value="sync"><Clock className="h-3.5 w-3.5 mr-1.5" />Sincronización</TabsTrigger>
+          <TabsTrigger value="email"><Mail className="h-3.5 w-3.5 mr-1.5" />Email del sistema</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-0 space-y-4">
@@ -844,6 +846,17 @@ export default function AdminPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="email" className="mt-0">
+          {!isSuperAdmin(currentUser) ? (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-50 dark:bg-amber-900/20 p-4 text-sm text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Solo el superadmin puede gestionar la configuración del email del sistema.
+            </div>
+          ) : (
+            <AdminEmailPanel />
+          )}
         </TabsContent>
       </Tabs>
 
