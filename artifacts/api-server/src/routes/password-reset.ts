@@ -61,6 +61,19 @@ const forgotPasswordEmailLimiter = rateLimit({
   skip: () => process.env["NODE_ENV"] === "test",
 });
 
+const resetPasswordIpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1h
+  max: 10,
+  keyGenerator: (req) =>
+    req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ??
+    req.socket?.remoteAddress ??
+    "unknown",
+  handler: (_req, res) => {
+    res.status(429).json({ ok: false, error: "Demasiados intentos. Esperá un momento e intentá de nuevo." });
+  },
+  skip: () => process.env["NODE_ENV"] === "test",
+});
+
 // ── Token utilities ───────────────────────────────────────────────────────────
 
 function generateToken(): string {
@@ -207,7 +220,7 @@ router.get("/auth/reset-password/validate", async (req, res): Promise<void> => {
 
 // ── POST /api/auth/reset-password ────────────────────────────────────────────
 
-router.post("/auth/reset-password", async (req, res): Promise<void> => {
+router.post("/auth/reset-password", resetPasswordIpLimiter, async (req, res): Promise<void> => {
   const ip = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ??
     req.socket?.remoteAddress ?? "unknown";
 

@@ -43,6 +43,14 @@ const server = app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
+  // Startup config warnings
+  if (!process.env["APP_URL"]) {
+    logger.warn("APP_URL is not set — password reset emails will contain localhost links. Set APP_URL to the production frontend URL.");
+  }
+  if (!process.env["EMAIL_ENCRYPTION_KEY"]) {
+    logger.warn("EMAIL_ENCRYPTION_KEY is not set — falling back to SESSION_SECRET for SMTP credential encryption. Set a dedicated EMAIL_ENCRYPTION_KEY for better security.");
+  }
+
   // Reclasifica artículos existentes con el nuevo motor v3 (domain-first pipeline).
   // Se ejecuta en segundo plano — no bloquea el inicio del servidor.
   // Solo actualiza artículos que aún no tienen classification_reason (campo vacío).

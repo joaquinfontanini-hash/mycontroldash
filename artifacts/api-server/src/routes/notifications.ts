@@ -95,6 +95,28 @@ router.patch("/me/notification-preferences", async (req, res): Promise<void> => 
     res.status(400).json({ ok: false, error: "dollarMarket inválido" });
     return;
   }
+  // Validate dollarUpThreshold and dollarDownThreshold (must be numeric or null)
+  for (const field of ["dollarUpThreshold", "dollarDownThreshold"]) {
+    const val = update[field];
+    if (val !== null && val !== undefined) {
+      const num = parseFloat(String(val));
+      if (isNaN(num) || num < 0 || num > 100) {
+        res.status(400).json({ ok: false, error: `${field} debe ser un porcentaje entre 0 y 100` });
+        return;
+      }
+      update[field] = String(num); // normalize to string with valid number
+    }
+  }
+  // Validate dueDateDaysBefore (must be CSV of positive integers)
+  if (update["dueDateDaysBefore"] !== undefined) {
+    const raw = String(update["dueDateDaysBefore"]);
+    const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0 || !parts.every(p => /^\d+$/.test(p) && parseInt(p) > 0)) {
+      res.status(400).json({ ok: false, error: "dueDateDaysBefore debe ser una lista de días positivos (ej: 7,3,1)" });
+      return;
+    }
+    update["dueDateDaysBefore"] = parts.join(",");
+  }
 
   try {
     const prefs = await upsertUserNotificationPrefs(userId, update as any);

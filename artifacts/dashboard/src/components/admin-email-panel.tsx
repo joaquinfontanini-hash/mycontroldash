@@ -213,8 +213,8 @@ function SmtpConfigSection({ onSuccess }: { onSuccess: () => void }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.smtpUser || !form.smtpPass) {
-      toast({ variant: "destructive", title: "Error", description: "Email y App Password son requeridos" });
+    if (!form.smtpHost || !form.smtpUser || !form.smtpPass) {
+      toast({ variant: "destructive", title: "Error", description: "Host, email y App Password son requeridos" });
       return;
     }
     setLoading(true);

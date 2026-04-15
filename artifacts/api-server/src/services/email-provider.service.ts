@@ -67,7 +67,6 @@ export class SmtpProvider implements EmailProvider {
       port,
       secure: port === 465,
       auth: { user, pass },
-      tls: { rejectUnauthorized: false }, // needed for some SMTP configs
     });
   }
 
@@ -347,8 +346,8 @@ export async function configureProvider(input: ProviderConfigInput, updatedBy?: 
     encSmtpPort:      encPort,
     encSmtpUser:      encUser,
     encSmtpPass:      encPass,
-    connectionStatus: "configured",
-    isActive:         true,
+    connectionStatus: "pending_verification",
+    isActive:         false,   // activated only after successful healthCheck()
     lastConnectedAt:  new Date(),
   };
 

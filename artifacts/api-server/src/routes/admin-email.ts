@@ -66,28 +66,48 @@ router.post("/admin/email-provider/configure", async (req, res): Promise<void> =
     return;
   }
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (senderEmail && !emailRegex.test(senderEmail)) {
+    res.status(400).json({ ok: false, error: "senderEmail tiene formato inválido" });
+    return;
+  }
+  if (replyTo && !emailRegex.test(replyTo)) {
+    res.status(400).json({ ok: false, error: "replyTo tiene formato inválido" });
+    return;
+  }
+  if (!emailRegex.test(smtpUser)) {
+    res.status(400).json({ ok: false, error: "smtpUser debe ser un email válido" });
+    return;
+  }
+
   try {
+    // Save credentials (isActive=false until health check passes)
     await configureProvider(
       { smtpHost, smtpPort: port, smtpUser, smtpPass, senderEmail, senderName, replyTo, providerType },
       (req as any).dbUser?.email,
     );
 
-    // Immediately run a health check to validate the credentials
+    // Verify credentials before activating
     const health = await healthCheck();
-    const status = await getProviderStatus();
 
     if (!health.ok) {
+      // Leave isActive=false — credentials saved but not activated
+      const status = await getProviderStatus();
       res.json({
         ok: false,
         saved: true,
-        warning: "Credenciales guardadas pero la verificación de conexión falló. Revísalas.",
+        warning: "Credenciales guardadas pero la verificación de conexión falló. Revisá el host, usuario y contraseña.",
         error: health.error,
         data: status,
       });
       return;
     }
 
-    logger.info({ actor: (req as any).dbUser?.email, smtpHost, smtpUser: smtpUser?.replace(/./g, "•") }, "admin-email: provider configured");
+    // Health check passed — activate the provider
+    await updateProviderSettings({ isActive: true });
+    const status = await getProviderStatus();
+
+    logger.info({ actor: (req as any).dbUser?.email, smtpHost, smtpUser: smtpUser?.replace(/./g, "•") }, "admin-email: provider configured and activated");
     res.json({ ok: true, message: "Proveedor configurado y verificado correctamente", data: status, latencyMs: health.latencyMs });
   } catch (err) {
     logger.error({ err }, "admin-email: error configuring provider");
