@@ -7,8 +7,12 @@ export const clientsTable = pgTable("clients", {
   name: text("name").notNull(),
   cuit: text("cuit").notNull(),
   email: text("email"),
+  emailSecondary: text("email_secondary"),            // nuevo
   phone: text("phone"),
   status: text("status").notNull().default("active"),
+  clientPriority: text("client_priority").notNull().default("media"), // nuevo: alta | media | baja
+  alertsActive: boolean("alerts_active").notNull().default(true),     // nuevo
+  responsible: text("responsible"),                  // nuevo: nombre del responsable interno
   notes: text("notes"),
   userId: text("user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -2,6 +2,8 @@ import cron from "node-cron";
 import { refreshWeather } from "../services/weather.service.js";
 import { refreshNews } from "../services/news.service.js";
 import { refreshFiscalSources } from "../services/fiscal.service.js";
+import { updateAllTrafficLights } from "../services/afip-engine.js";
+import { runDailyAlertJob } from "../services/email-alert.service.js";
 import { logger } from "../lib/logger.js";
 
 let started = false;
@@ -32,5 +34,27 @@ export function startScheduler() {
     catch (err) { logger.error({ err }, "Cron fiscal refresh failed"); }
   });
 
-  logger.info("Scheduler started: weather(2h), news(1h), fiscal(3h)");
+  // Semáforos: recalculate every day at 07:00 (before email alerts)
+  cron.schedule("0 7 * * *", async () => {
+    logger.info("Cron: recalculating semáforos...");
+    try {
+      const result = await updateAllTrafficLights();
+      logger.info({ updated: result.updated }, "Cron: semáforos recalculated");
+    } catch (err) {
+      logger.error({ err }, "Cron semáforos recalculation failed");
+    }
+  });
+
+  // Email alerts: send daily reminders at 08:00
+  cron.schedule("0 8 * * *", async () => {
+    logger.info("Cron: running daily email alert job...");
+    try {
+      const result = await runDailyAlertJob();
+      logger.info(result, "Cron: daily email alerts completed");
+    } catch (err) {
+      logger.error({ err }, "Cron daily email alerts failed");
+    }
+  });
+
+  logger.info("Scheduler started: weather(2h), news(1h), fiscal(3h), semáforos(7:00), alerts(8:00)");
 }

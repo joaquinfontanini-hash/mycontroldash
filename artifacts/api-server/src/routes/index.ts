@@ -27,6 +27,7 @@ import userSettingsRouter from "./user-settings";
 import contactsRouter from "./contacts";
 import chatRouter from "./chat";
 import registrationRequestsRouter from "./registration-requests";
+import fiscalAdminRouter from "./fiscal-admin";
 
 const router: IRouter = Router();
 
@@ -58,6 +59,7 @@ router.use("/news", requireModule("news"));
 router.use("/emails", requireModule("emails"));
 router.use("/weather", requireModule("weather"));
 router.use(["/due-dates", "/due-date-categories"], requireModule("due-dates"));
+router.use(["/tax-homologation", "/alert-logs", "/audit-logs"], requireModule("due-dates"));
 router.use("/clients", requireModule("clients"));
 router.use("/annual-calendars", requireModule("tax-calendars"));
 router.use("/supplier-batches", requireModule("supplier-batches"));
@@ -83,5 +85,6 @@ router.use(financeRouter);
 router.use(goalsRouter);
 router.use(contactsRouter);
 router.use(chatRouter);
+router.use(fiscalAdminRouter);
 
 export default router;

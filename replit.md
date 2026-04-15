@@ -53,6 +53,15 @@ The project is built as a monorepo using `pnpm workspaces`.
     - Supplier payment batches with CSV import functionality.
     - Tax Calendars page with file upload and management.
     - Internal Chat and Contacts module with `user_profiles`, `conversations`, `conversation_participants`, and `messages` tables, supporting direct and group conversations with unread tracking and polling for updates.
+    - **Sistema de Vencimientos + Alertas + Semáforos (v2):**
+      - AFIP Engine (afip-engine.ts): calculateTrafficLight (verde>7d, amarillo 3-7d, rojo≤2d/vencido, gris=done), clientTrafficLight(), getDueDatesKPIs(), updateAllTrafficLights(), generateDueDatesForClient(), generateDueDatesForAllClients(), full JSON traceability (classificationReason field), audit logging.
+      - Email Alert Service (email-alert.service.ts): sendDueDateAlert(), runDailyAlertJob(), resendAlert(). HTML templates with semáforo colors. Deduplication (24h). SMTP not configured = logs as "skipped" never fails silently. Env: SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM, APP_URL.
+      - New routes (fiscal-admin.ts): GET /api/due-dates/kpis, POST /api/due-dates/recalculate, GET /api/due-dates/:id/traceability, POST /api/due-dates/:id/mark-reviewed, POST /api/due-dates/:id/resend-alert, full CRUD /api/tax-homologation, GET /api/alert-logs, POST /api/alert-logs/:id/resend, GET /api/audit-logs.
+      - New DB tables (fiscal-due-dates.ts): tax_homologation, alert_logs, audit_logs, semaforo_rules.
+      - Extended due_dates table: trafficLight, cuitGroup, cuitTermination, taxCode, classificationReason, alertGenerated, lastAlertSentAt, manualReview, reviewNotes, reviewedAt, reviewedBy.
+      - Extended clients table: emailSecondary, clientPriority, alertsActive, responsible.
+      - Frontend (due-dates.tsx): KPI bar (9 tiles), semáforo badges, table/card toggle, trazabilidad modal with alert history + resend + mark-reviewed, tabs (Vencimientos / Alertas enviadas), filters (status, semáforo, category, text search), sorted by rojo-first then date.
+      - Scheduler: semáforos recalculated at 7:00 AM, email alerts at 8:00 AM daily.
 
 **System Design Choices:**
 - **Monorepo:** Centralized management of frontend, backend, and shared libraries.

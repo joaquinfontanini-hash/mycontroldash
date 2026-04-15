@@ -28,6 +28,32 @@ export const dueDatesTable = pgTable("due_dates", {
   clientId: integer("client_id"),
   calendarRuleId: integer("calendar_rule_id"),
   userId: text("user_id"),
+
+  // ── Semáforo v2 fields ────────────────────────────────────────────────────
+  // trafficLight: verde | amarillo | rojo | gris
+  // Calculated dynamically but stored for audit/history purposes
+  trafficLight: text("traffic_light").notNull().default("gris"),
+
+  // CUIT-group details for traceability
+  cuitGroup: text("cuit_group"),        // e.g. "2-3", "4 a 6", "any"
+  cuitTermination: integer("cuit_termination"), // last digit of client CUIT
+
+  // Tax code (normalized from homologation)
+  taxCode: text("tax_code"),            // e.g. "iva", "ganancias"
+
+  // Full traceability JSON: origin, calendar version, rule applied, etc.
+  classificationReason: text("classification_reason").notNull().default(""),
+
+  // Alert tracking
+  alertGenerated: boolean("alert_generated").notNull().default(false),
+  lastAlertSentAt: text("last_alert_sent_at"),
+
+  // Semáforo override (manual)
+  manualReview: boolean("manual_review").notNull().default(false),
+  reviewNotes: text("review_notes"),
+  reviewedAt: text("reviewed_at"),
+  reviewedBy: text("reviewed_by"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

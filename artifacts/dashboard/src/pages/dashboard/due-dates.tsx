@@ -5,16 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   AlertCircle, CalendarClock, Plus, Pencil, Trash2,
-  CheckCircle2, Circle, X, Tag, ChevronDown,
+  CheckCircle2, Circle, X, Tag, RefreshCw, Eye,
+  Bell, FileText, Filter, Search, LayoutGrid, List,
+  Mail, Shield, ChevronDown, ChevronRight, AlertTriangle,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type TrafficLight = "rojo" | "amarillo" | "verde" | "gris";
 
 interface DueDate {
   id: number;
@@ -32,6 +40,17 @@ interface DueDate {
   parentId?: number | null;
   source?: string;
   clientId?: number | null;
+  trafficLight: TrafficLight;
+  cuitGroup?: string | null;
+  cuitTermination?: number | null;
+  taxCode?: string | null;
+  classificationReason?: string | null;
+  alertGenerated?: boolean;
+  lastAlertSentAt?: string | null;
+  manualReview?: boolean;
+  reviewNotes?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
   createdAt: string;
 }
 
@@ -41,11 +60,59 @@ interface DueDateCategory {
   color: string;
 }
 
+interface KPIs {
+  totalThisMonth: number;
+  overdue: number;
+  dueToday: number;
+  due3days: number;
+  errors: number;
+  clientsRojo: number;
+  clientsAmarillo: number;
+  byTrafficLight: { rojo: number; amarillo: number; verde: number; gris: number };
+}
+
+interface TraceabilityData {
+  dueDate: DueDate;
+  traceability: Record<string, unknown>;
+  currentTrafficLight: TrafficLight;
+  alertHistory: AlertLog[];
+  manualReview: {
+    reviewed: boolean;
+    reviewNotes?: string | null;
+    reviewedAt?: string | null;
+    reviewedBy?: string | null;
+  };
+}
+
+interface AlertLog {
+  id: number;
+  clientId?: number | null;
+  dueDateId?: number | null;
+  alertType: string;
+  recipient: string;
+  subject: string;
+  sendStatus: string;
+  errorMessage?: string | null;
+  isAutomatic: boolean;
+  retriggeredBy?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+}
+
+// ── Style helpers ─────────────────────────────────────────────────────────────
+
+const SEMAFORO_CONFIG: Record<TrafficLight, { label: string; dot: string; badge: string; border: string }> = {
+  rojo:     { label: "🔴 Vencido/Urgente",   dot: "bg-red-500",    badge: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400",     border: "border-l-red-500" },
+  amarillo: { label: "🟡 Próximo (≤7d)",      dot: "bg-amber-400",  badge: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400", border: "border-l-amber-400" },
+  verde:    { label: "🟢 A tiempo (>7d)",     dot: "bg-emerald-500",badge: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400", border: "border-l-emerald-500" },
+  gris:     { label: "⚪ Completado/Inactivo",dot: "bg-slate-400",  badge: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400", border: "border-l-slate-400" },
+};
+
 const PRIORITY_CONFIG = {
-  low:      { label: "Baja",     color: "text-slate-500",  bg: "bg-slate-100 dark:bg-slate-800",   ring: "ring-slate-300" },
-  medium:   { label: "Media",    color: "text-amber-600",  bg: "bg-amber-100 dark:bg-amber-900/40", ring: "ring-amber-300" },
-  high:     { label: "Alta",     color: "text-orange-600", bg: "bg-orange-100 dark:bg-orange-900/40",ring: "ring-orange-400" },
-  critical: { label: "Crítica",  color: "text-red-600",    bg: "bg-red-100 dark:bg-red-900/40",    ring: "ring-red-400" },
+  low:      { label: "Baja",     color: "text-slate-500",  bg: "bg-slate-100 dark:bg-slate-800" },
+  medium:   { label: "Media",    color: "text-amber-600",  bg: "bg-amber-100 dark:bg-amber-900/40" },
+  high:     { label: "Alta",     color: "text-orange-600", bg: "bg-orange-100 dark:bg-orange-900/40" },
+  critical: { label: "Crítica",  color: "text-red-600",    bg: "bg-red-100 dark:bg-red-900/40" },
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -59,33 +126,407 @@ const CATEGORY_COLORS: Record<string, string> = {
   gray:   "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
-function getUrgency(dueDate: string, status: string): "overdue" | "today" | "soon" | "week" | "future" | "done" {
-  if (status === "done" || status === "cancelled") return "done";
+function formatDate(dateStr: string): string {
+  try {
+    return new Date(dateStr + "T00:00:00").toLocaleDateString("es-AR", {
+      weekday: "short", day: "numeric", month: "short", year: "numeric",
+    });
+  } catch { return dateStr; }
+}
+
+function formatDateTime(dateStr: string): string {
+  try {
+    return new Date(dateStr).toLocaleString("es-AR", {
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return dateStr; }
+}
+
+function getDaysRemaining(dueDate: string): number {
   const due = new Date(dueDate + "T00:00:00");
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diff = Math.floor((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff < 0) return "overdue";
-  if (diff === 0) return "today";
-  if (diff <= 3) return "soon";
-  if (diff <= 7) return "week";
-  return "future";
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  return Math.floor((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-const URGENCY_LABELS = {
-  overdue: { label: "Vencidos",           className: "text-red-600 dark:text-red-400",    dot: "bg-red-500" },
-  today:   { label: "Vence hoy",          className: "text-orange-600 dark:text-orange-400", dot: "bg-orange-500" },
-  soon:    { label: "Próximos 3 días",    className: "text-amber-600 dark:text-amber-400", dot: "bg-amber-500" },
-  week:    { label: "Esta semana",        className: "text-blue-600 dark:text-blue-400",   dot: "bg-blue-500" },
-  future:  { label: "Más adelante",       className: "text-muted-foreground",              dot: "bg-muted-foreground/40" },
-  done:    { label: "Completados",        className: "text-muted-foreground",              dot: "bg-muted-foreground/40" },
-};
+// ── KPI Bar ───────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("es-AR", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
+function KpiBar({ kpis, onRecalculate, isRecalculating }: {
+  kpis?: KPIs;
+  onRecalculate: () => void;
+  isRecalculating: boolean;
+}) {
+  if (!kpis) return <Skeleton className="h-24 rounded-xl" />;
+
+  const tiles = [
+    { label: "Este mes",   value: kpis.totalThisMonth,           color: "text-foreground",        bg: "bg-card border" },
+    { label: "Vencidos",   value: kpis.overdue,                  color: "text-red-600",           bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60" },
+    { label: "Hoy",        value: kpis.dueToday,                 color: "text-orange-600",        bg: "bg-orange-50 dark:bg-orange-900/20 border border-orange-200/60" },
+    { label: "Próx. 3d",   value: kpis.due3days,                 color: "text-amber-600",         bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60" },
+    { label: "🔴 Rojos",   value: kpis.byTrafficLight.rojo,      color: "text-red-600",           bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60" },
+    { label: "🟡 Amarillo",value: kpis.byTrafficLight.amarillo,  color: "text-amber-600",         bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60" },
+    { label: "🟢 Verdes",  value: kpis.byTrafficLight.verde,     color: "text-emerald-600",       bg: "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/60" },
+    { label: "Clientes ⚠",value: kpis.clientsRojo + kpis.clientsAmarillo, color: "text-orange-600", bg: "bg-card border" },
+    { label: "Errores",    value: kpis.errors,                   color: kpis.errors > 0 ? "text-red-600" : "text-muted-foreground", bg: "bg-card border" },
+  ];
+
+  return (
+    <div className="space-y-2 pb-5">
+      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
+        {tiles.map(t => (
+          <div key={t.label} className={`rounded-lg p-2.5 text-center ${t.bg}`}>
+            <p className={`text-2xl font-bold tabular-nums leading-none ${t.color}`}>{t.value}</p>
+            <p className="text-[10px] text-muted-foreground mt-1 leading-tight">{t.label}</p>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <button
+          onClick={onRecalculate}
+          disabled={isRecalculating}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted/60"
+        >
+          <RefreshCw className={`h-3 w-3 ${isRecalculating ? "animate-spin" : ""}`} />
+          {isRecalculating ? "Recalculando..." : "Actualizar semáforos"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Semáforo Badge ────────────────────────────────────────────────────────────
+
+function SemaforoBadge({ light, compact = false }: { light: TrafficLight; compact?: boolean }) {
+  const cfg = SEMAFORO_CONFIG[light];
+  if (compact) {
+    return (
+      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${cfg.badge}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+        {light.toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold border ${cfg.badge}`}>
+      <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
+// ── Trazabilidad Modal ────────────────────────────────────────────────────────
+
+function TraceabilityModal({
+  dueDateId,
+  open,
+  onClose,
+}: {
+  dueDateId: number | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [reviewNote, setReviewNote] = useState("");
+  const [showReviewForm, setShowReviewForm] = useState(false);
+
+  const { data, isLoading } = useQuery<TraceabilityData>({
+    queryKey: ["due-date-trace", dueDateId],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/due-dates/${dueDateId}/traceability`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    enabled: open && dueDateId !== null,
   });
+
+  const reviewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${BASE}/api/due-dates/${dueDateId}/mark-reviewed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: reviewNote }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["due-date-trace", dueDateId] });
+      qc.invalidateQueries({ queryKey: ["due-dates"] });
+      setShowReviewForm(false);
+      toast({ title: "Revisión registrada", description: "El vencimiento fue marcado como revisado." });
+    },
+    onError: () => toast({ title: "Error", description: "No se pudo registrar la revisión", variant: "destructive" }),
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${BASE}/api/due-dates/${dueDateId}/resend-alert`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["due-date-trace", dueDateId] });
+      toast({ title: "Alerta enviada", description: "El email de alerta fue reenviado al cliente." });
+    },
+    onError: () => toast({ title: "Error", description: "No se pudo enviar el email", variant: "destructive" }),
+  });
+
+  const traceRows = data?.traceability
+    ? Object.entries(data.traceability).filter(([k]) => k !== "origen")
+    : [];
+
+  const alertStatusColor: Record<string, string> = {
+    sent:    "text-emerald-600",
+    skipped: "text-amber-600",
+    failed:  "text-red-600",
+    pending: "text-muted-foreground",
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Trazabilidad del Vencimiento
+          </DialogTitle>
+          <DialogDescription>
+            Auditoría completa: origen, clasificación, semáforo e historial de alertas.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading && <div className="py-8 text-center text-muted-foreground text-sm">Cargando...</div>}
+
+        {data && (
+          <div className="space-y-5">
+            {/* Header summary */}
+            <div className="flex items-start justify-between gap-3 p-4 rounded-lg border bg-muted/30">
+              <div className="space-y-1">
+                <p className="font-semibold text-sm">{data.dueDate.title}</p>
+                <p className="text-xs text-muted-foreground">{formatDate(data.dueDate.dueDate)}</p>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <SemaforoBadge light={data.currentTrafficLight} />
+                {data.manualReview.reviewed && (
+                  <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Revisado el {formatDateTime(data.manualReview.reviewedAt ?? "")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Source info */}
+            {data.dueDate.source && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Shield className="h-3.5 w-3.5" />
+                Origen: <span className="font-medium text-foreground">{data.traceability["origen"] as string ?? data.dueDate.source}</span>
+              </div>
+            )}
+
+            {/* Trace data table */}
+            {traceRows.length > 0 && (
+              <div>
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Datos de Clasificación</h4>
+                <div className="rounded-lg border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {traceRows.map(([key, val]) => (
+                        <tr key={key} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="py-2 px-3 font-medium text-muted-foreground w-1/3 capitalize">
+                            {key.replace(/_/g, " ")}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-[11px]">
+                            {typeof val === "object" ? JSON.stringify(val) : String(val ?? "—")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Alert history */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Historial de Alertas</h4>
+                <button
+                  onClick={() => resendMutation.mutate()}
+                  disabled={resendMutation.isPending}
+                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors"
+                >
+                  <Mail className="h-3 w-3" />
+                  {resendMutation.isPending ? "Enviando..." : "Reenviar ahora"}
+                </button>
+              </div>
+              {data.alertHistory.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">Sin alertas enviadas todavía.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {data.alertHistory.map(log => (
+                    <div key={log.id} className="flex items-center gap-3 text-xs p-2.5 rounded-lg border bg-card">
+                      <span className={`font-semibold capitalize min-w-16 ${alertStatusColor[log.sendStatus] ?? "text-muted-foreground"}`}>
+                        {log.sendStatus}
+                      </span>
+                      <span className="text-muted-foreground">{log.alertType}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{log.recipient}</span>
+                      <span className="ml-auto text-muted-foreground whitespace-nowrap">
+                        {formatDateTime(log.createdAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Review form */}
+            {!data.manualReview.reviewed && (
+              <div>
+                {!showReviewForm ? (
+                  <button
+                    onClick={() => setShowReviewForm(true)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Marcar como revisado manualmente
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Nota de revisión (opcional)</Label>
+                    <Input
+                      value={reviewNote}
+                      onChange={e => setReviewNote(e.target.value)}
+                      placeholder="Ej: Verificado, fecha correcta..."
+                      className="text-xs h-8"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => reviewMutation.mutate()} disabled={reviewMutation.isPending} className="h-7 text-xs">
+                        {reviewMutation.isPending ? "Guardando..." : "Confirmar revisión"}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setShowReviewForm(false)} className="h-7 text-xs">Cancelar</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {data.manualReview.reviewed && data.manualReview.reviewNotes && (
+              <div className="text-xs text-muted-foreground italic border-l-2 border-emerald-400 pl-3">
+                Nota: {data.manualReview.reviewNotes}
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} className="h-8 text-xs">Cerrar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
+
+// ── Due Date Row (table view) ─────────────────────────────────────────────────
+
+function DueDateRow({
+  item,
+  categories,
+  onEdit,
+  onDelete,
+  onToggleStatus,
+  onViewTrace,
+}: {
+  item: DueDate;
+  categories: DueDateCategory[];
+  onEdit: (item: DueDate) => void;
+  onDelete: (id: number) => void;
+  onToggleStatus: (id: number, status: string) => void;
+  onViewTrace: (id: number) => void;
+}) {
+  const tl = item.trafficLight ?? "gris";
+  const cfg = SEMAFORO_CONFIG[tl];
+  const daysRemaining = getDaysRemaining(item.dueDate);
+
+  return (
+    <tr className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${item.status === "done" ? "opacity-50" : ""}`}>
+      <td className="py-2.5 px-3 w-8">
+        <div className={`h-3 w-3 rounded-full ${cfg.dot}`} title={cfg.label} />
+      </td>
+      <td className="py-2.5 px-2 max-w-[200px]">
+        <p className={`text-sm font-medium leading-snug truncate ${item.status === "done" ? "line-through text-muted-foreground" : ""}`}>
+          {item.title}
+        </p>
+        {item.source === "afip-engine" && (
+          <span className="text-[10px] text-muted-foreground">Motor AFIP</span>
+        )}
+      </td>
+      <td className="py-2.5 px-2 text-xs whitespace-nowrap">
+        <div>{formatDate(item.dueDate)}</div>
+        {item.status === "pending" && (
+          <div className={`text-[10px] font-medium mt-0.5 ${
+            daysRemaining < 0 ? "text-red-500" :
+            daysRemaining === 0 ? "text-orange-500" :
+            daysRemaining <= 3 ? "text-amber-500" :
+            "text-muted-foreground"
+          }`}>
+            {daysRemaining < 0 ? `Vencido hace ${Math.abs(daysRemaining)}d` :
+             daysRemaining === 0 ? "Vence hoy" :
+             `${daysRemaining}d restantes`}
+          </div>
+        )}
+      </td>
+      <td className="py-2.5 px-2 hidden sm:table-cell">
+        <SemaforoBadge light={tl} compact />
+      </td>
+      <td className="py-2.5 px-2 hidden md:table-cell">
+        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${PRIORITY_CONFIG[item.priority].bg} ${PRIORITY_CONFIG[item.priority].color}`}>
+          {PRIORITY_CONFIG[item.priority].label}
+        </span>
+      </td>
+      <td className="py-2.5 px-2 text-right">
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => onViewTrace(item.id)}
+            title="Ver trazabilidad"
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onToggleStatus(item.id, item.status === "done" ? "pending" : "done")}
+            title={item.status === "done" ? "Marcar pendiente" : "Marcar cumplido"}
+            className="p-1 rounded text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+          >
+            {item.status === "done" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Circle className="h-3.5 w-3.5" />}
+          </button>
+          {item.source !== "afip-engine" && (
+            <>
+              <button
+                onClick={() => onEdit(item)}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => onDelete(item.id)}
+                className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ── Due Date Card (card view) ─────────────────────────────────────────────────
 
 function DueDateCard({
   item,
@@ -93,32 +534,28 @@ function DueDateCard({
   onEdit,
   onDelete,
   onToggleStatus,
+  onViewTrace,
 }: {
   item: DueDate;
   categories: DueDateCategory[];
   onEdit: (item: DueDate) => void;
   onDelete: (id: number) => void;
   onToggleStatus: (id: number, status: string) => void;
+  onViewTrace: (id: number) => void;
 }) {
-  const urgency = getUrgency(item.dueDate, item.status);
-  const priorityCfg = PRIORITY_CONFIG[item.priority];
+  const tl = item.trafficLight ?? "gris";
+  const cfg = SEMAFORO_CONFIG[tl];
+  const daysRemaining = getDaysRemaining(item.dueDate);
   const cat = categories.find(c => c.name === item.category);
   const catColor = cat ? (CATEGORY_COLORS[cat.color] ?? CATEGORY_COLORS["gray"]) : CATEGORY_COLORS["gray"];
 
   return (
-    <Card className={`transition-all border-l-4 ${
-      urgency === "overdue" ? "border-l-red-500" :
-      urgency === "today"   ? "border-l-orange-500" :
-      urgency === "soon"    ? "border-l-amber-500" :
-      urgency === "week"    ? "border-l-blue-500" :
-      urgency === "done"    ? "border-l-muted-foreground/30 opacity-60" :
-      "border-l-border/50"
-    }`}>
+    <Card className={`transition-all border-l-4 ${cfg.border} ${item.status === "done" ? "opacity-50" : ""}`}>
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
           <button
             onClick={() => onToggleStatus(item.id, item.status === "done" ? "pending" : "done")}
-            className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
+            className="mt-0.5 shrink-0 text-muted-foreground hover:text-emerald-600 transition-colors"
           >
             {item.status === "done"
               ? <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -132,29 +569,38 @@ function DueDateCard({
               </p>
               <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={() => onEdit(item)}
+                  onClick={() => onViewTrace(item.id)}
                   className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                  title="Trazabilidad"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Eye className="h-3.5 w-3.5" />
                 </button>
-                <button
-                  onClick={() => onDelete(item.id)}
-                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {item.source !== "afip-engine" && (
+                  <>
+                    <button onClick={() => onEdit(item)} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => onDelete(item.id)} className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             {item.description && (
               <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>
             )}
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <SemaforoBadge light={tl} compact />
               <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${catColor}`}>
                 {item.category}
               </span>
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${priorityCfg.bg} ${priorityCfg.color}`}>
-                {priorityCfg.label}
-              </span>
+              {item.status === "pending" && daysRemaining < 0 && (
+                <span className="text-[10px] font-medium text-red-500">Vencido hace {Math.abs(daysRemaining)}d</span>
+              )}
+              {item.status === "pending" && daysRemaining === 0 && (
+                <span className="text-[10px] font-medium text-orange-500">Vence hoy</span>
+              )}
               <span className="text-[11px] text-muted-foreground ml-auto">{formatDate(item.dueDate)}</span>
             </div>
           </div>
@@ -163,6 +609,8 @@ function DueDateCard({
     </Card>
   );
 }
+
+// ── CRUD Form ─────────────────────────────────────────────────────────────────
 
 interface DueDateForm {
   title: string;
@@ -173,8 +621,6 @@ interface DueDateForm {
   status: DueDate["status"];
   alertEnabled: boolean;
   recurrenceType: string;
-  recurrenceRule: string;
-  recurrenceEndDate: string;
 }
 
 const EMPTY_FORM: DueDateForm = {
@@ -186,34 +632,105 @@ const EMPTY_FORM: DueDateForm = {
   status: "pending",
   alertEnabled: true,
   recurrenceType: "none",
-  recurrenceRule: "",
-  recurrenceEndDate: "",
 };
 
-const RECURRENCE_TYPES = [
-  { key: "none", label: "Sin periodicidad" },
-  { key: "weekly", label: "Semanal" },
-  { key: "monthly", label: "Mensual" },
-  { key: "yearly", label: "Anual" },
-  { key: "custom", label: "Personalizado" },
-];
+// ── Alert Logs Tab ────────────────────────────────────────────────────────────
+
+function AlertLogsTab() {
+  const { data: logs = [], isLoading } = useQuery<AlertLog[]>({
+    queryKey: ["alert-logs"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/alert-logs?limit=100`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+  });
+
+  const statusColor: Record<string, string> = {
+    sent:    "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
+    skipped: "text-amber-600 bg-amber-50 dark:bg-amber-900/20",
+    failed:  "text-red-600 bg-red-50 dark:bg-red-900/20",
+    pending: "text-muted-foreground bg-muted/40",
+  };
+
+  if (isLoading) return <Skeleton className="h-48 rounded-xl" />;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Mail className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">{logs.length} alertas registradas</p>
+      </div>
+      {logs.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground text-sm border-2 border-dashed border-border/50 rounded-xl">
+          Sin historial de alertas por email todavía.
+        </div>
+      ) : (
+        <div className="rounded-lg border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="text-left py-2 px-3 font-semibold text-muted-foreground">Estado</th>
+                <th className="text-left py-2 px-3 font-semibold text-muted-foreground hidden sm:table-cell">Tipo</th>
+                <th className="text-left py-2 px-3 font-semibold text-muted-foreground">Destinatario</th>
+                <th className="text-left py-2 px-3 font-semibold text-muted-foreground hidden md:table-cell">Asunto</th>
+                <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map(log => (
+                <tr key={log.id} className="border-t border-border/50 hover:bg-muted/30">
+                  <td className="py-2.5 px-3">
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize ${statusColor[log.sendStatus] ?? ""}`}>
+                      {log.sendStatus}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-muted-foreground hidden sm:table-cell capitalize">{log.alertType}</td>
+                  <td className="py-2.5 px-3 font-mono text-[10px]">{log.recipient}</td>
+                  <td className="py-2.5 px-3 text-muted-foreground hidden md:table-cell max-w-[200px] truncate">{log.subject}</td>
+                  <td className="py-2.5 px-3 text-right text-muted-foreground whitespace-nowrap">{formatDateTime(log.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DueDatesPage() {
   const qc = useQueryClient();
+  const { toast } = useToast();
+
+  // View state
+  const [activeTab, setActiveTab] = useState<"vencimientos" | "alertas">("vencimientos");
+  const [viewMode, setViewMode] = useState<"list" | "cards">("list");
+  const [traceId, setTraceId] = useState<number | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
+
+  // CRUD state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [editing, setEditing] = useState<DueDate | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [newCatName, setNewCatName] = useState("");
   const [newCatColor, setNewCatColor] = useState("blue");
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "done">("all");
+
+  // Filters
+  const [searchText, setSearchText] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
-  const [showDone, setShowDone] = useState(false);
+  const [filterTrafficLight, setFilterTrafficLight] = useState<TrafficLight | "all">("all");
+  const [filterStatus, setFilterStatus] = useState<"pending" | "done" | "all">("pending");
+
+  // ── Data ──
 
   const { data: dueDates = [], isLoading } = useQuery<DueDate[]>({
     queryKey: ["due-dates"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/due-dates`);
+      const res = await fetch(`${BASE}/api/due-dates`, { credentials: "include" });
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
@@ -222,11 +739,23 @@ export default function DueDatesPage() {
   const { data: categories = [] } = useQuery<DueDateCategory[]>({
     queryKey: ["due-date-categories"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/due-date-categories`);
+      const res = await fetch(`${BASE}/api/due-date-categories`, { credentials: "include" });
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
   });
+
+  const { data: kpis } = useQuery<KPIs>({
+    queryKey: ["due-dates-kpis"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/due-dates/kpis`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    refetchInterval: 60_000,
+  });
+
+  // ── Mutations ──
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof EMPTY_FORM) => {
@@ -234,31 +763,47 @@ export default function DueDatesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["due-dates"] }); setDialogOpen(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["due-dates"] });
+      qc.invalidateQueries({ queryKey: ["due-dates-kpis"] });
+      setDialogOpen(false);
+      toast({ title: "Vencimiento creado" });
+    },
+    onError: () => toast({ title: "Error al crear", variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<typeof EMPTY_FORM> }) => {
-      const res = await fetch(`/api/due-dates/${id}`, {
+    mutationFn: async ({ id, data }: { id: number; data: Partial<DueDateForm> }) => {
+      const res = await fetch(`${BASE}/api/due-dates/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["due-dates"] }); setDialogOpen(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["due-dates"] });
+      qc.invalidateQueries({ queryKey: ["due-dates-kpis"] });
+      setDialogOpen(false);
+    },
+    onError: () => toast({ title: "Error al actualizar", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/due-dates/${id}`, { method: "DELETE" });
+      await fetch(`${BASE}/api/due-dates/${id}`, { method: "DELETE", credentials: "include" });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["due-dates"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["due-dates"] });
+      qc.invalidateQueries({ queryKey: ["due-dates-kpis"] });
+    },
   });
 
   const createCatMutation = useMutation({
@@ -267,19 +812,47 @@ export default function DueDatesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Error");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["due-date-categories"] }); setNewCatName(""); setCatDialogOpen(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["due-date-categories"] });
+      setNewCatName("");
+      setCatDialogOpen(false);
+      toast({ title: "Categoría creada" });
+    },
   });
 
   const deleteCatMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/due-date-categories/${id}`, { method: "DELETE" });
+      await fetch(`${BASE}/api/due-date-categories/${id}`, { method: "DELETE", credentials: "include" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["due-date-categories"] }),
   });
+
+  const recalculateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${BASE}/api/due-dates/recalculate`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["due-dates"] });
+      qc.invalidateQueries({ queryKey: ["due-dates-kpis"] });
+      toast({
+        title: "Semáforos actualizados",
+        description: `${data.updated} vencimientos recalculados.`,
+      });
+    },
+    onError: () => toast({ title: "Error recalculando", variant: "destructive" }),
+  });
+
+  // ── Handlers ──
 
   const openNew = () => {
     setEditing(null);
@@ -298,8 +871,6 @@ export default function DueDatesPage() {
       status: item.status,
       alertEnabled: item.alertEnabled,
       recurrenceType: item.recurrenceType ?? "none",
-      recurrenceRule: item.recurrenceRule ?? "",
-      recurrenceEndDate: item.recurrenceEndDate ?? "",
     });
     setDialogOpen(true);
   };
@@ -317,58 +888,81 @@ export default function DueDatesPage() {
     updateMutation.mutate({ id, data: { status: status as DueDateForm["status"] } });
   };
 
+  const openTrace = (id: number) => {
+    setTraceId(id);
+    setTraceOpen(true);
+  };
+
+  // ── Filters ──
+
   const filtered = useMemo(() => {
     let items = dueDates;
+    if (filterStatus !== "all") items = items.filter(d => d.status === filterStatus);
     if (filterCategory) items = items.filter(d => d.category === filterCategory);
+    if (filterTrafficLight !== "all") items = items.filter(d => (d.trafficLight ?? "gris") === filterTrafficLight);
+    if (searchText) {
+      const q = searchText.toLowerCase();
+      items = items.filter(d => d.title.toLowerCase().includes(q) || (d.description ?? "").toLowerCase().includes(q));
+    }
     return items;
-  }, [dueDates, filterCategory]);
+  }, [dueDates, filterStatus, filterCategory, filterTrafficLight, searchText]);
 
-  const grouped = useMemo(() => {
-    const groups: Record<string, DueDate[]> = {
-      overdue: [],
-      today: [],
-      soon: [],
-      week: [],
-      future: [],
-      done: [],
-    };
-    filtered.forEach(item => {
-      const u = getUrgency(item.dueDate, item.status);
-      groups[u].push(item);
+  // Sort: rojo first, then by date ascending
+  const sorted = useMemo(() => {
+    const lightOrder: Record<TrafficLight, number> = { rojo: 0, amarillo: 1, verde: 2, gris: 3 };
+    return [...filtered].sort((a, b) => {
+      const la = lightOrder[a.trafficLight ?? "gris"];
+      const lb = lightOrder[b.trafficLight ?? "gris"];
+      if (la !== lb) return la - lb;
+      return a.dueDate.localeCompare(b.dueDate);
     });
-    return groups;
   }, [filtered]);
 
-  const criticalCount = grouped.overdue.length + grouped.today.length;
+  // ── Loading ──
 
   if (isLoading) {
     return (
-      <div className="space-y-6 max-w-3xl">
+      <div className="space-y-6 max-w-4xl">
         <Skeleton className="h-9 w-56" />
+        <Skeleton className="h-24 rounded-xl" />
         <div className="space-y-3">
-          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
         </div>
       </div>
     );
   }
 
-  const urgencyOrder: Array<keyof typeof URGENCY_LABELS> = ["overdue", "today", "soon", "week", "future"];
+  const pendingCount = dueDates.filter(d => d.status === "pending").length;
+  const rojosCount = (kpis?.byTrafficLight.rojo ?? 0) + (kpis?.overdue ?? 0);
+
+  // ── RENDER ──
 
   return (
-    <div className="max-w-3xl space-y-0">
+    <div className="max-w-4xl space-y-0">
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 pb-6">
+      <div className="flex items-start justify-between gap-4 pb-5">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight flex items-center gap-2">
             Vencimientos
-            {criticalCount > 0 && (
+            {rojosCount > 0 && (
               <span className="inline-flex items-center justify-center h-6 min-w-6 px-1.5 rounded-full bg-red-500 text-white text-xs font-bold">
-                {criticalCount}
+                {rojosCount}
               </span>
             )}
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            {filtered.filter(d => d.status === "pending").length} pendientes · {filtered.filter(d => d.status === "done").length} completados
+            {pendingCount} pendientes
+            {kpis && (
+              <>
+                {" · "}
+                <span className="text-red-500 font-medium">{kpis.byTrafficLight.rojo} 🔴</span>
+                {" "}
+                <span className="text-amber-500 font-medium">{kpis.byTrafficLight.amarillo} 🟡</span>
+                {" "}
+                <span className="text-emerald-500 font-medium">{kpis.byTrafficLight.verde} 🟢</span>
+              </>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
@@ -383,151 +977,240 @@ export default function DueDatesPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 pb-5">
-        <button
-          onClick={() => setFilterCategory("")}
-          className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-            !filterCategory
-              ? "bg-primary text-primary-foreground border-primary"
-              : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
-          }`}
-        >
-          Todas
-        </button>
-        {categories.map(cat => (
+      {/* KPI Bar */}
+      <KpiBar
+        kpis={kpis}
+        onRecalculate={() => recalculateMutation.mutate()}
+        isRecalculating={recalculateMutation.isPending}
+      />
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-border/60 pb-0 mb-5">
+        {(["vencimientos", "alertas"] as const).map(tab => (
           <button
-            key={cat.id}
-            onClick={() => setFilterCategory(cat.name === filterCategory ? "" : cat.name)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-              filterCategory === cat.name
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+              activeTab === tab
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {cat.name}
+            {tab === "vencimientos" ? (
+              <span className="flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" />Vencimientos</span>
+            ) : (
+              <span className="flex items-center gap-1.5"><Bell className="h-3.5 w-3.5" />Alertas enviadas</span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* Urgency groups */}
-      {dueDates.length === 0 ? (
-        <div className="flex flex-col items-center py-20 text-center border-2 border-dashed border-border/50 rounded-xl">
-          <CalendarClock className="h-10 w-10 text-muted-foreground/25 mb-4" />
-          <h3 className="text-base font-semibold mb-1">Sin vencimientos</h3>
-          <p className="text-muted-foreground text-sm mb-5">Agregá fechas importantes para no olvidar nada.</p>
-          <Button size="sm" variant="outline" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            Agregar vencimiento
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {urgencyOrder.map(u => {
-            const items = grouped[u];
-            if (items.length === 0) return null;
-            const cfg = URGENCY_LABELS[u];
-            return (
-              <div key={u}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className={`h-2 w-2 rounded-full ${cfg.dot}`} />
-                  <h3 className={`text-xs font-semibold uppercase tracking-wider ${cfg.className}`}>
-                    {cfg.label} ({items.length})
-                  </h3>
-                </div>
-                <div className="space-y-2">
-                  {items.map(item => (
-                    <DueDateCard
-                      key={item.id}
-                      item={item}
-                      categories={categories}
-                      onEdit={openEdit}
-                      onDelete={id => deleteMutation.mutate(id)}
-                      onToggleStatus={handleToggleStatus}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {/* Tab: Vencimientos */}
+      {activeTab === "vencimientos" && (
+        <div className="space-y-4">
+          {/* Filter + search bar */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative flex-1 min-w-40">
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                placeholder="Buscar..."
+                className="h-8 w-full pl-8 pr-3 rounded-md border border-border text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
 
-          {/* Completed section */}
-          {grouped.done.length > 0 && (
-            <div>
+            {/* Status filter */}
+            {(["all", "pending", "done"] as const).map(s => (
               <button
-                onClick={() => setShowDone(!showDone)}
-                className="flex items-center gap-2 mb-3 group"
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                  filterStatus === s
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border/60 text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <div className={`h-2 w-2 rounded-full ${URGENCY_LABELS.done.dot}`} />
-                <h3 className={`text-xs font-semibold uppercase tracking-wider ${URGENCY_LABELS.done.className}`}>
-                  Completados ({grouped.done.length})
-                </h3>
-                <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${showDone ? "rotate-180" : ""}`} />
+                {s === "all" ? "Todos" : s === "pending" ? "Pendientes" : "Cumplidos"}
               </button>
-              {showDone && (
-                <div className="space-y-2">
-                  {grouped.done.map(item => (
-                    <DueDateCard
+            ))}
+
+            {/* Traffic light filter */}
+            {(["all", "rojo", "amarillo", "verde", "gris"] as const).map(tl => (
+              <button
+                key={tl}
+                onClick={() => setFilterTrafficLight(tl)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                  filterTrafficLight === tl
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border/60 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tl === "all" ? "🔵 Todos" :
+                 tl === "rojo" ? "🔴" :
+                 tl === "amarillo" ? "🟡" :
+                 tl === "verde" ? "🟢" : "⚪"}
+              </button>
+            ))}
+
+            {/* Category filter */}
+            {categories.length > 0 && (
+              <select
+                value={filterCategory}
+                onChange={e => setFilterCategory(e.target.value)}
+                className="h-8 px-2 rounded-md border border-border text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">Categorías</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            )}
+
+            {/* View toggle */}
+            <div className="flex border border-border/60 rounded-md overflow-hidden ml-auto">
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-1.5 transition-colors ${viewMode === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                title="Vista tabla"
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode("cards")}
+                className={`p-1.5 transition-colors ${viewMode === "cards" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                title="Vista tarjetas"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Empty state */}
+          {sorted.length === 0 && (
+            <div className="flex flex-col items-center py-20 text-center border-2 border-dashed border-border/50 rounded-xl">
+              <CalendarClock className="h-10 w-10 text-muted-foreground/25 mb-4" />
+              <h3 className="text-base font-semibold mb-1">
+                {dueDates.length === 0 ? "Sin vencimientos" : "Sin resultados"}
+              </h3>
+              <p className="text-muted-foreground text-sm mb-5">
+                {dueDates.length === 0
+                  ? "Agregá fechas importantes para no olvidar nada."
+                  : "Ajustá los filtros para ver más resultados."}
+              </p>
+              {dueDates.length === 0 && (
+                <Button size="sm" variant="outline" onClick={openNew}>
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Agregar vencimiento
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* List view */}
+          {sorted.length > 0 && viewMode === "list" && (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="py-2 px-3 w-8" />
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-muted-foreground">Vencimiento</th>
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-muted-foreground">Fecha</th>
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-muted-foreground hidden sm:table-cell">Semáforo</th>
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-muted-foreground hidden md:table-cell">Prioridad</th>
+                    <th className="py-2 px-2 w-28" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(item => (
+                    <DueDateRow
                       key={item.id}
                       item={item}
                       categories={categories}
                       onEdit={openEdit}
                       onDelete={id => deleteMutation.mutate(id)}
                       onToggleStatus={handleToggleStatus}
+                      onViewTrace={openTrace}
                     />
                   ))}
-                </div>
-              )}
+                </tbody>
+              </table>
+              <div className="px-4 py-2 text-xs text-muted-foreground bg-muted/30 border-t">
+                {sorted.length} resultado{sorted.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+          )}
+
+          {/* Cards view */}
+          {sorted.length > 0 && viewMode === "cards" && (
+            <div className="space-y-3">
+              {sorted.map(item => (
+                <DueDateCard
+                  key={item.id}
+                  item={item}
+                  categories={categories}
+                  onEdit={openEdit}
+                  onDelete={id => deleteMutation.mutate(id)}
+                  onToggleStatus={handleToggleStatus}
+                  onViewTrace={openTrace}
+                />
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* New/Edit Dialog */}
+      {/* Tab: Alertas */}
+      {activeTab === "alertas" && <AlertLogsTab />}
+
+      {/* Traceability Modal */}
+      <TraceabilityModal
+        dueDateId={traceId}
+        open={traceOpen}
+        onClose={() => setTraceOpen(false)}
+      />
+
+      {/* CRUD Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar vencimiento" : "Nuevo vencimiento"}</DialogTitle>
-            <DialogDescription>Completá los datos del vencimiento.</DialogDescription>
+            <DialogDescription>
+              {editing ? "Modificá los datos del vencimiento." : "Completá los datos para agregar un nuevo vencimiento."}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+
+          <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Título *</Label>
+              <Label htmlFor="title" className="text-xs">Título *</Label>
               <Input
-                placeholder="Ej: Declaración IVA diciembre"
+                id="title"
                 value={form.title}
                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Ej: IVA DDJJ Mayo"
+                className="h-9 text-sm"
               />
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Categoría</Label>
-                <select
-                  value={form.category}
-                  onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  {categories.map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Fecha de vencimiento *</Label>
+                <Label htmlFor="dueDate" className="text-xs">Fecha de vencimiento *</Label>
                 <Input
+                  id="dueDate"
                   type="date"
                   value={form.dueDate}
                   onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+                  className="h-9 text-sm"
                 />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Prioridad</Label>
+                <Label htmlFor="priority" className="text-xs">Prioridad</Label>
                 <select
+                  id="priority"
                   value={form.priority}
-                  onChange={e => setForm(f => ({ ...f, priority: e.target.value as DueDate["priority"] }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  onChange={e => setForm(f => ({ ...f, priority: e.target.value as DueDateForm["priority"] }))}
+                  className="h-9 w-full px-3 rounded-md border border-border text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   <option value="low">Baja</option>
                   <option value="medium">Media</option>
@@ -535,147 +1218,133 @@ export default function DueDatesPage() {
                   <option value="critical">Crítica</option>
                 </select>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Estado</Label>
+                <Label htmlFor="category" className="text-xs">Categoría</Label>
                 <select
+                  id="category"
+                  value={form.category}
+                  onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                  className="h-9 w-full px-3 rounded-md border border-border text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">Sin categoría</option>
+                  {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="status" className="text-xs">Estado</Label>
+                <select
+                  id="status"
                   value={form.status}
-                  onChange={e => setForm(f => ({ ...f, status: e.target.value as DueDate["status"] }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  onChange={e => setForm(f => ({ ...f, status: e.target.value as DueDateForm["status"] }))}
+                  className="h-9 w-full px-3 rounded-md border border-border text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   <option value="pending">Pendiente</option>
-                  <option value="done">Completado</option>
+                  <option value="done">Cumplido</option>
                   <option value="cancelled">Cancelado</option>
                 </select>
               </div>
             </div>
+
             <div className="space-y-1.5">
-              <Label>Descripción <span className="text-muted-foreground text-xs font-normal">(opcional)</span></Label>
-              <Input
-                placeholder="Notas adicionales..."
+              <Label htmlFor="description" className="text-xs">Descripción (opcional)</Label>
+              <textarea
+                id="description"
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Notas adicionales..."
+                rows={2}
+                className="w-full px-3 py-2 rounded-md border border-border text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               />
             </div>
 
-            {/* Recurrence section */}
-            <div className="space-y-2 pt-1 border-t border-border/40">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Periodicidad</Label>
-                {form.recurrenceType !== "none" && (
-                  <span className="text-[9px] text-muted-foreground/70 italic">Guarda el tipo; las instancias futuras se pueden generar desde la vista de vencimientos.</span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {RECURRENCE_TYPES.map(rt => (
-                  <button
-                    key={rt.key}
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, recurrenceType: rt.key }))}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-150
-                      ${form.recurrenceType === rt.key
-                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                        : "bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground"
-                      }`}
-                  >
-                    {rt.label}
-                  </button>
-                ))}
-              </div>
-              {form.recurrenceType !== "none" && (
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  {form.recurrenceType === "custom" && (
-                    <div className="col-span-2 space-y-1">
-                      <p className="text-[10px] text-muted-foreground">Descripción de la regla (ej: "los días 5 y 20 de cada mes")</p>
-                      <Input
-                        placeholder="Ej: días 5 y 20 de cada mes"
-                        value={form.recurrenceRule}
-                        onChange={e => setForm(f => ({ ...f, recurrenceRule: e.target.value }))}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                  )}
-                  {form.recurrenceType !== "custom" && (
-                    <div className="col-span-2 text-[11px] text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-                      {form.recurrenceType === "weekly" && "Se repetirá cada semana el mismo día."}
-                      {form.recurrenceType === "monthly" && "Se repetirá todos los meses el mismo día."}
-                      {form.recurrenceType === "yearly" && "Se repetirá una vez al año en la misma fecha."}
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Fecha fin (opcional)</p>
-                    <Input
-                      type="date"
-                      value={form.recurrenceEndDate}
-                      onChange={e => setForm(f => ({ ...f, recurrenceEndDate: e.target.value }))}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.alertEnabled}
+                onChange={e => setForm(f => ({ ...f, alertEnabled: e.target.checked }))}
+                className="rounded border-border"
+              />
+              <span className="text-sm">Habilitar alertas por email</span>
+            </label>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} className="h-8 text-xs">
+              Cancelar
+            </Button>
             <Button
+              size="sm"
               onClick={handleSubmit}
               disabled={!form.title.trim() || !form.dueDate || createMutation.isPending || updateMutation.isPending}
+              className="h-8 text-xs"
             >
-              {createMutation.isPending || updateMutation.isPending ? "Guardando…" : "Guardar"}
+              {editing ? "Guardar cambios" : "Crear vencimiento"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Categories Dialog */}
+      {/* Category Dialog */}
       <Dialog open={catDialogOpen} onOpenChange={setCatDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Categorías de vencimientos</DialogTitle>
-            <DialogDescription>Gestioná las categorías disponibles.</DialogDescription>
+            <DialogTitle>Gestionar Categorías</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Nueva categoría..."
-                value={newCatName}
-                onChange={e => setNewCatName(e.target.value)}
-                className="flex-1"
-              />
-              <select
-                value={newCatColor}
-                onChange={e => setNewCatColor(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              >
-                {Object.keys(CATEGORY_COLORS).map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (newCatName.trim()) createCatMutation.mutate({ name: newCatName.trim(), color: newCatColor });
-                }}
-                disabled={!newCatName.trim() || createCatMutation.isPending}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              {categories.length === 0 && (
+                <p className="text-sm text-muted-foreground">Sin categorías todavía.</p>
+              )}
+              {categories.map(cat => {
+                const color = CATEGORY_COLORS[cat.color] ?? CATEGORY_COLORS["gray"];
+                return (
+                  <div key={cat.id} className="flex items-center justify-between py-1.5">
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${color}`}>{cat.name}</span>
+                    <button
+                      onClick={() => deleteCatMutation.mutate(cat.id)}
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-            <div className="space-y-1.5 max-h-60 overflow-y-auto">
-              {categories.map(cat => (
-                <div key={cat.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-border/60">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded ${CATEGORY_COLORS[cat.color] ?? CATEGORY_COLORS["gray"]}`}>
-                    {cat.name}
-                  </span>
-                  <button
-                    onClick={() => deleteCatMutation.mutate(cat.id)}
-                    className="text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
+            <div className="border-t pt-4 space-y-2">
+              <Label className="text-xs">Nueva categoría</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={newCatName}
+                  onChange={e => setNewCatName(e.target.value)}
+                  placeholder="Nombre"
+                  className="h-8 text-sm"
+                />
+                <select
+                  value={newCatColor}
+                  onChange={e => setNewCatColor(e.target.value)}
+                  className="h-8 px-2 rounded-md border border-border text-xs bg-background"
+                >
+                  {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <Button
+                  size="sm"
+                  onClick={() => newCatName.trim() && createCatMutation.mutate({ name: newCatName.trim(), color: newCatColor })}
+                  disabled={!newCatName.trim() || createCatMutation.isPending}
+                  className="h-8 text-xs"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCatDialogOpen(false)} className="h-8 text-xs">
+              Cerrar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
