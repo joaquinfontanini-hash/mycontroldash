@@ -1,0 +1,125 @@
+PROMPT PARA CORREGIR EL ERROR “NOT FOUND” AL CREAR DASHBOARDS
+
+Actuá como un desarrollador senior full stack, experto en debugging de frontend/backend, rutas API, publicación en Replit y diagnóstico de integraciones rotas.
+
+Tengo un error en el sistema de creación de dashboards:
+
+Síntoma
+
+Fallan las 3 acciones:
+
+crear dashboard con wizard
+generar preview desde prompt
+crear dashboard desde prompt
+
+En todos los casos aparece:
+
+Not Found
+Error al crear
+Error al crear dashboard
+Error al generar preview
+Diagnóstico esperado
+
+Necesito que revises y corrijas de punta a punta la implementación del creador de dashboards.
+
+Objetivo
+
+Detectar por qué el frontend está recibiendo 404 Not Found y dejar funcionando correctamente:
+
+Preview del dashboard desde prompt
+Crear dashboard desde prompt
+Crear dashboard desde wizard
+Tareas obligatorias
+1. Auditar frontend
+
+Revisar:
+
+qué endpoints exactos llama cada botón
+método HTTP usado
+body enviado
+headers
+manejo de errores
+base URL
+si usa rutas relativas o absolutas
+si en producción/publicación cambia la base de API
+2. Auditar backend
+
+Verificar:
+
+que existan realmente los endpoints esperados
+que estén registrados en el router principal
+que tengan el prefijo correcto (/api/...)
+que estén montados tanto en desarrollo como en producción
+que el servidor publicado efectivamente los exponga
+3. Detectar mismatch
+
+Corregir cualquier diferencia entre:
+
+nombre de rutas
+método HTTP
+payload esperado
+estructura de respuesta
+4. Logging obligatorio
+
+Agregar logs claros para cada intento:
+
+endpoint llamado
+método
+payload resumido
+status code
+respuesta de error
+stack trace si corresponde
+5. Corregir el flujo completo
+
+Dejar funcionando estos 3 flujos:
+
+preview desde prompt
+creación desde prompt
+creación desde wizard
+6. Verificación final
+
+Probar con estos casos:
+
+“Noticias económicas y cotizaciones del dólar”
+“Dashboard de gestión de clientes y vencimientos fiscales”
+wizard con 1 widget seleccionado
+Requisitos de implementación
+No ocultar el error real con mensajes genéricos
+Si una ruta no existe, crearla o corregir la llamada
+Si el problema es de publicación o proxy, arreglar la configuración
+Si el problema es que el frontend está publicado sin backend, resolverlo correctamente
+Mostrar mensajes útiles en UI
+No dejar ningún botón conectado a endpoints inexistentes
+Entregable esperado
+
+Quiero que:
+
+identifiques la causa raíz exacta
+la corrijas
+pruebes los 3 flujos
+me informes qué endpoint usa cada uno
+me confirmes que ya no devuelve 404
+
+Si hay varias causas, corregilas todas.
+
+Además le agregaría esto
+
+Pegale después este mini bloque:
+
+Extra importante
+
+Si el problema es que el frontend está intentando llamar rutas que no existen en producción, corregí la estrategia de API base URL, proxy o deployment para que el publish use el backend correcto.
+No quiero una solución que funcione solo en local.
+
+Qué revisar vos si querés validar rápido
+
+Pedile que te muestre específicamente:
+
+la ruta exacta de Preview
+la ruta exacta de Crear desde prompt
+la ruta exacta de Crear desde wizard
+el archivo donde están definidas
+el archivo del backend donde se registran
+el resultado de probarlas manualmente
+
+Porque si no, puede decir “ya está” y seguir roto.

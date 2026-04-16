@@ -70,18 +70,18 @@ export async function resolveDataSource(
 
       case "clients.summary": {
         // clientsTable.userId is text
-        const clients = await db.select({ id: clientsTable.id, isActive: clientsTable.isActive })
+        const clients = await db.select({ id: clientsTable.id, status: clientsTable.status })
           .from(clientsTable).where(eq(clientsTable.userId, userIdStr));
         return {
           total: clients.length,
-          active: clients.filter(c => c.isActive).length,
-          inactive: clients.filter(c => !c.isActive).length,
+          active: clients.filter(c => c.status === "active").length,
+          inactive: clients.filter(c => c.status !== "active").length,
         };
       }
 
       case "clients.list": {
         return await db.select().from(clientsTable)
-          .where(and(eq(clientsTable.userId, userIdStr), eq(clientsTable.isActive, true)))
+          .where(and(eq(clientsTable.userId, userIdStr), eq(clientsTable.status, "active")))
           .limit(50);
       }
 

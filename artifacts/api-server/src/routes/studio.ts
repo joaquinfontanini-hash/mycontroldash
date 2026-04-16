@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, desc, or, ne, sql, gte, lte } from "drizzle-orm";
 import { createHash } from "crypto";
 import {
@@ -65,10 +65,11 @@ async function uniqueSlug(base: string, userId: number, excludeId?: number): Pro
 async function auditLog(action: string, detail: string, userId?: number) {
   try {
     await db.insert(auditLogsTable).values({
+      module: "dashboard_studio",
+      entity: "dashboard",
       action,
       detail,
       userId: userId ? String(userId) : null,
-      createdAt: new Date(),
     });
   } catch {}
 }
@@ -143,12 +144,12 @@ async function insertLayouts(dashboardId: number, layoutData: { desktop: unknown
 
 // ── GET /api/studio/dashboards ────────────────────────────────────────────────
 
-router.get("/studio/dashboards", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const tab = (req.query.tab as string) ?? "mine";
 
-    let dashboards;
+    let dashboards: (typeof dashboardsTable.$inferSelect)[] = [];
 
     if (tab === "mine") {
       dashboards = await db.select().from(dashboardsTable)
@@ -215,7 +216,7 @@ router.get("/studio/dashboards", studioAuth, async (req, res): Promise<void> => 
 
 // ── POST /api/studio/dashboards ───────────────────────────────────────────────
 
-router.post("/studio/dashboards", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const { name, description, icon, color, category } = req.body;
@@ -244,11 +245,11 @@ router.post("/studio/dashboards", studioAuth, async (req, res): Promise<void> =>
 
 // ── GET /api/studio/dashboards/:id ───────────────────────────────────────────
 
-router.get("/studio/dashboards/:id", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards/:id", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId  = getCurrentUserIdNum(req);
     const dbUser  = (req as any).dbUser;
-    const id      = parseInt(req.params.id);
+    const id      = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, dbUser);
@@ -277,11 +278,11 @@ router.get("/studio/dashboards/:id", studioAuth, async (req, res): Promise<void>
 
 // ── PATCH /api/studio/dashboards/:id ─────────────────────────────────────────
 
-router.patch("/studio/dashboards/:id", studioAuth, async (req, res): Promise<void> => {
+router.patch("/studio/dashboards/:id", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const dbUser = (req as any).dbUser;
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, dbUser);
@@ -327,10 +328,10 @@ router.patch("/studio/dashboards/:id", studioAuth, async (req, res): Promise<voi
 
 // ── POST /api/studio/dashboards/:id/duplicate ────────────────────────────────
 
-router.post("/studio/dashboards/:id/duplicate", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/duplicate", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
@@ -419,10 +420,10 @@ router.post("/studio/dashboards/:id/duplicate", studioAuth, async (req, res): Pr
 
 // ── POST /api/studio/dashboards/:id/archive ──────────────────────────────────
 
-router.post("/studio/dashboards/:id/archive", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/archive", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
@@ -443,10 +444,10 @@ router.post("/studio/dashboards/:id/archive", studioAuth, async (req, res): Prom
 
 // ── POST /api/studio/dashboards/:id/restore ──────────────────────────────────
 
-router.post("/studio/dashboards/:id/restore", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/restore", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
@@ -467,10 +468,10 @@ router.post("/studio/dashboards/:id/restore", studioAuth, async (req, res): Prom
 
 // ── DELETE /api/studio/dashboards/:id ────────────────────────────────────────
 
-router.delete("/studio/dashboards/:id", studioAuth, async (req, res): Promise<void> => {
+router.delete("/studio/dashboards/:id", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
@@ -489,10 +490,10 @@ router.delete("/studio/dashboards/:id", studioAuth, async (req, res): Promise<vo
 
 // ── GET /api/studio/dashboards/:id/layouts ───────────────────────────────────
 
-router.get("/studio/dashboards/:id/layouts", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards/:id/layouts", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
@@ -508,10 +509,10 @@ router.get("/studio/dashboards/:id/layouts", studioAuth, async (req, res): Promi
 
 // ── PATCH /api/studio/dashboards/:id/layouts ─────────────────────────────────
 
-router.patch("/studio/dashboards/:id/layouts", studioAuth, async (req, res): Promise<void> => {
+router.patch("/studio/dashboards/:id/layouts", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
@@ -550,10 +551,10 @@ router.patch("/studio/dashboards/:id/layouts", studioAuth, async (req, res): Pro
 // ── POST /api/studio/dashboards/:id/save ─────────────────────────────────────
 // D2: Atomic batch save — name + status + widget order + layout in one transaction
 
-router.post("/studio/dashboards/:id/save", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/save", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
@@ -619,10 +620,10 @@ router.post("/studio/dashboards/:id/save", studioAuth, async (req, res): Promise
 
 // ── GET /api/studio/dashboards/:id/permissions ───────────────────────────────
 
-router.get("/studio/dashboards/:id/permissions", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards/:id/permissions", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
@@ -662,10 +663,10 @@ router.get("/studio/dashboards/:id/permissions", studioAuth, async (req, res): P
 // ── PATCH /api/studio/dashboards/:id/permissions ─────────────────────────────
 // Body: { op: 'grant' | 'revoke' | 'update', subjectType: 'user' | 'role', subjectId?: number, subjectRoleKey?: string, permissionLevel?: 'view' | 'edit' | 'admin' }
 
-router.patch("/studio/dashboards/:id/permissions", studioAuth, async (req, res): Promise<void> => {
+router.patch("/studio/dashboards/:id/permissions", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
@@ -691,7 +692,7 @@ router.patch("/studio/dashboards/:id/permissions", studioAuth, async (req, res):
     if (op === "revoke") {
       const where = subjectType === "user"
         ? and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "user"), eq(dashboardPermissionsTable.subjectId, subjectId))
-        : and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "role"), eq(dashboardPermissionsTable.subjectRoleKey, subjectRoleKey));
+        : and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "role"), eq(dashboardPermissionsTable.roleKey, subjectRoleKey));
       await db.delete(dashboardPermissionsTable).where(where!);
       await auditLog("studio_permission_revoked", `Permiso revocado para ${subjectType} en dashboard #${id}`, userId);
       res.json({ ok: true });
@@ -710,21 +711,20 @@ router.patch("/studio/dashboards/:id/permissions", studioAuth, async (req, res):
     // Upsert permission
     const existingWhere = subjectType === "user"
       ? and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "user"), eq(dashboardPermissionsTable.subjectId, subjectId))
-      : and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "role"), eq(dashboardPermissionsTable.subjectRoleKey, subjectRoleKey));
+      : and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "role"), eq(dashboardPermissionsTable.roleKey, subjectRoleKey));
 
     const [existing] = await db.select().from(dashboardPermissionsTable).where(existingWhere!);
 
     if (existing) {
       await db.update(dashboardPermissionsTable)
-        .set({ permissionLevel, updatedAt: new Date() })
+        .set({ permissionLevel })
         .where(eq(dashboardPermissionsTable.id, existing.id));
     } else {
       await db.insert(dashboardPermissionsTable).values({
         dashboardId: id,
-        grantedBy: userId,
         subjectType,
         subjectId: subjectType === "user" ? subjectId : null,
-        subjectRoleKey: subjectType === "role" ? subjectRoleKey : null,
+        roleKey: subjectType === "role" ? subjectRoleKey : null,
         permissionLevel,
       });
     }
@@ -739,7 +739,7 @@ router.patch("/studio/dashboards/:id/permissions", studioAuth, async (req, res):
 
 // ── GET /api/studio/templates ─────────────────────────────────────────────────
 
-router.get("/studio/templates", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/templates", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const rows = await db.select().from(dashboardTemplatesTable)
       .where(eq(dashboardTemplatesTable.isActive, true))
@@ -753,7 +753,7 @@ router.get("/studio/templates", studioAuth, async (req, res): Promise<void> => {
 
 // ── GET /api/studio/widget-definitions ───────────────────────────────────────
 
-router.get("/studio/widget-definitions", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/widget-definitions", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const rows = await db.select().from(widgetDefinitionsTable)
       .where(eq(widgetDefinitionsTable.isActive, true))
@@ -767,7 +767,7 @@ router.get("/studio/widget-definitions", studioAuth, async (req, res): Promise<v
 
 // ── GET /api/studio/data-sources ─────────────────────────────────────────────
 
-router.get("/studio/data-sources", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/data-sources", studioAuth, async (req: Request, res: Response): Promise<void> => {
   const isAdmin = (req as any).dbUser?.role === "super_admin";
   const catalog = isAdmin ? DATA_SOURCE_CATALOG : DATA_SOURCE_CATALOG.filter(d => d.category !== "admin");
   res.json(catalog);
@@ -775,7 +775,7 @@ router.get("/studio/data-sources", studioAuth, async (req, res): Promise<void> =
 
 // ── POST /api/studio/generate-from-prompt ────────────────────────────────────
 
-router.post("/studio/generate-from-prompt", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/generate-from-prompt", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const { prompt, save = false } = req.body;
@@ -835,7 +835,7 @@ router.post("/studio/generate-from-prompt", studioAuth, async (req, res): Promis
 
 // ── POST /api/studio/generate-from-template ──────────────────────────────────
 
-router.post("/studio/generate-from-template", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/generate-from-template", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const { templateKey, name } = req.body;
@@ -894,7 +894,7 @@ router.post("/studio/generate-from-template", studioAuth, async (req, res): Prom
 
 // ── POST /api/studio/generate-from-wizard ────────────────────────────────────
 
-router.post("/studio/generate-from-wizard", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/generate-from-wizard", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const input  = req.body as WizardInput;
@@ -935,10 +935,10 @@ router.post("/studio/generate-from-wizard", studioAuth, async (req, res): Promis
 
 // ── POST /api/studio/dashboards/:id/widgets ──────────────────────────────────
 
-router.post("/studio/dashboards/:id/widgets", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/widgets", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId      = getCurrentUserIdNum(req);
-    const dashboardId = parseInt(req.params.id);
+    const dashboardId = parseInt(req.params.id as string);
     if (isNaN(dashboardId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(dashboardId, userId, (req as any).dbUser);
@@ -979,10 +979,10 @@ router.post("/studio/dashboards/:id/widgets", studioAuth, async (req, res): Prom
 
 // ── PATCH /api/studio/widgets/:widgetId ──────────────────────────────────────
 
-router.patch("/studio/widgets/:widgetId", studioAuth, async (req, res): Promise<void> => {
+router.patch("/studio/widgets/:widgetId", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId   = getCurrentUserIdNum(req);
-    const widgetId = parseInt(req.params.widgetId);
+    const widgetId = parseInt(req.params.widgetId as string);
     if (isNaN(widgetId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [widget] = await db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.id, widgetId));
@@ -1022,10 +1022,10 @@ router.patch("/studio/widgets/:widgetId", studioAuth, async (req, res): Promise<
 
 // ── DELETE /api/studio/widgets/:widgetId ─────────────────────────────────────
 
-router.delete("/studio/widgets/:widgetId", studioAuth, async (req, res): Promise<void> => {
+router.delete("/studio/widgets/:widgetId", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId   = getCurrentUserIdNum(req);
-    const widgetId = parseInt(req.params.widgetId);
+    const widgetId = parseInt(req.params.widgetId as string);
     if (isNaN(widgetId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [widget] = await db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.id, widgetId));
@@ -1048,10 +1048,10 @@ router.delete("/studio/widgets/:widgetId", studioAuth, async (req, res): Promise
 
 // ── POST /api/studio/widgets/:widgetId/refresh-snapshot ──────────────────────
 
-router.post("/studio/widgets/:widgetId/refresh-snapshot", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/widgets/:widgetId/refresh-snapshot", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId   = getCurrentUserIdNum(req);
-    const widgetId = parseInt(req.params.widgetId);
+    const widgetId = parseInt(req.params.widgetId as string);
     if (isNaN(widgetId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [widget] = await db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.id, widgetId));
@@ -1105,10 +1105,10 @@ router.post("/studio/widgets/:widgetId/refresh-snapshot", studioAuth, async (req
 
 // ── GET /api/studio/dashboards/:id/data ──────────────────────────────────────
 
-router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards/:id/data", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
@@ -1188,10 +1188,10 @@ router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<
 const smartSummaryCache = new Map<number, { data: unknown; expiresAt: number }>();
 const SMART_SUMMARY_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
-router.post("/studio/dashboards/:id/smart-summary", studioAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/smart-summary", studioAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id     = parseInt(req.params.id);
+    const id     = parseInt(req.params.id as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
