@@ -1,0 +1,475 @@
+OBJETIVO:
+Implementar la Parte 1 del módulo "Dashboard Studio" dentro del sistema existente.
+
+Esta Parte 1 debe dejar construida la base estructural, persistencia, catálogo, plantillas, motor de generación inteligente v1 y APIs necesarias para crear dashboards dinámicos desde prompt, plantilla o wizard, pero SIN construir todavía el builder visual avanzado ni la lógica de snapshots optimizados.
+
+Actuá como arquitecto senior, backend lead, frontend lead y auditor técnico. Reutilizá la arquitectura existente. No rompas módulos actuales.
+
+==================================================
+CONTEXTO DEL SISTEMA
+==================================================
+
+Proyecto existente:
+- Frontend: React + Vite + TypeScript
+- Backend: Express 5 + Node.js
+- DB: PostgreSQL
+- ORM: Drizzle ORM
+- Auth: sesiones con PG + Clerk para Google OAuth
+- Roles: super_admin, admin, editor, viewer
+- Monorepo:
+  - artifacts/dashboard
+  - artifacts/api-server
+  - lib/db
+
+Sistema ya construido con módulos:
+- dashboard principal
+- tareas
+- noticias
+- fiscal
+- vencimientos
+- clientes
+- calendarios impositivos
+- chat/contactos
+- emails
+- clima
+- admin
+- finanzas personales
+
+Ya existe:
+- modules table para acceso por módulo
+- auditoría
+- ownership
+- seguridad por rol
+- base URL centralizada
+- cron jobs
+- alertas
+- preferencias
+
+Este módulo debe integrarse a ese ecosistema. No crear subsistemas aislados.
+
+==================================================
+ALCANCE DE ESTA PARTE 1
+==================================================
+
+Implementar:
+
+1. Alta del módulo:
+- key: dashboard_studio
+- label: Dashboard Studio
+
+2. Modelo de datos base:
+- dashboards
+- dashboard_widgets
+- dashboard_permissions
+- dashboard_templates
+- dashboard_runs
+- dashboard_filters
+- widget_definitions
+- dashboard_layouts
+
+3. CRUD base de dashboards
+
+4. Catálogo inicial de widgets
+
+5. Catálogo inicial de data sources internas
+
+6. Flujo “crear desde prompt”
+- parser heurístico
+- detección de intención
+- sugerencia de widgets, filtros, layout y metadata
+- preview persistible
+
+7. Flujo “crear desde plantilla”
+
+8. Flujo “crear desde wizard”
+- backend preparado para recibir estructura guiada y generar dashboard válido
+
+9. Listado de dashboards
+- míos
+- compartidos
+- plantillas
+- archivados
+
+10. Frontend inicial del módulo
+- página principal
+- cards
+- modal/página crear desde prompt
+- galería de plantillas
+- wizard básico
+- vista detalle simple del dashboard renderizado desde configuración
+
+NO implementar todavía:
+- builder drag & drop avanzado
+- resize avanzado
+- snapshots optimizados
+- editor responsive por breakpoint avanzado
+- sistema fino de performance
+
+==================================================
+MODELO DE DATOS
+==================================================
+
+Crear schema Drizzle completo y consistente.
+
+## dashboards
+Campos sugeridos:
+- id
+- ownerUserId
+- name
+- slug
+- description
+- category
+- icon
+- color
+- sourceType ('prompt' | 'template' | 'wizard' | 'manual')
+- templateKey nullable
+- promptText nullable
+- status ('draft' | 'active' | 'archived')
+- isFavorite default false
+- isSystem default false
+- version default 1
+- createdAt
+- updatedAt
+- archivedAt nullable
+
+## dashboard_layouts
+- id
+- dashboardId
+- breakpoint ('desktop' | 'tablet' | 'mobile')
+- layoutJson
+- version default 1
+- createdAt
+- updatedAt
+
+Reglas:
+- desktop obligatorio
+- mobile obligatorio al guardar dashboard activo
+- tablet opcional
+- en esta fase podés generar mobile auto-stack por defecto
+
+## dashboard_widgets
+- id
+- dashboardId
+- type
+- title
+- subtitle nullable
+- dataSourceKey
+- configJson
+- orderIndex
+- visible default true
+- refreshIntervalSeconds nullable
+- createdAt
+- updatedAt
+
+En esta fase dejar preparados, aunque no explotados a full:
+- lastDataSnapshotJson nullable
+- lastDataSnapshotAt nullable
+- snapshotExpiresAt nullable
+- snapshotStatus nullable
+- snapshotVersion default 1
+- dataSignature nullable
+
+## dashboard_permissions
+- id
+- dashboardId
+- subjectType ('user' | 'role')
+- subjectId nullable
+- roleKey nullable
+- permissionLevel ('view' | 'edit' | 'admin')
+- createdAt
+
+## dashboard_templates
+- id
+- key
+- name
+- description
+- category
+- icon
+- color
+- previewImage nullable
+- configJson
+- isActive
+- createdAt
+- updatedAt
+
+## dashboard_runs
+- id
+- userId
+- inputType ('prompt' | 'wizard' | 'template')
+- promptText nullable
+- parsedIntentJson
+- generatedConfigJson
+- status ('success' | 'error')
+- errorMessage nullable
+- createdAt
+
+## dashboard_filters
+- id
+- dashboardId
+- key
+- label
+- type
+- configJson
+- defaultValueJson nullable
+- orderIndex
+
+## widget_definitions
+- id
+- key
+- name
+- description
+- category
+- configSchemaJson
+- defaultConfigJson
+- supportsGlobalFilters
+- supportsDateRange
+- supportsDrilldown
+- isExpensive default false
+- supportsSnapshot default false
+- snapshotTtlSeconds nullable
+- isActive
+- createdAt
+
+Agregar índices, relaciones y validaciones sólidas.
+
+==================================================
+CATÁLOGO INICIAL DE WIDGETS
+==================================================
+
+Cargar catálogo inicial reutilizable con al menos:
+
+- kpi_cards
+- dynamic_table
+- alerts_list
+- traffic_light
+- ranking
+- bar_chart
+- line_chart
+- smart_summary
+- calendar
+- news_feed
+- quotes
+- pending_tasks
+- upcoming_due_dates
+- expense_categories
+- recent_transactions
+- goals_progress
+- checklist
+- recent_activity
+- quick_links
+- text_block
+
+Cada widget debe tener:
+- definición tipada
+- config por defecto
+- schema de configuración
+- estado compatible con render dinámico
+
+==================================================
+CATÁLOGO DE DATA SOURCES
+==================================================
+
+Diseñar una capa desacoplada de data sources.
+No permitir que los widgets consulten tablas directamente.
+
+Crear catálogo inicial, por ejemplo:
+- clients.summary
+- clients.list
+- dueDates.upcoming
+- dueDates.trafficLight
+- news.feed
+- news.priority
+- finance.summary
+- finance.transactions.recent
+- finance.budgets.status
+- finance.goals.progress
+- tasks.myOpen
+- tasks.teamBoard
+- weather.forecast
+- dollar.quotes
+- system.notifications
+- admin.jobs.health
+- audit.activity
+
+Crear servicio/backend centralizado que resuelva estas fuentes.
+
+==================================================
+MOTOR DE GENERACIÓN INTELIGENTE V1
+==================================================
+
+Crear un servicio de generación desde prompt que funcione sin LLM externo.
+
+Flujo:
+1. normalizar prompt
+2. detectar dominio principal
+3. detectar dominios secundarios
+4. detectar entidades
+5. detectar intención
+6. detectar widgets razonables
+7. detectar filtros sugeridos
+8. generar metadata del dashboard
+9. generar layouts default
+10. generar JSON persistible
+11. registrar run en dashboard_runs
+
+Heurísticas mínimas:
+- clientes + vencimientos → KPI + semáforo + tabla + alertas
+- finanzas + gastos → resumen + categorías + movimientos + presupuestos
+- noticias + economía → feed + top impacto + alertas
+- tareas + equipo → pendientes + ranking + actividad
+- dirección ejecutiva → KPIs + alertas + resumen inteligente + actividad
+
+No inventar data sources inexistentes.
+No inventar widgets incompatibles.
+Si no se puede inferir perfecto, generar una versión mínima usable.
+
+==================================================
+PLANTILLAS INICIALES
+==================================================
+
+Crear plantillas iniciales:
+- Control fiscal de clientes
+- Finanzas personales
+- Noticias económicas y políticas
+- Dirección ejecutiva
+- Gestión familiar
+- Tareas y productividad
+- Obras y proveedores
+- Seguimiento comercial
+- Viajes y oportunidades
+- Panel general personal
+
+Cada plantilla con:
+- nombre
+- descripción
+- categoría
+- icono
+- color
+- widgets
+- layouts
+- filtros sugeridos
+
+==================================================
+API / ENDPOINTS
+==================================================
+
+Implementar al menos:
+
+- GET /api/studio/dashboards
+- POST /api/studio/dashboards
+- GET /api/studio/dashboards/:id
+- PATCH /api/studio/dashboards/:id
+- POST /api/studio/dashboards/:id/duplicate
+- POST /api/studio/dashboards/:id/archive
+- POST /api/studio/dashboards/:id/restore
+- DELETE /api/studio/dashboards/:id
+
+- GET /api/studio/templates
+- GET /api/studio/widget-definitions
+- GET /api/studio/data-sources
+
+- POST /api/studio/generate-from-prompt
+- POST /api/studio/generate-from-template
+- POST /api/studio/generate-from-wizard
+
+- GET /api/studio/dashboards/:id/layouts
+- PATCH /api/studio/dashboards/:id/layouts
+
+Agregar validación de payload, ownership, requireAuth, requireModule y control de permisos.
+
+==================================================
+FRONTEND — PARTE 1
+==================================================
+
+Construir frontend inicial consistente con el sistema existente.
+
+Crear:
+- DashboardStudioPage
+- DashboardCard
+- CreateFromPromptModal o page
+- TemplateGallery
+- DashboardWizard
+- DashboardViewer simple
+- WidgetRenderer inicial
+- DashboardFiltersBar inicial
+
+Pantalla principal /dashboard/studio:
+- header con CTA
+- tabs: míos / compartidos / plantillas / archivados
+- buscador
+- acceso rápido:
+  - crear desde prompt
+  - usar plantilla
+  - crear desde cero
+- grilla/lista de dashboards
+
+Flujo “crear desde prompt”:
+- textarea
+- ejemplos clickeables
+- loading state
+- preview antes de guardar
+- guardar como draft o activo
+
+Flujo “plantillas”:
+- galería
+- preview
+- usar plantilla
+
+Flujo “wizard”:
+- pasos básicos
+- generar dashboard válido
+
+DashboardViewer:
+- render dinámico desde config persistida
+- sin builder todavía
+- usar layout desktop y fallback simple mobile
+
+==================================================
+SEGURIDAD Y PERMISOS
+==================================================
+
+Implementar desde esta fase:
+- ownership
+- dashboards privados por defecto
+- posibilidad de compartir por rol/usuario preparada en backend
+- no confiar jamás en frontend
+
+Roles por defecto recomendados:
+- super_admin: full
+- admin: crear/editar/compartir
+- editor: crear y editar propios
+- viewer: ver compartidos autorizados
+
+==================================================
+AUDITORÍA
+==================================================
+
+Registrar:
+- dashboard creado
+- dashboard editado
+- dashboard duplicado
+- dashboard archivado
+- dashboard restaurado
+- generación por prompt
+- generación por plantilla
+- generación por wizard
+
+==================================================
+CALIDAD
+==================================================
+
+Antes de escribir código:
+1. revisar arquitectura actual
+2. proponer archivos a crear/modificar
+3. proponer plan de implementación
+4. recién luego implementar
+
+Al finalizar:
+- listar archivos creados y modificados
+- explicar cómo probar
+- indicar comandos
+- dejar nota honesta de lo que quedó pendiente para Parte 2
+
+No usar mocks engañosos.
+No dejar funciones fake sin aclararlo.
+No romper módulos existentes.

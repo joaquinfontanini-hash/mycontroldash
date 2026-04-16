@@ -13,6 +13,8 @@ import { startScheduler } from "./jobs/scheduler.js";
 import { seedDefaultCategories } from "./lib/seed.js";
 import { seedCalendar2026, patchGanancias2026 } from "./lib/seed-calendar-2026.js";
 import { seedModules, bootstrapSuperAdmin } from "./lib/seed-modules.js";
+import { seedWidgetCatalog } from "./lib/studio-widget-catalog.js";
+import { seedDashboardTemplates } from "./lib/studio-templates.js";
 
 // CJS/ESM interop: connect-pg-simple expects the express-session module reference
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -129,5 +131,7 @@ seedDefaultCategories();
 seedCalendar2026().then(() => patchGanancias2026());
 seedModules();
 bootstrapSuperAdmin();
+seedWidgetCatalog();
+seedDashboardTemplates();
 
 export default app;

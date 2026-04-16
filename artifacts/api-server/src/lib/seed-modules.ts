@@ -23,6 +23,7 @@ const DEFAULT_MODULES = [
   { key: "settings", name: "Ajustes", description: "Configuración personal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 17 },
   { key: "contacts", name: "Contactos", description: "Tarjetas de contacto de usuarios", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 18 },
   { key: "chat", name: "Chat", description: "Mensajería interna entre usuarios", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 19 },
+  { key: "dashboard_studio", name: "Dashboard Studio", description: "Constructor de dashboards dinámicos y personalizados", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 20 },
 ];
 
 export async function seedModules(): Promise<void> {

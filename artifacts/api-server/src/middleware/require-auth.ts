@@ -157,6 +157,11 @@ export function getCurrentUserId(req: Request): string {
   return String((req as AuthenticatedRequest).dbUser.id);
 }
 
+// ── Helper: get current user's numeric ID (for integer FK columns) ─────────────
+export function getCurrentUserIdNum(req: Request): number {
+  return (req as AuthenticatedRequest).dbUser.id;
+}
+
 // ── Ownership assertion helper ────────────────────────────────────────────────
 // Returns 403/404 if the record's userId doesn't match the current user.
 // Super-admin always passes (they can access all data for admin purposes).

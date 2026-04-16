@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a full-stack personal executive dashboard designed for an Argentine contador/consultor. It aims to provide a centralized platform for managing various aspects of their professional life, including financial tracking, task management, news consumption, and fiscal monitoring. The dashboard integrates with external services to provide real-time data and offers a comprehensive view of critical information. Key capabilities include a dollar quotes widget, Kanban task board, news filtering with deduplication, a fiscal monitor with data quality features, due date tracking, and management of external file sources. The business vision is to empower consultants with a powerful, intuitive tool to streamline operations, enhance decision-making, and improve productivity.
+This project is a full-stack personal executive dashboard designed for an Argentine contador/consultor. It provides a centralized platform for managing financial tracking, task management, news consumption, and fiscal monitoring. The dashboard integrates with external services for real-time data, offering a comprehensive view of critical professional information. Key capabilities include a dollar quotes widget, Kanban task board, news filtering with deduplication, a fiscal monitor with data quality features, due date tracking, and management of external file sources. The business vision is to empower consultants with a powerful, intuitive tool to streamline operations, enhance decision-making, and improve productivity.
 
 ## User Preferences
 
@@ -13,96 +13,51 @@ No specific user preferences were provided in the original `replit.md` file.
 The project is built as a monorepo using `pnpm workspaces`.
 
 **Frontend:**
-- **Technology Stack:** React, Vite, TypeScript, Tailwind CSS.
-- **UI Components:** `shadcn/ui`, Radix UI, Framer Motion.
-- **Pages:**
-    - `/` (Landing), `/sign-in`, `/sign-up` (Authentication)
-    - `/dashboard` (Executive summary with widgets), `/dashboard/tasks` (Full task management with assignment workflow), `/dashboard/shortcuts` (CRUD)
-    - `/dashboard/news` (News feed with filters), `/dashboard/emails` (Email inbox), `/dashboard/weather` (3-day forecast)
-    - `/dashboard/fiscal` (Monitor Fiscal with card/table toggle), `/dashboard/travel` (Travel offers browser)
-    - `/register` (Public registration), `/admin` (Admin panel with 6 tabs)
-    - `/dashboard/due-dates` (Due dates tracker)
-    - `/dashboard/finance` (Finanzas Personales — Fase 1: dashboard resumen con semáforos, carga rápida de movimientos, tabla con filtros, cuentas, recurrencias. Botón flotante "+" para carga rápida. Demo data via POST /api/finance/seed-demo)
-    - `/settings` (Dashboard configuration, including External Sources)
+- **Technology Stack:** React, Vite, TypeScript, Tailwind CSS, `shadcn/ui`, Radix UI, Framer Motion.
 - **UI/UX Decisions:**
-    - Dashboard layout utilizes `lg:grid-cols-[1fr_288px]` for a main content area and a sticky right panel for widgets like `VencimientosWidget`.
-    - Widgets are configurable with reorder and show/hide toggles, persisted in local storage.
-    - News categories are expanded with 23 filter chips.
-    - Fiscal monitor offers toggle between card and table views.
-    - Chat and Contacts modules are designed with a split-panel view for responsiveness.
+    - Dashboard layout uses a main content area and a sticky right panel for widgets.
+    - Configurable widgets with reorder and show/hide options, persisted in local storage.
+    - News categories offer extensive filter chips.
+    - Fiscal monitor allows toggling between card and table views.
+    - Responsive split-panel designs for chat and contacts modules.
+- **Key Pages:** Dashboard with various modules (Tasks, News, Fiscal, Finance, Due Dates, Settings, Admin) and authentication pages.
 
 **Backend:**
-- **Technology Stack:** Express 5, Node.js.
-- **Database:** PostgreSQL with Drizzle ORM.
-- **Authentication:** Dual system combining local email/password (session-based) and Google OAuth via Clerk.
-    - Local authentication uses bcrypt hashing and Express sessions stored in PostgreSQL.
-    - Clerk integrates for Google OAuth, creating a parallel Express session.
-    - User roles: `super_admin`, `admin`, `editor`, `viewer`.
-    - Security middleware (`requireAuth`, `requireModule`, `assertOwnership`) enforces data isolation and role-based access control.
-- **Validation:** Zod (`zod/v4`) with `drizzle-zod`.
+- **Technology Stack:** Express 5, Node.js, PostgreSQL with Drizzle ORM.
+- **Authentication:** Dual system combining local email/password (session-based) and Google OAuth via Clerk, with role-based access control (`super_admin`, `admin`, `editor`, `viewer`).
+- **Validation:** Zod with `drizzle-zod`.
 - **API Codegen:** Orval (from OpenAPI spec).
 - **Core Features:**
-    - Full Tasks module: 14 endpoints with CRUD, assignment workflow (pending_acceptance → in_progress), accept/reject by assignee, progress tracking (0-100%), comments, audit history, cancel/archive/reassign actions. Tables: `tasks`, `task_comments`, `task_history`.
-    - CRUD APIs for shortcuts, fiscal data, travel offers, news, emails, weather, settings, users, currency, sync logs, due dates, due date categories, and external file sources.
-    - `GET /api/users/assignable` — returns basic user info for assignment dropdowns (requires auth).
-    - Real-time data refresh mechanisms for fiscal and news data.
-    - Header controls include "Modo HOY" for priority overview, "Actualizar datos" for cache invalidation, and an alert bell for urgent items.
-    - Data quality system with scoring (0-100) for fiscal updates and travel offers, including discard thresholds and logging.
-    - News module redesigned: sources updated to Infobae + LM Neuquén (primary) + Ámbito, La Nación, Diario Río Negro, Clarín (supplementary); Tributum and Contadores en Red disabled. Automatic classification by regionLevel (internacional/nacional/regional), newsCategory (economia/politica/laboral/juicios), impactLevel (alto/medio/bajo), priorityScore. New tables: `saved_news` (per-user saved articles), `user_alerts` (per-user alert configurations). New endpoints: POST/DELETE /news/:id/save, GET /news/saved, GET/POST /news/alerts, PATCH/DELETE /news/alerts/:id.
+    - Comprehensive CRUD APIs for all modules (Tasks, Shortcuts, Fiscal, News, Finance, Due Dates, etc.).
+    - Advanced Tasks module with assignment workflow, progress tracking, comments, and audit history.
+    - Real-time data refresh mechanisms for fiscal and news.
+    - Data quality system with scoring for fiscal updates and travel offers.
+    - Enhanced News module with updated sources, automatic classification, user-saved articles, and alert configurations.
     - Clients module with CUIT validation and AFIP category engine.
-    - Annual calendar with drag-and-drop reordering.
-    - Supplier payment batches with CSV import functionality.
-    - Tax Calendars page with file upload and management.
-    - Internal Chat and Contacts module with `user_profiles`, `conversations`, `conversation_participants`, and `messages` tables, supporting direct and group conversations with unread tracking and polling for updates.
-    - **Sistema de Vencimientos + Alertas + Semáforos (v2):**
-      - AFIP Engine (afip-engine.ts): calculateTrafficLight (verde>7d, amarillo 3-7d, rojo≤2d/vencido, gris=done), clientTrafficLight(), getDueDatesKPIs(), updateAllTrafficLights(), generateDueDatesForClient(), generateDueDatesForAllClients(), full JSON traceability (classificationReason field), audit logging.
-      - Email Alert Service (email-alert.service.ts): sendDueDateAlert(), runDailyAlertJob(), resendAlert(). HTML templates with semáforo colors. Deduplication (24h). SMTP not configured = logs as "skipped" never fails silently. Env: SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM, APP_URL.
-      - New routes (fiscal-admin.ts): GET /api/due-dates/kpis, POST /api/due-dates/recalculate, GET /api/due-dates/:id/traceability, POST /api/due-dates/:id/mark-reviewed, POST /api/due-dates/:id/resend-alert, full CRUD /api/tax-homologation, GET /api/alert-logs, POST /api/alert-logs/:id/resend, GET /api/audit-logs.
-      - New DB tables (fiscal-due-dates.ts): tax_homologation, alert_logs, audit_logs, semaforo_rules.
-      - Extended due_dates table: trafficLight, cuitGroup, cuitTermination, taxCode, classificationReason, alertGenerated, lastAlertSentAt, manualReview, reviewNotes, reviewedAt, reviewedBy.
-      - Extended clients table: emailSecondary, clientPriority, alertsActive, responsible.
-      - Frontend (due-dates.tsx): KPI bar (9 tiles), semáforo badges, table/card toggle, trazabilidad modal with alert history + resend + mark-reviewed, tabs (Vencimientos / Alertas enviadas), filters (status, semáforo, category, text search), sorted by rojo-first then date.
-      - Scheduler: semáforos recalculated at 7:00 AM, email alerts at 8:00 AM daily.
-    - **Finanzas Personales — Fase 1 + Fase 2 (completo):**
-      - DB tables: `finance_accounts`, `finance_config`, `finance_categories`, `finance_transactions` (+ cardId, installmentPlanId columns), `finance_recurring_rules`, `finance_cards`, `finance_installment_plans`, `finance_loans`.
-      - Backend (finance.ts): Full CRUD for categories, transactions, recurring-rules, accounts, config, cards (/api/finance/cards), installment-plans (/api/finance/installment-plans), loans (/api/finance/loans). GET /api/finance/cards/:id/summary (cycle spending). GET /api/finance/summary (Phase 2: compromisos, presionFinanciera semaphore, upcoming payments cards+loans+installments). POST /api/finance/seed-demo (2 cards, 2 installment plans, 1 loan, 6 recurring rules).
-      - Pressure meter: green < 50% income committed, yellow 50-80%, red > 80% or > saldoDisponible.
-      - Card balance isolation: card transactions (cardId set) do NOT affect account balance.
-      - Frontend (finance.tsx): 8 tabs — Resumen (PressureMeter + insights panel + compromisos + 6 KPI cards + upcoming payments + alerts + recent tx + upcoming recurrences + category breakdown + accounts), Movimientos, Cuentas, Tarjetas, Prestamos, Recurrencias, Presupuestos, Proyección.
-      - New modals: CardModal, InstallmentPlanModal, LoanModal, BudgetModal.
-      - Account types: caja, banco, billetera_virtual, tarjeta, cripto, inversiones, deuda.
-      - **Fase 3:** `finance_budgets` table. Budget CRUD, projection endpoint (35-day daily series), insights endpoint (6 auto insights). Frontend: Presupuestos tab, Proyección tab, Insights panel in Resumen.
-      - **Fase 4:** `finance_goals` table (type: savings/reduce_spending/emergency_fund/pay_debt, targetAmount, currentAmount, targetDate, categoryId). Goals CRUD with auto-progress computation (reduce_spending reads category spending vs target). GET /api/finance/suggestions: detects repeated transactions (3+ times in 90 days, no recurringRuleId) → suggests automating. GET /api/finance/weekly-review: income/expenses this vs last week, overspent budgets, unreceived expected income, upcoming vencimientos, saldo libre. GET /api/finance/export/transactions.csv and /api/finance/export/summary.csv (12-month history, BOM for Excel). Frontend: Objetivos tab (GoalCard with progress bar, quick inline update, GoalModal with 4 types, empty state); weekly review widget (collapsible) + goals mini-preview + smart suggestions panel in Resumen tab; export CSV button in Movimientos; TransactionModal memory via localStorage (last category, last account, autocomplete for notes with dropdown suggestions); recentConcepts autocomplete from API + stored notes history.
-
-**System Hardening (completed):**
-- **External Cache + Circuit Breaker:** `cache.service.ts` with `withCache()`, `getCache/setCache`, `isCircuitOpen/recordSuccess/recordFailure`. Circuit breaker: 3 failures → open 10 minutes → half_open → auto-recover. DB tables: `external_cache` (cacheKey unique, TTL, isValid), `circuit_breaker_state` (sourceName unique, state: closed/open/half_open, failureCount, openUntil).
-- **Resilient external services:** `currency.service.ts` (DolarAPI), `weather.service.ts` (Open-Meteo), `rss.adapter.ts` (per-hostname circuit breaker), `fiscal.service.ts` — all integrated with circuit breaker. Stale cache fallback on fetch failure.
-- **Cron observability:** `job-logger.ts` with `withJobLog()` wraps all 6 cron jobs (weather, news, fiscal, currency, semáforos, alertas). DB table: `job_logs` (jobName, status, startedAt, finishedAt, durationMs, errorMessage, recordsAffected). `GET /api/admin/jobs` returns job summary + circuit breaker states.
-- **Admin Jobs tab:** `JobsHealthPanel` component in admin.tsx: shows last run status, duration, success rate mini-bar, 7-run sparkline, circuit breaker table. Auto-refreshes every 30s.
-- **Auth cleanup:** `requireAuth` middleware is sessions-only (removed `getAuth(req)` Clerk fallback). All Clerk users must go through `/api/auth/google-session` to get a DB-backed session.
-- **In-app notifications:** DB table `in_app_notifications` (userId, type, title, body, severity, linkUrl, isRead, payloadJson). Backend routes: GET /api/notifications, GET /api/notifications/unread-count, PATCH /api/notifications/:id/read, POST /api/notifications/read-all, DELETE /api/notifications/:id. Frontend: `use-notifications.ts` hook, `NotificationBell` component (popover with badge, ScrollArea, per-item mark-read/delete, mark-all). `notification-emitter.ts` backend service for emitting from any module.
-- **DB-backed user preferences:** DB table `user_preferences` (userId+key unique). Routes: GET/PUT/DELETE /api/me/preferences, PUT /api/me/preferences/:key, bulk PUT. Frontend `usePreferences` hook with optimistic updates + localStorage write-through fallback. `decisions.tsx` migrated (salud/estrés sliders DB-persisted).
-- **News scoring:** Priority formula: impact×0.4 + keywords×0.3 + source×0.2 + recency×0.1. Source tier scores added. Entertainment exclusions expanded (deportes, futbol, netflix, streaming, farándula, espectáculos, celebrities, etc.).
+    - Robust Due Dates and Alerts system with AFIP Engine for traffic light calculations, email alerts, and detailed traceability.
+    - Full Personal Finance module (Finanzas Personales) including accounts, transactions, recurring rules, cards, installment plans, loans, budgets, goals, and smart suggestions.
+    - Internal Chat and Contacts module with direct and group conversations, unread tracking, and polling.
+    - System hardening includes external cache with circuit breaker for resilient service calls, cron job observability, and in-app notification system.
+    - DB-backed user preferences and security logging.
+    - **Dashboard Studio** (Part 1): Dynamic dashboard builder with 3 creation flows — "Crear desde prompt" (heuristic NLP parser → widget suggestion → preview → save), Template Gallery (10 built-in templates), and Wizard (3-step guided builder). 7 new DB tables (`dashboards`, `dashboard_layouts`, `dashboard_widgets`, `dashboard_permissions`, `dashboard_templates`, `dashboard_runs`, `dashboard_filters` + `widget_definitions`), 19 data sources, 14 widget types. Route: `/dashboard/studio`, module key: `dashboard_studio`.
+    - **Important**: `getCurrentUserIdNum(req)` helper in `require-auth.ts` returns the user's numeric ID (for integer FK columns like `dashboards.owner_user_id`). Always use this for `dashboardsTable` operations; use `getCurrentUserId(req)` (string) for TEXT userId columns (tasks, finance, etc.).
 
 **System Design Choices:**
-- **Monorepo:** Centralized management of frontend, backend, and shared libraries.
-- **Data Isolation:** Enforced per-user using `user_id` columns in relevant tables and `assertOwnership` middleware.
-- **Module-based Access Control:** `modules` table defines features, their `isActive` status, and `allowedRoles`. `requireModule` middleware controls access.
-- **Security Logging:** `security_logs` table for auditing sensitive actions.
-- **Rate Limiting:** Implemented for general API requests and specific administrative actions.
-- **BASE URL centralization:** All fetch calls in the frontend use `import { BASE } from "@/lib/base-url"`. This file normalizes `import.meta.env.BASE_URL` (Vite's base), turning `"./"` and `"."` into `""` so that `${BASE}/api/...` always produces a correct absolute path in both dev and production.
-- **ModuleGuard robustness:** `module-protected-route.tsx` includes a 12-second timeout guard (GUARD_TIMEOUT_MS) and a LoadError component with a retry button to prevent infinite spinners if auth queries fail.
-- **useUserSync retry:** 4 attempts with exponential backoff (500ms → 1s → 2s → 4s → max 8s) for both `registerUser` and `establishGoogleSession`. Invalidates `["current-user"]` query on both success and failure.
+- **Monorepo:** Centralized development and management.
+- **Data Isolation:** Enforced per-user using `user_id` and `assertOwnership` middleware.
+- **Module-based Access Control:** `requireModule` middleware controls feature access based on `isActive` status and `allowedRoles`.
+- **Resilient External Services:** Utilizes caching, circuit breakers, and stale cache fallbacks for external API integrations.
+- **Robustness:** Includes timeout guards and retry mechanisms for critical fetches and user synchronization.
 
 ## External Dependencies
 
-- **dolarapi.com:** For fetching real-time dollar quotes (Blue, MEP, Cripto, Oficial).
+- **dolarapi.com:** For real-time dollar quotes.
 - **Clerk:** For Google OAuth authentication and user management.
 - **Open-Meteo:** For weather forecasts.
-- **RSS Feeds:** Infobae, LM Neuquén (primary sources), Ámbito, La Nación, Diario Río Negro, Clarín (supplementary). Tributum and Contadores en Red removed.
-- **Google APIs (googleapis npm package):** Potentially for Google Sheets integration (requires `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`).
+- **RSS Feeds:** Infobae, LM Neuquén (primary); Ámbito, La Nación, Diario Río Negro, Clarín (supplementary).
+- **Google APIs (googleapis npm package):** For potential future Google Sheets integration.
 - **PostgreSQL:** Primary database.
-- **Zod:** Schema validation library.
+- **Zod:** Schema validation.
 - **bcrypt:** Password hashing.
-- **multer:** For handling file uploads (e.g., tax calendars).
-- **xlsx or exceljs:** For processing Excel files (future integration).
+- **multer:** For file uploads.
+- **xlsx or exceljs:** For future Excel file processing.

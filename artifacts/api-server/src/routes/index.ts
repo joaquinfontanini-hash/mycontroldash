@@ -33,6 +33,7 @@ import adminEmailRouter from "./admin-email";
 import notificationsRouter from "./notifications";
 import inAppNotificationsRouter from "./in-app-notifications";
 import preferencesRouter from "./preferences";
+import studioRouter from "./studio";
 
 const router: IRouter = Router();
 
@@ -79,6 +80,7 @@ router.use("/finance", requireModule("finance"));
 router.use(["/daily-goals", "/strategy-goals"], requireModule("goals"));
 router.use("/contacts", requireModule("contacts"));
 router.use("/conversations", requireModule("chat"));
+router.use("/studio", requireModule("dashboard_studio"));
 
 // Sub-routers — mounted without path so their own route definitions are preserved
 router.use(dashboardRouter);
@@ -98,5 +100,6 @@ router.use(goalsRouter);
 router.use(contactsRouter);
 router.use(chatRouter);
 router.use(fiscalAdminRouter);
+router.use(studioRouter);
 
 export default router;
