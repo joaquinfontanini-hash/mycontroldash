@@ -1,0 +1,324 @@
+OBJETIVO:
+Implementar la Parte 2 del módulo "Dashboard Studio" sobre la base ya construida en la Parte 1.
+
+Esta Parte 2 debe transformar la base persistente del módulo en una capacidad premium y realmente usable: builder visual, layouts responsive por breakpoint, snapshots de widgets pesados, permisos finos, compartición, favoritos, archivado mejorado, smart summary real y hardening general.
+
+Actuá como arquitecto senior, frontend lead, backend lead, experto en performance y auditor de calidad.
+
+No rehagas la Parte 1 sin motivo.
+Reutilizá todo lo ya implementado y corregí solo lo necesario.
+
+==================================================
+BASE ESPERADA
+==================================================
+
+Ya debería existir:
+- tablas y schema base
+- CRUD base de dashboards
+- plantillas
+- generación desde prompt/template/wizard
+- widget catalog
+- data source catalog
+- viewer simple
+- módulo dashboard_studio dado de alta
+
+Trabajá sobre esa base.
+
+==================================================
+ALCANCE DE ESTA PARTE 2
+==================================================
+
+Implementar:
+
+1. Builder visual real
+- drag & drop
+- reorder
+- resize
+- alta y baja de widgets
+- edición de configuración
+- edición de títulos
+- edición de filtros globales
+- guardado persistente de layouts
+
+2. Layouts responsive por breakpoint
+- desktop
+- tablet opcional
+- mobile
+- preview por dispositivo
+- edición explícita del layout por breakpoint
+- fallback correcto
+
+3. Snapshots inteligentes
+- carga rápida de widgets pesados
+- refetch en background
+- invalidación correcta
+- indicador de frescura
+
+4. Smart Summary real basado en reglas
+- textos útiles con datos reales
+- sin inventar
+- configurable como widget
+
+5. Permisos y compartición completos
+- compartir con usuario
+- compartir con rol
+- niveles view/edit/admin
+- validaciones backend fuertes
+
+6. Favoritos, archivado, restauración, duplicado refinado
+
+7. Hardening
+- validaciones finas
+- performance
+- accesibilidad
+- estados vacíos
+- errores elegantes
+- revisión de UX
+
+==================================================
+BUILDER VISUAL
+==================================================
+
+Construir editor real, consistente con el sistema.
+
+Pantalla tipo builder:
+- canvas principal
+- panel de widgets disponibles
+- panel de configuración del widget seleccionado
+- barra superior con:
+  - nombre dashboard
+  - guardar
+  - preview
+  - compartir
+  - publicar/activar
+- selector de breakpoint:
+  - desktop
+  - tablet
+  - mobile
+
+Debe permitir:
+- arrastrar widgets al canvas
+- reordenar
+- cambiar ancho/alto o equivalente según grid
+- quitar widget
+- duplicar widget
+- editar config del widget
+- editar título y subtítulo
+- guardar layout persistido
+
+No crear una UX torpe.
+Debe ser usable y clara.
+
+==================================================
+RESPONSIVE LAYOUT ENGINE
+==================================================
+
+Usar dashboard_layouts como fuente de verdad por breakpoint.
+
+Reglas:
+- desktop obligatorio
+- mobile obligatorio
+- tablet opcional
+
+Frontend:
+- detectar viewport
+- cargar layout correcto
+- fallback:
+  - si no hay tablet, usar desktop
+  - si no hay mobile, apilar automáticamente desde desktop
+
+Builder:
+- permitir editar layout desktop y mobile como mínimo
+- mostrar claramente qué breakpoint se está editando
+
+No duplicar widgets por breakpoint: cambia el layout, no la identidad del widget.
+
+==================================================
+SNAPSHOTS / CACHE DE WIDGETS
+==================================================
+
+Implementar de verdad la lógica preparada en Parte 1.
+
+Campos ya previstos:
+- lastDataSnapshotJson
+- lastDataSnapshotAt
+- snapshotExpiresAt
+- snapshotStatus
+- snapshotVersion
+- dataSignature
+
+Reglas:
+- snapshot solo para widgets con supportsSnapshot=true
+- snapshot solo si el widget es elegible
+- render inicial rápido desde snapshot si existe
+- luego refetch real en background
+- actualizar snapshot cuando corresponda
+- invalidar snapshot si cambia:
+  - configJson
+  - dataSourceKey
+  - filtros relevantes
+  - firma de datos
+
+Crear hash/firma robusta basada en:
+- dataSourceKey
+- configJson
+- filtros aplicados
+
+Agregar endpoint:
+- POST /api/studio/widgets/:id/refresh-snapshot
+
+Indicadores UI:
+- actualizado hace X
+- actualizando
+- snapshot vencido
+- error al refrescar
+
+No usar snapshot como única verdad en widgets críticos en tiempo real.
+
+==================================================
+SMART SUMMARY
+==================================================
+
+Implementar widget "smart_summary" real basado en reglas.
+
+Debe analizar datos reales disponibles y producir frases útiles, por ejemplo:
+- Tenés 4 vencimientos críticos en las próximas 48 horas
+- Tus gastos variables subieron 18% vs la semana pasada
+- Hay 6 tareas sin movimiento hace más de 5 días
+- Se detectaron 3 noticias económicas de impacto alto
+
+Reglas:
+- no inventar
+- no exagerar
+- si faltan datos, mostrar fallback honesto
+- dejar base lista para evolucionar a IA real
+
+==================================================
+PERMISOS Y COMPARTICIÓN
+==================================================
+
+Completar flujo real:
+- dashboard privado
+- compartir con usuarios específicos
+- compartir con roles
+- permisos view/edit/admin
+
+Endpoints necesarios:
+- PATCH /api/studio/dashboards/:id/permissions
+- GET /api/studio/dashboards/:id/permissions
+
+Validaciones:
+- solo owner/admin autorizado puede cambiar permisos
+- no dejar dashboard huérfano de control
+- no escalar privilegios desde frontend
+
+==================================================
+FAVORITOS, ARCHIVADO Y CICLO DE VIDA
+==================================================
+
+Completar:
+- marcar/desmarcar favorito
+- archivado claro
+- restauración
+- duplicado robusto
+- soft delete correcto
+
+Revisar que el listado:
+- míos
+- compartidos
+- plantillas
+- archivados
+funcione realmente bien
+
+==================================================
+API / ENDPOINTS ADICIONALES O AJUSTADOS
+==================================================
+
+Además de los existentes, agregar o completar:
+
+- GET /api/studio/dashboards/:id/permissions
+- PATCH /api/studio/dashboards/:id/permissions
+- POST /api/studio/widgets/:id/refresh-snapshot
+- PATCH /api/studio/widgets/:id
+- POST /api/studio/widgets
+- DELETE /api/studio/widgets/:id
+
+Ajustar si hace falta:
+- GET /api/studio/dashboards/:id/layouts
+- PATCH /api/studio/dashboards/:id/layouts
+
+==================================================
+FRONTEND — PARTE 2
+==================================================
+
+Crear o completar:
+- DashboardBuilder
+- WidgetPalette
+- WidgetConfigPanel
+- BreakpointPreviewToggle
+- ResponsiveLayoutEditor
+- SnapshotStatusBadge
+- SmartSummaryWidget
+- ShareDashboardDialog
+- FavoriteToggle
+- ArchiveRestoreActions
+
+Mejorar DashboardViewer:
+- render por breakpoint
+- usar snapshot como carga inicial donde aplique
+- actualizar visualmente cuando llega fetch real
+
+Agregar estados:
+- loading elegante
+- empty state útil
+- error state usable
+- skeletons donde corresponda
+
+==================================================
+PERFORMANCE Y HARDENING
+==================================================
+
+Aplicar:
+- lazy loading donde sume
+- memoización
+- debounce en builder
+- evitar rerenders innecesarios
+- validaciones de JSON/layout
+- chequeos de integridad antes de persistir
+- accesibilidad razonable
+- manejo de errores claro
+
+==================================================
+AUDITORÍA
+==================================================
+
+Registrar:
+- cambios de layout
+- alta/baja de widgets
+- cambios de configuración
+- refrescos de snapshot
+- cambios de permisos
+- favorito
+- archivado/restauración
+- duplicado
+
+==================================================
+REGLAS DE IMPLEMENTACIÓN
+==================================================
+
+Antes de codear:
+1. revisar lo hecho en Parte 1
+2. detectar si hay que corregir algo mínimo antes de seguir
+3. proponer plan y archivos
+4. luego implementar
+
+Al finalizar:
+- listar archivos creados/modificados
+- explicar cómo probar cada flujo
+- explicar limitaciones honestas
+- dejar recomendaciones de evolución futura
+
+No dejar hacks frágiles.
+No dejar layout mobile improvisado.
+No dejar snapshots inconsistentes.
+No romper compatibilidad con Parte 1.

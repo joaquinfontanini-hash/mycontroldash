@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, or, ne } from "drizzle-orm";
+import { eq, and, desc, or, ne, sql } from "drizzle-orm";
 import {
   db,
   dashboardsTable,
@@ -11,8 +11,9 @@ import {
   dashboardFiltersTable,
   widgetDefinitionsTable,
   auditLogsTable,
+  usersTable,
 } from "@workspace/db";
-import { requireAuth, getCurrentUserId, getCurrentUserIdNum, assertOwnership } from "../middleware/require-auth.js";
+import { requireAuth, requireModule, getCurrentUserId, getCurrentUserIdNum, assertOwnership } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
 import { DATA_SOURCE_CATALOG, resolveDataSource } from "../services/studio-data-sources.js";
 import {
@@ -22,8 +23,12 @@ import {
   buildDefaultLayouts,
   type WizardInput,
 } from "../services/studio-engine.js";
+import { buildSmartSummary, type SmartSummaryContext } from "../services/studio-smart-summary.js";
 
 const router: IRouter = Router();
+
+// All studio routes require auth + dashboard_studio module
+const studioAuth = [requireAuth, requireModule("dashboard_studio")];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,19 +66,46 @@ async function auditLog(action: string, detail: string, userId?: number) {
     await db.insert(auditLogsTable).values({
       action,
       detail,
-      userId: userId ?? null,
+      userId: userId ? String(userId) : null,
       createdAt: new Date(),
     });
   } catch {}
+}
+
+/**
+ * Check if a user has access to a dashboard.
+ * Returns the permission level: 'owner' | 'admin' | 'edit' | 'view' | null
+ */
+async function getDashboardAccess(
+  dashId: number,
+  userId: number,
+  dbUser?: { role?: string }
+): Promise<"owner" | "admin" | "edit" | "view" | null> {
+  const [dash] = await db.select({ ownerUserId: dashboardsTable.ownerUserId })
+    .from(dashboardsTable)
+    .where(eq(dashboardsTable.id, dashId));
+  if (!dash) return null;
+  if (dash.ownerUserId === userId) return "owner";
+  if (dbUser?.role === "super_admin") return "admin";
+  const [perm] = await db.select({ permissionLevel: dashboardPermissionsTable.permissionLevel })
+    .from(dashboardPermissionsTable)
+    .where(and(
+      eq(dashboardPermissionsTable.dashboardId, dashId),
+      eq(dashboardPermissionsTable.subjectType, "user"),
+      eq(dashboardPermissionsTable.subjectId, userId),
+    ));
+  if (perm) return perm.permissionLevel as "admin" | "edit" | "view";
+  return null;
 }
 
 async function insertWidgetsAndFilters(
   dashboardId: number,
   widgets: Array<{ type: string; title: string; dataSourceKey?: string | null; configJson?: Record<string, unknown>; orderIndex: number; subtitle?: string }>,
   filters: Array<{ key: string; label: string; type: string; defaultValueJson?: unknown; orderIndex?: number }>
-) {
+): Promise<Array<{ id: number; orderIndex: number | null }>> {
+  let insertedWidgets: Array<{ id: number; orderIndex: number | null }> = [];
   if (widgets.length > 0) {
-    await db.insert(dashboardWidgetsTable).values(
+    insertedWidgets = await db.insert(dashboardWidgetsTable).values(
       widgets.map(w => ({
         dashboardId,
         type: w.type,
@@ -83,7 +115,7 @@ async function insertWidgetsAndFilters(
         configJson: w.configJson ?? {},
         orderIndex: w.orderIndex,
       }))
-    );
+    ).returning({ id: dashboardWidgetsTable.id, orderIndex: dashboardWidgetsTable.orderIndex });
   }
   if (filters.length > 0) {
     await db.insert(dashboardFiltersTable).values(
@@ -98,61 +130,82 @@ async function insertWidgetsAndFilters(
       }))
     );
   }
+  return insertedWidgets;
 }
 
 async function insertLayouts(dashboardId: number, layoutData: { desktop: unknown[]; mobile: unknown[] }) {
   await db.insert(dashboardLayoutsTable).values([
     { dashboardId, breakpoint: "desktop", layoutJson: layoutData.desktop },
-    { dashboardId, breakpoint: "mobile", layoutJson: layoutData.mobile },
+    { dashboardId, breakpoint: "mobile",  layoutJson: layoutData.mobile },
   ]);
 }
 
 // ── GET /api/studio/dashboards ────────────────────────────────────────────────
 
-router.get("/studio/dashboards", requireAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const { tab = "mine" } = req.query as { tab?: string };
+    const tab = (req.query.tab as string) ?? "mine";
 
-    let query = db.select().from(dashboardsTable);
+    let dashboards;
 
     if (tab === "mine") {
-      const rows = await db.select().from(dashboardsTable)
-        .where(and(eq(dashboardsTable.ownerUserId, userId), ne(dashboardsTable.status, "archived")))
-        .orderBy(desc(dashboardsTable.updatedAt));
-      res.json(rows);
-      return;
-    }
-
-    if (tab === "archived") {
-      const rows = await db.select().from(dashboardsTable)
-        .where(and(eq(dashboardsTable.ownerUserId, userId), eq(dashboardsTable.status, "archived")))
-        .orderBy(desc(dashboardsTable.archivedAt));
-      res.json(rows);
-      return;
-    }
-
-    if (tab === "shared") {
-      const perms = await db.select({ dashboardId: dashboardPermissionsTable.dashboardId })
-        .from(dashboardPermissionsTable)
-        .where(eq(dashboardPermissionsTable.subjectId, userId) as any);
-      const ids = perms.map(p => p.dashboardId);
-      if (ids.length === 0) { res.json([]); return; }
-      const rows = await db.select().from(dashboardsTable)
+      dashboards = await db.select().from(dashboardsTable)
         .where(and(
-          or(...ids.map(id => eq(dashboardsTable.id, id))),
-          ne(dashboardsTable.ownerUserId, userId),
+          eq(dashboardsTable.ownerUserId, userId),
+          ne(dashboardsTable.status, "archived"),
         ))
         .orderBy(desc(dashboardsTable.updatedAt));
-      res.json(rows);
+
+    } else if (tab === "shared") {
+      const perms = await db.select({ dashboardId: dashboardPermissionsTable.dashboardId })
+        .from(dashboardPermissionsTable)
+        .where(and(
+          eq(dashboardPermissionsTable.subjectType, "user"),
+          eq(dashboardPermissionsTable.subjectId, userId),
+        ));
+      const ids = perms.map(p => p.dashboardId);
+      if (ids.length === 0) {
+        dashboards = [];
+      } else {
+        dashboards = await db.select().from(dashboardsTable)
+          .where(and(
+            or(...ids.map(id => eq(dashboardsTable.id, id))),
+            ne(dashboardsTable.ownerUserId, userId),
+          ))
+          .orderBy(desc(dashboardsTable.updatedAt));
+      }
+
+    } else if (tab === "favorites") {
+      dashboards = await db.select().from(dashboardsTable)
+        .where(and(
+          eq(dashboardsTable.ownerUserId, userId),
+          eq(dashboardsTable.isFavorite, true),
+        ))
+        .orderBy(desc(dashboardsTable.updatedAt));
+
+    } else if (tab === "archived") {
+      dashboards = await db.select().from(dashboardsTable)
+        .where(and(
+          eq(dashboardsTable.ownerUserId, userId),
+          eq(dashboardsTable.status, "archived"),
+        ))
+        .orderBy(desc(dashboardsTable.archivedAt));
+
+    } else if (tab === "templates") {
+      const templates = await db.select().from(dashboardTemplatesTable)
+        .where(eq(dashboardTemplatesTable.isActive, true))
+        .orderBy(dashboardTemplatesTable.name);
+      res.json(templates);
       return;
+
+    } else {
+      dashboards = await db.select().from(dashboardsTable)
+        .where(eq(dashboardsTable.ownerUserId, userId))
+        .orderBy(desc(dashboardsTable.updatedAt));
     }
 
-    // Default: mine
-    const rows = await db.select().from(dashboardsTable)
-      .where(and(eq(dashboardsTable.ownerUserId, userId), ne(dashboardsTable.status, "archived")))
-      .orderBy(desc(dashboardsTable.updatedAt));
-    res.json(rows);
+    res.json(dashboards);
   } catch (err) {
     logger.error({ err }, "studio: list dashboards error");
     res.status(500).json({ error: "Error al cargar dashboards" });
@@ -161,28 +214,26 @@ router.get("/studio/dashboards", requireAuth, async (req, res): Promise<void> =>
 
 // ── POST /api/studio/dashboards ───────────────────────────────────────────────
 
-router.post("/studio/dashboards", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const { name, description, icon, color, category, sourceType = "manual" } = req.body;
-    if (!name) { res.status(400).json({ error: "name es requerido" }); return; }
-
-    const slug = await uniqueSlug(name, userId);
+    const { name, description, icon, color, category } = req.body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name es requerido" }); return;
+    }
+    const slug = await uniqueSlug(name.trim(), userId);
     const [dash] = await db.insert(dashboardsTable).values({
       ownerUserId: userId,
-      name,
+      name: name.trim(),
       slug,
       description: description ?? null,
       icon: icon ?? "📊",
       color: color ?? "#6b7280",
       category: category ?? "general",
-      sourceType,
       status: "draft",
     }).returning();
 
-    await insertLayouts(dash.id, { desktop: [], mobile: [] });
     await auditLog("studio_dashboard_created", `Dashboard "${name}" creado (manual)`, userId);
-
     res.status(201).json(dash);
   } catch (err) {
     logger.error({ err }, "studio: create dashboard error");
@@ -192,34 +243,31 @@ router.post("/studio/dashboards", requireAuth, async (req, res): Promise<void> =
 
 // ── GET /api/studio/dashboards/:id ───────────────────────────────────────────
 
-router.get("/studio/dashboards/:id", requireAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards/:id", studioAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getCurrentUserIdNum(req);
-    const dbUser = (req as any).dbUser;
-    const id = parseInt(req.params.id);
+    const userId  = getCurrentUserIdNum(req);
+    const dbUser  = (req as any).dbUser;
+    const id      = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, dbUser);
+    if (!access) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
 
-    // ownership or shared permission
-    if (dash.ownerUserId !== userId && dbUser?.role !== "super_admin") {
-      const [perm] = await db.select().from(dashboardPermissionsTable)
-        .where(and(
-          eq(dashboardPermissionsTable.dashboardId, id),
-          eq(dashboardPermissionsTable.subjectType, "user"),
-          eq(dashboardPermissionsTable.subjectId, userId) as any,
-        ));
-      if (!perm) { res.status(403).json({ error: "Sin acceso a este dashboard" }); return; }
-    }
-
-    const [widgets, layouts, filters] = await Promise.all([
-      db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.dashboardId, id)),
-      db.select().from(dashboardLayoutsTable).where(eq(dashboardLayoutsTable.dashboardId, id)),
-      db.select().from(dashboardFiltersTable).where(eq(dashboardFiltersTable.dashboardId, id)),
+    const [widgets, filters, layouts] = await Promise.all([
+      db.select().from(dashboardWidgetsTable)
+        .where(eq(dashboardWidgetsTable.dashboardId, id))
+        .orderBy(dashboardWidgetsTable.orderIndex),
+      db.select().from(dashboardFiltersTable)
+        .where(eq(dashboardFiltersTable.dashboardId, id))
+        .orderBy(dashboardFiltersTable.orderIndex),
+      db.select().from(dashboardLayoutsTable)
+        .where(eq(dashboardLayoutsTable.dashboardId, id)),
     ]);
 
-    res.json({ ...dash, widgets, layouts, filters });
+    res.json({ ...dash, widgets, filters, layouts, _access: access });
   } catch (err) {
     logger.error({ err }, "studio: get dashboard error");
     res.status(500).json({ error: "Error al cargar dashboard" });
@@ -228,30 +276,39 @@ router.get("/studio/dashboards/:id", requireAuth, async (req, res): Promise<void
 
 // ── PATCH /api/studio/dashboards/:id ─────────────────────────────────────────
 
-router.patch("/studio/dashboards/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/studio/dashboards/:id", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id = parseInt(req.params.id);
+    const dbUser = (req as any).dbUser;
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, dbUser);
+    if (!access || access === "view") {
+      res.status(access ? 403 : 404).json({ error: access ? "Sin permiso de edición" : "Dashboard no encontrado" });
+      return;
+    }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
 
     const { name, description, icon, color, category, status, isFavorite } = req.body;
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (name !== undefined) {
-      updates.name = name;
+    const updates: Record<string, unknown> = { updatedAt: new Date(), version: dash.version + 1 };
+    if (name        !== undefined) updates.name        = name;
+    if (description !== undefined) updates.description = description;
+    if (icon        !== undefined) updates.icon        = icon;
+    if (color       !== undefined) updates.color       = color;
+    if (category    !== undefined) updates.category    = category;
+    if (status      !== undefined) updates.status      = status;
+    if (isFavorite  !== undefined) updates.isFavorite  = isFavorite;
+
+    if (name && name !== dash.name) {
       updates.slug = await uniqueSlug(name, userId, id);
     }
-    if (description !== undefined) updates.description = description;
-    if (icon !== undefined) updates.icon = icon;
-    if (color !== undefined) updates.color = color;
-    if (category !== undefined) updates.category = category;
-    if (status !== undefined) updates.status = status;
-    if (isFavorite !== undefined) updates.isFavorite = isFavorite;
 
-    const [updated] = await db.update(dashboardsTable).set(updates).where(eq(dashboardsTable.id, id)).returning();
+    const [updated] = await db.update(dashboardsTable).set(updates)
+      .where(eq(dashboardsTable.id, id)).returning();
+
     await auditLog("studio_dashboard_updated", `Dashboard "${dash.name}" actualizado`, userId);
     res.json(updated);
   } catch (err) {
@@ -262,35 +319,43 @@ router.patch("/studio/dashboards/:id", requireAuth, async (req, res): Promise<vo
 
 // ── POST /api/studio/dashboards/:id/duplicate ────────────────────────────────
 
-router.post("/studio/dashboards/:id/duplicate", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/duplicate", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id = parseInt(req.params.id);
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
 
     const [source] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!source) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
 
-    const newName = `${source.name} (copia)`;
-    const slug = await uniqueSlug(newName, userId);
+    const [widgets, filters, layouts] = await Promise.all([
+      db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.dashboardId, id)),
+      db.select().from(dashboardFiltersTable).where(eq(dashboardFiltersTable.dashboardId, id)),
+      db.select().from(dashboardLayoutsTable).where(eq(dashboardLayoutsTable.dashboardId, id)),
+    ]);
+
+    const newName = (req.body.name as string | undefined) ?? `${source.name} (copia)`;
+    const newSlug = await uniqueSlug(newName, userId);
 
     const [newDash] = await db.insert(dashboardsTable).values({
       ownerUserId: userId,
       name: newName,
-      slug,
+      slug: newSlug,
       description: source.description,
       icon: source.icon,
       color: source.color,
       category: source.category,
-      sourceType: source.sourceType,
-      templateKey: source.templateKey,
+      sourceType: "duplicate",
       status: "draft",
     }).returning();
 
-    // Copy widgets
-    const widgets = await db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.dashboardId, id));
+    // Duplicate widgets and remap IDs for layouts
+    const widgetIdMap: Record<number, number> = {};
     if (widgets.length > 0) {
-      await db.insert(dashboardWidgetsTable).values(
+      const newWidgets = await db.insert(dashboardWidgetsTable).values(
         widgets.map(w => ({
           dashboardId: newDash.id,
           type: w.type,
@@ -299,22 +364,15 @@ router.post("/studio/dashboards/:id/duplicate", requireAuth, async (req, res): P
           dataSourceKey: w.dataSourceKey,
           configJson: w.configJson,
           orderIndex: w.orderIndex,
+          visible: w.visible,
         }))
-      );
+      ).returning({ id: dashboardWidgetsTable.id });
+
+      widgets.forEach((oldW, i) => {
+        widgetIdMap[oldW.id] = newWidgets[i].id;
+      });
     }
 
-    // Copy layouts
-    const layouts = await db.select().from(dashboardLayoutsTable).where(eq(dashboardLayoutsTable.dashboardId, id));
-    if (layouts.length > 0) {
-      await db.insert(dashboardLayoutsTable).values(
-        layouts.map(l => ({ dashboardId: newDash.id, breakpoint: l.breakpoint, layoutJson: l.layoutJson }))
-      );
-    } else {
-      await insertLayouts(newDash.id, { desktop: [], mobile: [] });
-    }
-
-    // Copy filters
-    const filters = await db.select().from(dashboardFiltersTable).where(eq(dashboardFiltersTable.dashboardId, id));
     if (filters.length > 0) {
       await db.insert(dashboardFiltersTable).values(
         filters.map(f => ({
@@ -329,6 +387,19 @@ router.post("/studio/dashboards/:id/duplicate", requireAuth, async (req, res): P
       );
     }
 
+    // Remap widgetId references in layout JSON
+    if (layouts.length > 0) {
+      await db.insert(dashboardLayoutsTable).values(
+        layouts.map(l => {
+          const remapped = (Array.isArray(l.layoutJson) ? l.layoutJson : []).map((item: any) => ({
+            ...item,
+            widgetId: widgetIdMap[item.widgetId] ?? item.widgetId,
+          }));
+          return { dashboardId: newDash.id, breakpoint: l.breakpoint, layoutJson: remapped };
+        })
+      );
+    }
+
     await auditLog("studio_dashboard_duplicated", `Dashboard "${source.name}" duplicado como "${newName}"`, userId);
     res.status(201).json(newDash);
   } catch (err) {
@@ -339,10 +410,10 @@ router.post("/studio/dashboards/:id/duplicate", requireAuth, async (req, res): P
 
 // ── POST /api/studio/dashboards/:id/archive ──────────────────────────────────
 
-router.post("/studio/dashboards/:id/archive", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/archive", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id = parseInt(req.params.id);
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
@@ -351,8 +422,7 @@ router.post("/studio/dashboards/:id/archive", requireAuth, async (req, res): Pro
 
     const [updated] = await db.update(dashboardsTable)
       .set({ status: "archived", archivedAt: new Date(), updatedAt: new Date() })
-      .where(eq(dashboardsTable.id, id))
-      .returning();
+      .where(eq(dashboardsTable.id, id)).returning();
 
     await auditLog("studio_dashboard_archived", `Dashboard "${dash.name}" archivado`, userId);
     res.json(updated);
@@ -364,10 +434,10 @@ router.post("/studio/dashboards/:id/archive", requireAuth, async (req, res): Pro
 
 // ── POST /api/studio/dashboards/:id/restore ──────────────────────────────────
 
-router.post("/studio/dashboards/:id/restore", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/restore", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id = parseInt(req.params.id);
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
@@ -376,8 +446,7 @@ router.post("/studio/dashboards/:id/restore", requireAuth, async (req, res): Pro
 
     const [updated] = await db.update(dashboardsTable)
       .set({ status: "draft", archivedAt: null, updatedAt: new Date() })
-      .where(eq(dashboardsTable.id, id))
-      .returning();
+      .where(eq(dashboardsTable.id, id)).returning();
 
     await auditLog("studio_dashboard_restored", `Dashboard "${dash.name}" restaurado`, userId);
     res.json(updated);
@@ -389,16 +458,16 @@ router.post("/studio/dashboards/:id/restore", requireAuth, async (req, res): Pro
 
 // ── DELETE /api/studio/dashboards/:id ────────────────────────────────────────
 
-router.delete("/studio/dashboards/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/studio/dashboards/:id", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id = parseInt(req.params.id);
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
     if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
-    if (dash.isSystem) { res.status(403).json({ error: "No se pueden eliminar dashboards del sistema" }); return; }
+    if (dash.isSystem)  { res.status(403).json({ error: "No se pueden eliminar dashboards del sistema" }); return; }
 
     await db.delete(dashboardsTable).where(eq(dashboardsTable.id, id));
     await auditLog("studio_dashboard_deleted", `Dashboard "${dash.name}" eliminado`, userId);
@@ -411,10 +480,15 @@ router.delete("/studio/dashboards/:id", requireAuth, async (req, res): Promise<v
 
 // ── GET /api/studio/dashboards/:id/layouts ───────────────────────────────────
 
-router.get("/studio/dashboards/:id/layouts", requireAuth, async (req, res): Promise<void> => {
+router.get("/studio/dashboards/:id/layouts", studioAuth, async (req, res): Promise<void> => {
   try {
-    const id = parseInt(req.params.id);
+    const userId = getCurrentUserIdNum(req);
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
+
     const rows = await db.select().from(dashboardLayoutsTable).where(eq(dashboardLayoutsTable.dashboardId, id));
     res.json(rows);
   } catch (err) {
@@ -425,30 +499,38 @@ router.get("/studio/dashboards/:id/layouts", requireAuth, async (req, res): Prom
 
 // ── PATCH /api/studio/dashboards/:id/layouts ─────────────────────────────────
 
-router.patch("/studio/dashboards/:id/layouts", requireAuth, async (req, res): Promise<void> => {
+router.patch("/studio/dashboards/:id/layouts", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const id = parseInt(req.params.id);
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
-    const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
-    if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access || access === "view") {
+      res.status(access ? 403 : 404).json({ error: access ? "Sin permiso de edición" : "Dashboard no encontrado" });
+      return;
+    }
 
     const { breakpoint, layoutJson } = req.body;
-    if (!breakpoint || !layoutJson) { res.status(400).json({ error: "breakpoint y layoutJson son requeridos" }); return; }
+    if (!breakpoint || !Array.isArray(layoutJson)) {
+      res.status(400).json({ error: "breakpoint (string) y layoutJson (array) son requeridos" }); return;
+    }
+    if (!["desktop", "tablet", "mobile"].includes(breakpoint)) {
+      res.status(400).json({ error: "breakpoint debe ser desktop, tablet o mobile" }); return;
+    }
 
-    const existing = await db.select().from(dashboardLayoutsTable)
+    const [existing] = await db.select().from(dashboardLayoutsTable)
       .where(and(eq(dashboardLayoutsTable.dashboardId, id), eq(dashboardLayoutsTable.breakpoint, breakpoint)));
 
-    if (existing.length > 0) {
+    if (existing) {
       await db.update(dashboardLayoutsTable)
-        .set({ layoutJson, updatedAt: new Date(), version: existing[0].version + 1 })
-        .where(eq(dashboardLayoutsTable.id, existing[0].id));
+        .set({ layoutJson, updatedAt: new Date(), version: existing.version + 1 })
+        .where(eq(dashboardLayoutsTable.id, existing.id));
     } else {
       await db.insert(dashboardLayoutsTable).values({ dashboardId: id, breakpoint, layoutJson });
     }
 
+    await auditLog("studio_layout_updated", `Layout ${breakpoint} actualizado para dashboard #${id}`, userId);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "studio: update layout error");
@@ -456,9 +538,121 @@ router.patch("/studio/dashboards/:id/layouts", requireAuth, async (req, res): Pr
   }
 });
 
+// ── GET /api/studio/dashboards/:id/permissions ───────────────────────────────
+
+router.get("/studio/dashboards/:id/permissions", studioAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserIdNum(req);
+    const id     = parseInt(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
+    if (access === "view" || access === "edit") {
+      res.status(403).json({ error: "Solo el propietario puede ver los permisos" }); return;
+    }
+
+    const perms = await db.select().from(dashboardPermissionsTable)
+      .where(eq(dashboardPermissionsTable.dashboardId, id));
+
+    // Enrich with user info where possible
+    const enriched = await Promise.all(perms.map(async p => {
+      if (p.subjectType === "user" && p.subjectId) {
+        const [user] = await db.select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+          .from(usersTable).where(eq(usersTable.id, p.subjectId));
+        return { ...p, user: user ?? null };
+      }
+      return { ...p, user: null };
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    logger.error({ err }, "studio: get permissions error");
+    res.status(500).json({ error: "Error al cargar permisos" });
+  }
+});
+
+// ── PATCH /api/studio/dashboards/:id/permissions ─────────────────────────────
+// Body: { op: 'grant' | 'revoke' | 'update', subjectType: 'user' | 'role', subjectId?: number, subjectRoleKey?: string, permissionLevel?: 'view' | 'edit' | 'admin' }
+
+router.patch("/studio/dashboards/:id/permissions", studioAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserIdNum(req);
+    const id     = parseInt(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
+    if (access !== "owner" && access !== "admin") {
+      res.status(403).json({ error: "Solo el propietario o administradores pueden cambiar permisos" }); return;
+    }
+
+    const { op, subjectType, subjectId, subjectRoleKey, permissionLevel } = req.body;
+    if (!op || !subjectType) { res.status(400).json({ error: "op y subjectType son requeridos" }); return; }
+    if (!["user", "role"].includes(subjectType)) { res.status(400).json({ error: "subjectType inválido" }); return; }
+    if (!["grant", "revoke", "update"].includes(op)) { res.status(400).json({ error: "op inválido: grant | revoke | update" }); return; }
+
+    if (subjectType === "user") {
+      if (!subjectId) { res.status(400).json({ error: "subjectId (user ID) requerido" }); return; }
+      // Prevent self-permission modification by owner for safety
+      if (subjectId === userId) { res.status(400).json({ error: "No podés modificar tus propios permisos" }); return; }
+      // Verify user exists
+      const [targetUser] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, subjectId));
+      if (!targetUser) { res.status(404).json({ error: "Usuario no encontrado" }); return; }
+    }
+
+    if (op === "revoke") {
+      const where = subjectType === "user"
+        ? and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "user"), eq(dashboardPermissionsTable.subjectId, subjectId))
+        : and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "role"), eq(dashboardPermissionsTable.subjectRoleKey, subjectRoleKey));
+      await db.delete(dashboardPermissionsTable).where(where!);
+      await auditLog("studio_permission_revoked", `Permiso revocado para ${subjectType} en dashboard #${id}`, userId);
+      res.json({ ok: true });
+      return;
+    }
+
+    if (!permissionLevel || !["view", "edit", "admin"].includes(permissionLevel)) {
+      res.status(400).json({ error: "permissionLevel inválido: view | edit | admin" }); return;
+    }
+
+    // Prevent privilege escalation: non-super-admin cannot grant admin
+    if (permissionLevel === "admin" && access !== "owner" && (req as any).dbUser?.role !== "super_admin") {
+      res.status(403).json({ error: "Solo el propietario puede otorgar permisos de admin" }); return;
+    }
+
+    // Upsert permission
+    const existingWhere = subjectType === "user"
+      ? and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "user"), eq(dashboardPermissionsTable.subjectId, subjectId))
+      : and(eq(dashboardPermissionsTable.dashboardId, id), eq(dashboardPermissionsTable.subjectType, "role"), eq(dashboardPermissionsTable.subjectRoleKey, subjectRoleKey));
+
+    const [existing] = await db.select().from(dashboardPermissionsTable).where(existingWhere!);
+
+    if (existing) {
+      await db.update(dashboardPermissionsTable)
+        .set({ permissionLevel, updatedAt: new Date() })
+        .where(eq(dashboardPermissionsTable.id, existing.id));
+    } else {
+      await db.insert(dashboardPermissionsTable).values({
+        dashboardId: id,
+        grantedBy: userId,
+        subjectType,
+        subjectId: subjectType === "user" ? subjectId : null,
+        subjectRoleKey: subjectType === "role" ? subjectRoleKey : null,
+        permissionLevel,
+      });
+    }
+
+    await auditLog("studio_permission_granted", `Permiso ${permissionLevel} otorgado a ${subjectType} en dashboard #${id}`, userId);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "studio: update permissions error");
+    res.status(500).json({ error: "Error al actualizar permisos" });
+  }
+});
+
 // ── GET /api/studio/templates ─────────────────────────────────────────────────
 
-router.get("/studio/templates", requireAuth, async (req, res): Promise<void> => {
+router.get("/studio/templates", studioAuth, async (req, res): Promise<void> => {
   try {
     const rows = await db.select().from(dashboardTemplatesTable)
       .where(eq(dashboardTemplatesTable.isActive, true))
@@ -472,7 +666,7 @@ router.get("/studio/templates", requireAuth, async (req, res): Promise<void> => 
 
 // ── GET /api/studio/widget-definitions ───────────────────────────────────────
 
-router.get("/studio/widget-definitions", requireAuth, async (req, res): Promise<void> => {
+router.get("/studio/widget-definitions", studioAuth, async (req, res): Promise<void> => {
   try {
     const rows = await db.select().from(widgetDefinitionsTable)
       .where(eq(widgetDefinitionsTable.isActive, true))
@@ -486,25 +680,22 @@ router.get("/studio/widget-definitions", requireAuth, async (req, res): Promise<
 
 // ── GET /api/studio/data-sources ─────────────────────────────────────────────
 
-router.get("/studio/data-sources", requireAuth, async (req, res): Promise<void> => {
+router.get("/studio/data-sources", studioAuth, async (req, res): Promise<void> => {
   res.json(DATA_SOURCE_CATALOG);
 });
 
 // ── POST /api/studio/generate-from-prompt ────────────────────────────────────
 
-router.post("/studio/generate-from-prompt", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/generate-from-prompt", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const { prompt, save = false } = req.body;
     if (!prompt || typeof prompt !== "string" || prompt.trim().length < 5) {
-      res.status(400).json({ error: "Prompt demasiado corto (mínimo 5 caracteres)" });
-      return;
+      res.status(400).json({ error: "Prompt demasiado corto (mínimo 5 caracteres)" }); return;
     }
 
     const generated = generateFromPrompt(prompt.trim());
-    const layouts = buildDefaultLayouts(generated.widgets);
 
-    // Record run
     const [run] = await db.insert(dashboardRunsTable).values({
       userId,
       inputType: "prompt",
@@ -515,12 +706,11 @@ router.post("/studio/generate-from-prompt", requireAuth, async (req, res): Promi
     }).returning();
 
     if (!save) {
-      // Return preview without persisting
+      const layouts = buildDefaultLayouts(generated.widgets.map((w, i) => ({ id: i + 1, orderIndex: w.orderIndex })));
       res.json({ preview: true, run: { id: run.id }, generated, layouts });
       return;
     }
 
-    // Persist
     const slug = await uniqueSlug(generated.name, userId);
     const [dash] = await db.insert(dashboardsTable).values({
       ownerUserId: userId,
@@ -535,24 +725,19 @@ router.post("/studio/generate-from-prompt", requireAuth, async (req, res): Promi
       status: "draft",
     }).returning();
 
-    await insertWidgetsAndFilters(dash.id, generated.widgets, generated.filters);
+    const insertedWidgets = await insertWidgetsAndFilters(dash.id, generated.widgets, generated.filters);
+    const layouts = buildDefaultLayouts(insertedWidgets);
     await insertLayouts(dash.id, layouts);
 
     await auditLog("studio_generate_prompt", `Dashboard "${generated.name}" generado desde prompt`, userId);
     res.status(201).json({ preview: false, run: { id: run.id }, dashboard: dash, generated, layouts });
   } catch (err) {
     logger.error({ err }, "studio: generate from prompt error");
-    // Record failed run
     try {
-      const userId = getCurrentUserIdNum(req);
+      const uid = getCurrentUserIdNum(req);
       await db.insert(dashboardRunsTable).values({
-        userId,
-        inputType: "prompt",
-        promptText: req.body?.prompt ?? null,
-        parsedIntentJson: null,
-        generatedConfigJson: null,
-        status: "error",
-        errorMessage: String(err),
+        userId: uid, inputType: "prompt", promptText: req.body?.prompt ?? null,
+        parsedIntentJson: null, generatedConfigJson: null, status: "error", errorMessage: String(err),
       });
     } catch {}
     res.status(500).json({ error: "Error al generar dashboard desde prompt" });
@@ -561,7 +746,7 @@ router.post("/studio/generate-from-prompt", requireAuth, async (req, res): Promi
 
 // ── POST /api/studio/generate-from-template ──────────────────────────────────
 
-router.post("/studio/generate-from-template", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/generate-from-template", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
     const { templateKey, name } = req.body;
@@ -571,14 +756,22 @@ router.post("/studio/generate-from-template", requireAuth, async (req, res): Pro
       .where(and(eq(dashboardTemplatesTable.key, templateKey), eq(dashboardTemplatesTable.isActive, true)));
     if (!tmpl) { res.status(404).json({ error: "Plantilla no encontrada" }); return; }
 
-    const config = tmpl.configJson as { widgets?: unknown[]; filters?: unknown[]; metadata?: Record<string, unknown> };
-    const generated = generateFromTemplate({
-      widgets: (config.widgets ?? []) as Parameters<typeof generateFromTemplate>[0]["widgets"],
-      filters: (config.filters ?? []) as Parameters<typeof generateFromTemplate>[0]["filters"],
-      metadata: config.metadata,
-    });
+    const config = tmpl.configJson as { widgets?: unknown[]; filters?: unknown[] };
+    const generated = generateFromTemplate(
+      {
+        widgets: (config.widgets ?? []) as Parameters<typeof generateFromTemplate>[0]["widgets"],
+        filters: (config.filters ?? []) as Parameters<typeof generateFromTemplate>[0]["filters"],
+      },
+      {
+        name:        tmpl.name,
+        icon:        tmpl.icon ?? undefined,
+        color:       tmpl.color ?? undefined,
+        category:    tmpl.category ?? undefined,
+        description: tmpl.description ?? undefined,
+      }
+    );
 
-    const dashName = name ?? tmpl.name;
+    const dashName = (name as string | undefined)?.trim() || tmpl.name;
     const slug = await uniqueSlug(dashName, userId);
     const [dash] = await db.insert(dashboardsTable).values({
       ownerUserId: userId,
@@ -593,16 +786,13 @@ router.post("/studio/generate-from-template", requireAuth, async (req, res): Pro
       status: "draft",
     }).returning();
 
-    const layouts = buildDefaultLayouts(generated.widgets);
-    await insertWidgetsAndFilters(dash.id, generated.widgets, generated.filters);
+    const insertedWidgets = await insertWidgetsAndFilters(dash.id, generated.widgets, generated.filters);
+    const layouts = buildDefaultLayouts(insertedWidgets);
     await insertLayouts(dash.id, layouts);
 
     await db.insert(dashboardRunsTable).values({
-      userId,
-      inputType: "template",
-      parsedIntentJson: generated.parsedIntent,
-      generatedConfigJson: generated,
-      status: "success",
+      userId, inputType: "template",
+      parsedIntentJson: generated.parsedIntent, generatedConfigJson: generated, status: "success",
     });
 
     await auditLog("studio_generate_template", `Dashboard "${dashName}" generado desde plantilla "${tmpl.name}"`, userId);
@@ -615,13 +805,12 @@ router.post("/studio/generate-from-template", requireAuth, async (req, res): Pro
 
 // ── POST /api/studio/generate-from-wizard ────────────────────────────────────
 
-router.post("/studio/generate-from-wizard", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/generate-from-wizard", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const input = req.body as WizardInput;
+    const input  = req.body as WizardInput;
     if (!input.name || !input.selectedWidgets?.length) {
-      res.status(400).json({ error: "name y al menos un widget son requeridos" });
-      return;
+      res.status(400).json({ error: "name y al menos un widget son requeridos" }); return;
     }
 
     const generated = generateFromWizard(input);
@@ -638,16 +827,13 @@ router.post("/studio/generate-from-wizard", requireAuth, async (req, res): Promi
       status: "draft",
     }).returning();
 
-    const layouts = buildDefaultLayouts(generated.widgets);
-    await insertWidgetsAndFilters(dash.id, generated.widgets, generated.filters);
+    const insertedWidgets = await insertWidgetsAndFilters(dash.id, generated.widgets, generated.filters);
+    const layouts = buildDefaultLayouts(insertedWidgets);
     await insertLayouts(dash.id, layouts);
 
     await db.insert(dashboardRunsTable).values({
-      userId,
-      inputType: "wizard",
-      parsedIntentJson: generated.parsedIntent,
-      generatedConfigJson: generated,
-      status: "success",
+      userId, inputType: "wizard",
+      parsedIntentJson: generated.parsedIntent, generatedConfigJson: generated, status: "success",
     });
 
     await auditLog("studio_generate_wizard", `Dashboard "${input.name}" generado desde wizard`, userId);
@@ -660,28 +846,32 @@ router.post("/studio/generate-from-wizard", requireAuth, async (req, res): Promi
 
 // ── POST /api/studio/dashboards/:id/widgets ──────────────────────────────────
 
-router.post("/studio/dashboards/:id/widgets", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/dashboards/:id/widgets", studioAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getCurrentUserIdNum(req);
+    const userId      = getCurrentUserIdNum(req);
     const dashboardId = parseInt(req.params.id);
     if (isNaN(dashboardId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
-    const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, dashboardId));
-    if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
+    const access = await getDashboardAccess(dashboardId, userId, (req as any).dbUser);
+    if (!access || access === "view") {
+      res.status(access ? 403 : 404).json({ error: access ? "Sin permiso de edición" : "Dashboard no encontrado" });
+      return;
+    }
 
-    const { type, title, dataSourceKey, configJson, orderIndex = 0 } = req.body;
+    const { type, title, subtitle, dataSourceKey, configJson, orderIndex = 0 } = req.body;
     if (!type || !title) { res.status(400).json({ error: "type y title son requeridos" }); return; }
 
     const [widget] = await db.insert(dashboardWidgetsTable).values({
       dashboardId,
       type,
       title,
+      subtitle: subtitle ?? null,
       dataSourceKey: dataSourceKey ?? null,
       configJson: configJson ?? {},
       orderIndex,
     }).returning();
 
+    await auditLog("studio_widget_added", `Widget "${title}" (${type}) agregado al dashboard #${dashboardId}`, userId);
     res.status(201).json(widget);
   } catch (err) {
     logger.error({ err }, "studio: add widget error");
@@ -691,29 +881,40 @@ router.post("/studio/dashboards/:id/widgets", requireAuth, async (req, res): Pro
 
 // ── PATCH /api/studio/widgets/:widgetId ──────────────────────────────────────
 
-router.patch("/studio/widgets/:widgetId", requireAuth, async (req, res): Promise<void> => {
+router.patch("/studio/widgets/:widgetId", studioAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getCurrentUserIdNum(req);
+    const userId   = getCurrentUserIdNum(req);
     const widgetId = parseInt(req.params.widgetId);
     if (isNaN(widgetId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [widget] = await db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.id, widgetId));
     if (!widget) { res.status(404).json({ error: "Widget no encontrado" }); return; }
 
-    const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, widget.dashboardId));
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
+    const access = await getDashboardAccess(widget.dashboardId, userId, (req as any).dbUser);
+    if (!access || access === "view") {
+      res.status(access ? 403 : 404).json({ error: access ? "Sin permiso de edición" : "Dashboard no encontrado" });
+      return;
+    }
 
     const { title, subtitle, configJson, visible, orderIndex, dataSourceKey } = req.body;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (title !== undefined) updates.title = title;
-    if (subtitle !== undefined) updates.subtitle = subtitle;
-    if (configJson !== undefined) updates.configJson = configJson;
-    if (visible !== undefined) updates.visible = visible;
-    if (orderIndex !== undefined) updates.orderIndex = orderIndex;
+    if (title         !== undefined) updates.title         = title;
+    if (subtitle      !== undefined) updates.subtitle      = subtitle;
+    if (configJson    !== undefined) updates.configJson    = configJson;
+    if (visible       !== undefined) updates.visible       = visible;
+    if (orderIndex    !== undefined) updates.orderIndex    = orderIndex;
     if (dataSourceKey !== undefined) updates.dataSourceKey = dataSourceKey;
+
+    // Invalidate snapshot if data-affecting fields changed
+    if (configJson !== undefined || dataSourceKey !== undefined) {
+      updates.snapshotStatus = "stale";
+      updates.lastDataSnapshotJson = null;
+    }
 
     const [updated] = await db.update(dashboardWidgetsTable).set(updates)
       .where(eq(dashboardWidgetsTable.id, widgetId)).returning();
+
+    await auditLog("studio_widget_updated", `Widget "${widget.title}" actualizado`, userId);
     res.json(updated);
   } catch (err) {
     logger.error({ err }, "studio: update widget error");
@@ -723,19 +924,23 @@ router.patch("/studio/widgets/:widgetId", requireAuth, async (req, res): Promise
 
 // ── DELETE /api/studio/widgets/:widgetId ─────────────────────────────────────
 
-router.delete("/studio/widgets/:widgetId", requireAuth, async (req, res): Promise<void> => {
+router.delete("/studio/widgets/:widgetId", studioAuth, async (req, res): Promise<void> => {
   try {
-    const userId = getCurrentUserIdNum(req);
+    const userId   = getCurrentUserIdNum(req);
     const widgetId = parseInt(req.params.widgetId);
     if (isNaN(widgetId)) { res.status(400).json({ error: "ID inválido" }); return; }
 
     const [widget] = await db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.id, widgetId));
     if (!widget) { res.status(404).json({ error: "Widget no encontrado" }); return; }
 
-    const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, widget.dashboardId));
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
+    const access = await getDashboardAccess(widget.dashboardId, userId, (req as any).dbUser);
+    if (!access || access === "view") {
+      res.status(access ? 403 : 404).json({ error: access ? "Sin permiso de edición" : "Dashboard no encontrado" });
+      return;
+    }
 
     await db.delete(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.id, widgetId));
+    await auditLog("studio_widget_deleted", `Widget "${widget.title}" eliminado del dashboard #${widget.dashboardId}`, userId);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "studio: delete widget error");
@@ -743,37 +948,108 @@ router.delete("/studio/widgets/:widgetId", requireAuth, async (req, res): Promis
   }
 });
 
-// ── GET /api/studio/dashboards/:id/data ──────────────────────────────────────
-// Resolve all widget data sources for a dashboard in parallel
+// ── POST /api/studio/widgets/:widgetId/refresh-snapshot ──────────────────────
 
-router.get("/studio/dashboards/:id/data", requireAuth, async (req, res): Promise<void> => {
+router.post("/studio/widgets/:widgetId/refresh-snapshot", studioAuth, async (req, res): Promise<void> => {
+  try {
+    const userId   = getCurrentUserIdNum(req);
+    const widgetId = parseInt(req.params.widgetId);
+    if (isNaN(widgetId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const [widget] = await db.select().from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.id, widgetId));
+    if (!widget) { res.status(404).json({ error: "Widget no encontrado" }); return; }
+
+    const access = await getDashboardAccess(widget.dashboardId, userId, (req as any).dbUser);
+    if (!access) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
+
+    // Mark as refreshing
+    await db.update(dashboardWidgetsTable)
+      .set({ snapshotStatus: "refreshing" })
+      .where(eq(dashboardWidgetsTable.id, widgetId));
+
+    let freshData: unknown = null;
+    let snapshotStatus: string = "fresh";
+    try {
+      if (widget.dataSourceKey) {
+        freshData = await resolveDataSource(
+          widget.dataSourceKey,
+          userId,
+          (widget.configJson as Record<string, unknown>) ?? {}
+        );
+      }
+    } catch {
+      snapshotStatus = "error";
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 min TTL
+
+    await db.update(dashboardWidgetsTable).set({
+      lastDataSnapshotJson: freshData,
+      lastDataSnapshotAt: now,
+      snapshotExpiresAt: expiresAt,
+      snapshotStatus,
+      snapshotVersion: widget.snapshotVersion + 1,
+    }).where(eq(dashboardWidgetsTable.id, widgetId));
+
+    await auditLog("studio_snapshot_refreshed", `Snapshot refrescado para widget #${widgetId}`, userId);
+    res.json({ ok: true, snapshotStatus, lastDataSnapshotAt: now, snapshotExpiresAt: expiresAt, data: freshData });
+  } catch (err) {
+    logger.error({ err }, "studio: refresh snapshot error");
+    res.status(500).json({ error: "Error al refrescar snapshot" });
+  }
+});
+
+// ── GET /api/studio/dashboards/:id/data ──────────────────────────────────────
+
+router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
-    const strUserId = getCurrentUserId(req);
-    const dbUser = (req as any).dbUser;
-    const id = parseInt(req.params.id);
+    const id     = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
 
-    const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
-    if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
-    if (dash.ownerUserId !== userId && dbUser?.role !== "super_admin") {
-      const [perm] = await db.select().from(dashboardPermissionsTable)
-        .where(and(
-          eq(dashboardPermissionsTable.dashboardId, id),
-          eq(dashboardPermissionsTable.subjectType, "user"),
-          eq(dashboardPermissionsTable.subjectId, userId) as any,
-        ));
-      if (!perm) { res.status(403).json({ error: "Sin acceso" }); return; }
-    }
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access) { res.status(403).json({ error: "Sin acceso" }); return; }
 
     const widgets = await db.select().from(dashboardWidgetsTable)
       .where(and(eq(dashboardWidgetsTable.dashboardId, id), eq(dashboardWidgetsTable.visible, true)));
 
-    const results: Record<number, unknown> = {};
+    const results: Record<number, { data: unknown; fromSnapshot: boolean; snapshotAt?: string; snapshotStatus?: string }> = {};
+
     await Promise.all(
       widgets.map(async (w) => {
-        if (w.dataSourceKey) {
-          results[w.id] = await resolveDataSource(w.dataSourceKey, strUserId, w.configJson as Record<string, unknown>);
+        // Serve from snapshot if fresh
+        const snapshotFresh =
+          w.lastDataSnapshotJson !== null &&
+          w.snapshotExpiresAt !== null &&
+          new Date(w.snapshotExpiresAt) > new Date() &&
+          w.snapshotStatus === "fresh";
+
+        if (snapshotFresh) {
+          results[w.id] = {
+            data: w.lastDataSnapshotJson,
+            fromSnapshot: true,
+            snapshotAt: w.lastDataSnapshotAt?.toISOString(),
+            snapshotStatus: "fresh",
+          };
+        } else if (w.dataSourceKey) {
+          const data = await resolveDataSource(w.dataSourceKey, userId, (w.configJson as Record<string, unknown>) ?? {});
+          results[w.id] = { data, fromSnapshot: false };
+
+          // Async update snapshot for eligible sources
+          const meta = DATA_SOURCE_CATALOG.find(d => d.key === w.dataSourceKey);
+          if (meta?.supportsSnapshot && data !== null) {
+            const now = new Date();
+            db.update(dashboardWidgetsTable).set({
+              lastDataSnapshotJson: data,
+              lastDataSnapshotAt: now,
+              snapshotExpiresAt: new Date(now.getTime() + 5 * 60 * 1000),
+              snapshotStatus: "fresh",
+              snapshotVersion: w.snapshotVersion + 1,
+            }).where(eq(dashboardWidgetsTable.id, w.id)).catch(() => {});
+          }
+        } else {
+          results[w.id] = { data: null, fromSnapshot: false };
         }
       })
     );
@@ -782,6 +1058,46 @@ router.get("/studio/dashboards/:id/data", requireAuth, async (req, res): Promise
   } catch (err) {
     logger.error({ err }, "studio: resolve widget data error");
     res.status(500).json({ error: "Error al cargar datos de widgets" });
+  }
+});
+
+// ── POST /api/studio/dashboards/:id/smart-summary ────────────────────────────
+
+router.post("/studio/dashboards/:id/smart-summary", studioAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserIdNum(req);
+    const id     = parseInt(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access) { res.status(403).json({ error: "Sin acceso" }); return; }
+
+    // Resolve relevant data sources in parallel
+    const [dueDates, upcomingDueDates, financeSummary, financeTransactions, tasks, newsPriority, systemNotifications] =
+      await Promise.all([
+        resolveDataSource("dueDates.trafficLight", userId),
+        resolveDataSource("dueDates.upcoming", userId),
+        resolveDataSource("finance.summary", userId),
+        resolveDataSource("finance.transactions.recent", userId),
+        resolveDataSource("tasks.myOpen", userId),
+        resolveDataSource("news.priority", userId),
+        resolveDataSource("system.notifications", userId),
+      ]);
+
+    const ctx: SmartSummaryContext = {
+      dueDates:            dueDates as any,
+      upcomingDueDates:    Array.isArray(upcomingDueDates) ? upcomingDueDates as any : undefined,
+      financeSummary:      financeSummary as any,
+      financeTransactions: Array.isArray(financeTransactions) ? financeTransactions as any : undefined,
+      tasks:               Array.isArray(tasks) ? tasks as any : undefined,
+      newsPriority:        Array.isArray(newsPriority) ? newsPriority as any : undefined,
+      systemNotifications: Array.isArray(systemNotifications) ? systemNotifications as any : undefined,
+    };
+
+    res.json(buildSmartSummary(ctx));
+  } catch (err) {
+    logger.error({ err }, "studio: smart summary error");
+    res.status(500).json({ error: "Error al generar resumen inteligente" });
   }
 });
 

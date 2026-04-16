@@ -14,9 +14,12 @@ import {
   tasksTable,
   inAppNotificationsTable,
   jobLogsTable,
+  auditLogsTable,
 } from "@workspace/db";
-import { eq, desc, and, gte, lte, isNull, ne, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, isNull, ne, sql, lt } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import { getCurrencyRates } from "./currency.service.js";
+import { getWeatherForecast } from "./weather.service.js";
 
 export interface DataSourceMeta {
   key: string;
@@ -24,45 +27,51 @@ export interface DataSourceMeta {
   description: string;
   category: string;
   isExpensive?: boolean;
+  supportsSnapshot?: boolean;
 }
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
 
 export const DATA_SOURCE_CATALOG: DataSourceMeta[] = [
-  { key: "clients.summary", label: "Clientes — Resumen", description: "Totales y estadísticas de clientes", category: "clientes" },
-  { key: "clients.list", label: "Clientes — Listado", description: "Lista de clientes activos", category: "clientes" },
-  { key: "dueDates.upcoming", label: "Vencimientos — Próximos", description: "Próximos vencimientos fiscales", category: "fiscal" },
-  { key: "dueDates.trafficLight", label: "Vencimientos — Semáforo", description: "Estado semáforo de vencimientos", category: "fiscal" },
-  { key: "news.feed", label: "Noticias — Feed", description: "Últimas noticias económicas", category: "noticias" },
-  { key: "news.priority", label: "Noticias — Prioridad alta", description: "Noticias de alto impacto", category: "noticias" },
-  { key: "finance.summary", label: "Finanzas — Resumen", description: "Resumen financiero personal", category: "finanzas" },
-  { key: "finance.transactions.recent", label: "Finanzas — Movimientos recientes", description: "Últimos movimientos financieros", category: "finanzas" },
-  { key: "finance.budgets.status", label: "Finanzas — Estado presupuestos", description: "Estado actual de los presupuestos", category: "finanzas" },
-  { key: "finance.goals.progress", label: "Finanzas — Progreso objetivos", description: "Progreso hacia objetivos financieros", category: "finanzas" },
-  { key: "tasks.myOpen", label: "Tareas — Mis abiertas", description: "Tareas del usuario abiertas", category: "tareas" },
-  { key: "tasks.teamBoard", label: "Tareas — Panel del equipo", description: "Vista general de tareas del equipo", category: "tareas" },
-  { key: "weather.forecast", label: "Clima — Pronóstico", description: "Pronóstico del tiempo local", category: "clima" },
-  { key: "dollar.quotes", label: "Dólar — Cotizaciones", description: "Cotizaciones del dólar", category: "economía" },
-  { key: "system.notifications", label: "Sistema — Notificaciones", description: "Notificaciones del sistema", category: "sistema" },
-  { key: "admin.jobs.health", label: "Admin — Estado de jobs", description: "Estado de los jobs de background", category: "admin", isExpensive: true },
-  { key: "audit.activity", label: "Auditoría — Actividad reciente", description: "Actividad reciente del sistema", category: "admin" },
-  { key: "static.text", label: "Texto estático", description: "Bloque de texto personalizado", category: "general" },
-  { key: "static.links", label: "Links rápidos", description: "Lista de links configurables", category: "general" },
+  { key: "clients.summary",             label: "Clientes — Resumen",              description: "Totales y estadísticas de clientes",          category: "clientes",  supportsSnapshot: true },
+  { key: "clients.list",                label: "Clientes — Listado",              description: "Lista de clientes activos",                   category: "clientes",  supportsSnapshot: true },
+  { key: "dueDates.upcoming",           label: "Vencimientos — Próximos",         description: "Próximos vencimientos fiscales",              category: "fiscal" },
+  { key: "dueDates.trafficLight",       label: "Vencimientos — Semáforo",         description: "Estado semáforo de vencimientos",            category: "fiscal" },
+  { key: "news.feed",                   label: "Noticias — Feed",                 description: "Últimas noticias económicas",                 category: "noticias",  supportsSnapshot: true },
+  { key: "news.priority",               label: "Noticias — Prioridad alta",       description: "Noticias de alto impacto",                   category: "noticias",  supportsSnapshot: true },
+  { key: "finance.summary",             label: "Finanzas — Resumen",              description: "Resumen financiero personal",                category: "finanzas",  supportsSnapshot: true },
+  { key: "finance.transactions.recent", label: "Finanzas — Movimientos recientes",description: "Últimos movimientos financieros",            category: "finanzas" },
+  { key: "finance.budgets.status",      label: "Finanzas — Estado presupuestos",  description: "Estado actual de los presupuestos",          category: "finanzas",  supportsSnapshot: true },
+  { key: "finance.goals.progress",      label: "Finanzas — Progreso objetivos",   description: "Progreso hacia objetivos financieros",       category: "finanzas",  supportsSnapshot: true },
+  { key: "tasks.myOpen",                label: "Tareas — Mis abiertas",           description: "Tareas del usuario abiertas",                category: "tareas" },
+  { key: "tasks.teamBoard",             label: "Tareas — Panel del equipo",       description: "Vista general de tareas del equipo",         category: "tareas",    supportsSnapshot: true },
+  { key: "weather.forecast",            label: "Clima — Pronóstico",              description: "Pronóstico del tiempo local",                category: "clima",     supportsSnapshot: true },
+  { key: "dollar.quotes",               label: "Dólar — Cotizaciones",            description: "Cotizaciones del dólar",                     category: "economía",  supportsSnapshot: true },
+  { key: "system.notifications",        label: "Sistema — Notificaciones",        description: "Notificaciones del sistema",                 category: "sistema" },
+  { key: "admin.jobs.health",           label: "Admin — Estado de jobs",          description: "Estado de los jobs de background (admin)",   category: "admin",     isExpensive: true },
+  { key: "audit.activity",             label: "Auditoría — Actividad reciente",  description: "Actividad reciente del sistema",             category: "admin",     supportsSnapshot: false },
+  { key: "static.text",                 label: "Texto estático",                  description: "Bloque de texto personalizado",              category: "general" },
+  { key: "static.links",               label: "Links rápidos",                   description: "Lista de links configurables",               category: "general" },
 ];
 
 // ── Resolver ──────────────────────────────────────────────────────────────────
+// userId can be string or number — internally normalized to both forms as needed
 
 export async function resolveDataSource(
   key: string,
-  userId: number,
+  userId: string | number,
   params: Record<string, unknown> = {}
 ): Promise<unknown> {
+  const userIdStr = String(userId);
+  const userIdNum = typeof userId === "number" ? userId : parseInt(userIdStr, 10);
+
   try {
     switch (key) {
 
       case "clients.summary": {
+        // clientsTable.userId is text
         const clients = await db.select({ id: clientsTable.id, isActive: clientsTable.isActive })
-          .from(clientsTable).where(eq(clientsTable.userId, userId));
+          .from(clientsTable).where(eq(clientsTable.userId, userIdStr));
         return {
           total: clients.length,
           active: clients.filter(c => c.isActive).length,
@@ -72,17 +81,16 @@ export async function resolveDataSource(
 
       case "clients.list": {
         return await db.select().from(clientsTable)
-          .where(and(eq(clientsTable.userId, userId), eq(clientsTable.isActive, true)))
+          .where(and(eq(clientsTable.userId, userIdStr), eq(clientsTable.isActive, true)))
           .limit(50);
       }
 
       case "dueDates.upcoming": {
         const today = new Date();
         const in30 = new Date(today.getTime() + 30 * 86400000);
-        // dueDatesTable.userId is text; cast userId to string for comparison
         return await db.select().from(dueDatesTable)
           .where(and(
-            eq(dueDatesTable.userId, String(userId)),
+            eq(dueDatesTable.userId, userIdStr),
             gte(dueDatesTable.dueDate, today.toISOString().slice(0, 10)),
             lte(dueDatesTable.dueDate, in30.toISOString().slice(0, 10)),
             ne(dueDatesTable.status, "done"),
@@ -92,10 +100,9 @@ export async function resolveDataSource(
       }
 
       case "dueDates.trafficLight": {
-        const rows = await db.select({
-          trafficLight: dueDatesTable.trafficLight,
-        }).from(dueDatesTable)
-          .where(eq(dueDatesTable.userId, String(userId)));
+        const rows = await db.select({ trafficLight: dueDatesTable.trafficLight })
+          .from(dueDatesTable)
+          .where(eq(dueDatesTable.userId, userIdStr));
         return {
           verde: rows.filter(r => r.trafficLight === "verde").length,
           amarillo: rows.filter(r => r.trafficLight === "amarillo").length,
@@ -130,42 +137,103 @@ export async function resolveDataSource(
           .limit(5);
       }
 
+      case "finance.summary": {
+        // Current month income vs expenses
+        const now = new Date();
+        const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        const rows = await db.select({
+          amount: financeTransactionsTable.amount,
+          type: financeTransactionsTable.type,
+        }).from(financeTransactionsTable)
+          .where(and(
+            eq(financeTransactionsTable.userId, userIdStr),
+            gte(financeTransactionsTable.date, firstOfMonth),
+          ));
+
+        const ingresos = rows
+          .filter(r => r.type === "income" || r.type === "ingreso")
+          .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+        const gastos = rows
+          .filter(r => r.type === "expense" || r.type === "gasto" || r.type === "egreso")
+          .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+        const balance = ingresos - gastos;
+
+        return { ingresos, gastos, balance, transacciones: rows.length };
+      }
+
       case "finance.transactions.recent": {
-        // financeTransactionsTable.userId is text
         return await db.select().from(financeTransactionsTable)
-          .where(eq(financeTransactionsTable.userId, String(userId)))
+          .where(eq(financeTransactionsTable.userId, userIdStr))
           .orderBy(desc(financeTransactionsTable.date))
           .limit((params.limit as number) ?? 10);
       }
 
       case "finance.budgets.status": {
-        // financeBudgetsTable.userId is text
         return await db.select().from(financeBudgetsTable)
-          .where(eq(financeBudgetsTable.userId, String(userId)))
+          .where(eq(financeBudgetsTable.userId, userIdStr))
           .limit(20);
       }
 
       case "finance.goals.progress": {
         return await db.select().from(financeGoalsTable)
-          .where(eq(financeGoalsTable.userId, String(userId)))
+          .where(eq(financeGoalsTable.userId, userIdStr))
           .limit(10);
       }
 
       case "tasks.myOpen": {
-        // tasksTable.userId is text
         return await db.select().from(tasksTable)
           .where(and(
-            eq(tasksTable.userId, String(userId)),
+            eq(tasksTable.userId, userIdStr),
             ne(tasksTable.status, "done"),
           ))
           .orderBy(desc(tasksTable.createdAt))
           .limit(20);
       }
 
+      case "tasks.teamBoard": {
+        // Summary of all tasks by status (not filtered by user — team board)
+        const rows = await db.select({ status: tasksTable.status })
+          .from(tasksTable);
+        const byStatus: Record<string, number> = {};
+        for (const r of rows) {
+          const s = r.status ?? "unknown";
+          byStatus[s] = (byStatus[s] ?? 0) + 1;
+        }
+        const total = rows.length;
+        const done = byStatus["done"] ?? 0;
+        const pending = total - done;
+        return [
+          { label: "Pendientes", count: pending, status: "pending" },
+          { label: "Completadas", count: done, status: "done" },
+          ...Object.entries(byStatus)
+            .filter(([s]) => s !== "done")
+            .map(([s, count]) => ({ label: s, count, status: s })),
+        ].slice(0, 8);
+      }
+
+      case "weather.forecast": {
+        try {
+          const wx = await getWeatherForecast();
+          return wx;
+        } catch {
+          return null;
+        }
+      }
+
+      case "dollar.quotes": {
+        try {
+          const rates = await getCurrencyRates();
+          return rates;
+        } catch {
+          return null;
+        }
+      }
+
       case "system.notifications": {
+        if (isNaN(userIdNum)) return [];
         return await db.select().from(inAppNotificationsTable)
           .where(and(
-            eq(inAppNotificationsTable.userId, userId),
+            eq(inAppNotificationsTable.userId, userIdNum),
             isNull(inAppNotificationsTable.readAt),
           ))
           .orderBy(desc(inAppNotificationsTable.createdAt))
@@ -173,9 +241,22 @@ export async function resolveDataSource(
       }
 
       case "admin.jobs.health": {
+        // Only super_admin should see this; handled at route level for other users
         return await db.select().from(jobLogsTable)
           .orderBy(desc(jobLogsTable.startedAt))
           .limit(20);
+      }
+
+      case "audit.activity": {
+        return await db.select({
+          id: auditLogsTable.id,
+          action: auditLogsTable.action,
+          detail: auditLogsTable.detail,
+          createdAt: auditLogsTable.createdAt,
+        }).from(auditLogsTable)
+          .where(eq(auditLogsTable.userId, userIdStr))
+          .orderBy(desc(auditLogsTable.createdAt))
+          .limit(15);
       }
 
       case "static.text":
