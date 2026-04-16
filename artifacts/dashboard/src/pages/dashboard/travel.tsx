@@ -1,144 +1,189 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Plane, MapPin, Calendar, Building, ExternalLink, SlidersHorizontal,
-  ShieldCheck, AlertTriangle, Info, Plus, Edit2, Trash2, Users, Clock,
-  Globe, DollarSign, X,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Plane, MapPin, Search, Plus, Edit2, Trash2, Play, Pause, Copy,
+  AlertTriangle, CheckCircle2, Clock, Star, Users, Calendar,
+  DollarSign, RefreshCw, Filter, ChevronDown, X, Building,
+  Globe, Bookmark, Eye, XCircle, Info, Settings,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BASE } from "@/lib/base-url";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface TravelOffer {
-  id: number;
-  origin?: string | null;
-  destination: string;
-  description?: string | null;
+interface LocationItem {
+  id: string;
+  label: string;
+  normalizedName: string;
+  code: string | null;
+  country: string;
+  region: string;
+  type: string;
+  aliases: string[];
+}
+
+interface SearchProfile {
+  id: string;
+  userId: number;
+  name: string;
+  isActive: boolean;
+  travelType: string;
+  originJson: LocationItem;
+  destinationMode: string;
+  destinationsJson: LocationItem[] | null;
+  regionsJson: string[] | null;
+  maxBudget: string;
+  currency: string;
+  travelersCount: number;
+  travelerProfile: string;
+  minDays: number | null;
+  maxDays: number | null;
+  airlinePreferencesJson: string[] | null;
+  hotelMinStars: number | null;
+  mealPlan: string | null;
+  directFlightOnly: boolean;
+  dateFlexibilityDays: number | null;
+  refreshFrequencyHours: number;
+  tolerancePercent: number;
+  priority: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt: string | null;
+  lastRunStatus: string | null;
+  lastRunSummaryJson: { count: number; ranAt: string } | null;
+}
+
+interface SearchResult {
+  id: string;
+  searchProfileId: string;
+  userId: number;
+  source: string;
+  externalId: string | null;
+  externalUrl: string | null;
+  title: string;
+  originJson: LocationItem;
+  destinationJson: LocationItem;
+  region: string | null;
+  country: string | null;
   price: string;
   currency: string;
-  provider: string;
-  offerType: string;
-  travelType: string;
-  duration: number;
-  departureDate?: string | null;
-  passengers?: number | null;
-  hotel?: string | null;
-  hotelCategory?: number | null;
-  region: string;
-  link: string;
-  validUntil?: string | null;
-  isValid: boolean;
-  qualityScore?: number;
-  qualityIssues?: string | null;
-  needsReview?: boolean;
-  createdAt: string;
+  priceOriginal: string | null;
+  days: number | null;
+  nights: number | null;
+  travelersCount: number | null;
+  airline: string | null;
+  hotelName: string | null;
+  hotelStars: number | null;
+  mealPlan: string | null;
+  departureDate: string | null;
+  returnDate: string | null;
+  confidenceScore: number;
+  validationStatus: string;
+  status: string;
+  foundAt: string;
 }
 
-interface TravelOfferForm {
-  origin: string;
-  destination: string;
-  description: string;
-  price: string;
+interface ProfileForm {
+  name: string;
+  travelType: "nacional" | "internacional" | "corporativo" | "beneficio";
+  origin: LocationItem | null;
+  destinationMode: "specific" | "region" | "mixed";
+  destinations: LocationItem[];
+  regions: string[];
+  maxBudget: string;
   currency: "ARS" | "USD" | "EUR";
-  provider: string;
-  travelType: "nacional" | "internacional" | "corporativo";
-  duration: string;
-  departureDate: string;
-  passengers: string;
-  hotel: string;
-  hotelCategory: string;
-  region: string;
-  link: string;
-  validUntil: string;
+  travelersCount: string;
+  travelerProfile: "solo" | "pareja" | "familia" | "corporativo";
+  minDays: string;
+  maxDays: string;
+  airlines: string;
+  hotelMinStars: string;
+  mealPlan: string;
+  directFlightOnly: boolean;
+  dateFlexibilityDays: string;
+  refreshFrequencyHours: string;
+  tolerancePercent: string;
+  notes: string;
+  isActive: boolean;
 }
 
-const EMPTY_FORM: TravelOfferForm = {
-  origin: "",
-  destination: "",
-  description: "",
-  price: "",
-  currency: "USD",
-  provider: "",
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const EMPTY_FORM: ProfileForm = {
+  name: "",
   travelType: "nacional",
-  duration: "",
-  departureDate: "",
-  passengers: "",
-  hotel: "",
-  hotelCategory: "",
-  region: "argentina",
-  link: "",
-  validUntil: "",
+  origin: null,
+  destinationMode: "specific",
+  destinations: [],
+  regions: [],
+  maxBudget: "",
+  currency: "ARS",
+  travelersCount: "2",
+  travelerProfile: "pareja",
+  minDays: "",
+  maxDays: "",
+  airlines: "",
+  hotelMinStars: "",
+  mealPlan: "",
+  directFlightOnly: false,
+  dateFlexibilityDays: "",
+  refreshFrequencyHours: "24",
+  tolerancePercent: "20",
+  notes: "",
+  isActive: true,
 };
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+const TRAVEL_TYPES = [
+  { value: "nacional", label: "Nacional", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  { value: "internacional", label: "Internacional", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  { value: "corporativo", label: "Corporativo", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+  { value: "beneficio", label: "Beneficio", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+];
 
-const TYPE_FILTERS = [
-  { value: "", label: "Todos" },
-  { value: "nacional", label: "Nacional" },
-  { value: "internacional", label: "Internacional" },
+const TRAVELER_PROFILES = [
+  { value: "solo", label: "Solo" },
+  { value: "pareja", label: "Pareja" },
+  { value: "familia", label: "Familia" },
   { value: "corporativo", label: "Corporativo" },
 ];
 
-const REGION_OPTIONS = [
-  { value: "patagonia",     label: "Patagonia" },
-  { value: "argentina",     label: "Argentina" },
-  { value: "sudamerica",    label: "Sudamérica" },
-  { value: "caribe",        label: "Caribe" },
-  { value: "norteamerica",  label: "Norteamérica" },
-  { value: "europa",        label: "Europa" },
-  { value: "asia",          label: "Asia" },
-  { value: "otro",          label: "Otro" },
+const REGIONS = [
+  "Patagonia", "Argentina", "Centro", "Norte", "Litoral",
+  "Cuyo", "Caribe", "Sudamérica", "Norteamérica", "Europa", "Asia",
 ];
 
-const REGION_FILTERS = [
-  { value: "", label: "Todas las regiones" },
-  ...REGION_OPTIONS,
-];
-
-const TYPE_COLORS: Record<string, string> = {
-  nacional:       "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-  internacional:  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  corporativo:    "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+const VALIDATION_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
+  validated:    { label: "Validado",      color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400", icon: CheckCircle2 },
+  weak_match:   { label: "Coincidencia parcial", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", icon: AlertTriangle },
+  broken_link:  { label: "Link roto",     color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", icon: XCircle },
+  expired:      { label: "Expirado",      color: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400", icon: Clock },
+  pending:      { label: "Pendiente",     color: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400", icon: Clock },
 };
 
-const CURRENCY_OPTIONS = ["ARS", "USD", "EUR"] as const;
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  new:       { label: "Nueva",     color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  seen:      { label: "Vista",     color: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
+  saved:     { label: "Guardada",  color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  dismissed: { label: "Descartada", color: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
+  expired:   { label: "Expirada",  color: "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500" },
+};
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function qualityColor(score: number) {
-  if (score >= 80) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
-  if (score >= 60) return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-  return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
-}
-
-function parseIssues(raw?: string | null): string[] {
-  if (!raw) return [];
-  try { return JSON.parse(raw); } catch { return []; }
-}
-
-function fmtDate(d?: string | null) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" });
-}
-
-function fmtPrice(price: string, currency: string) {
-  const num = Number(price);
-  if (isNaN(num) || num <= 0) return null;
-  const locale = currency === "ARS" ? "es-AR" : "en-US";
-  return new Intl.NumberFormat(locale, {
-    style: "currency", currency, maximumFractionDigits: 0,
-  }).format(num);
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -148,15 +193,224 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error ?? `HTTP ${res.status}`);
+    throw new Error((body as { error?: string })?.error ?? `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
-// ── Offer Form Dialog ──────────────────────────────────────────────────────────
+function fmtPrice(price: string, currency: string) {
+  const num = Number(price);
+  if (isNaN(num) || num <= 0) return "—";
+  const locale = currency === "ARS" ? "es-AR" : "en-US";
+  return new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: 0 }).format(num);
+}
 
-function OfferFormDialog({
+function fmtDate(d?: string | null) {
+  if (!d) return null;
+  return new Date(d + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function fmtRelative(d?: string | null) {
+  if (!d) return null;
+  const diff = Date.now() - new Date(d).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "hace un momento";
+  if (mins < 60) return `hace ${mins} min`;
+  const hs = Math.floor(mins / 60);
+  if (hs < 24) return `hace ${hs} h`;
+  const days = Math.floor(hs / 24);
+  return `hace ${days} día${days > 1 ? "s" : ""}`;
+}
+
+function travelTypeColor(type: string) {
+  return TRAVEL_TYPES.find(t => t.value === type)?.color
+    ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
+}
+
+function travelTypeLabel(type: string) {
+  return TRAVEL_TYPES.find(t => t.value === type)?.label ?? type;
+}
+
+// ── LocationAutocomplete ──────────────────────────────────────────────────────
+
+function LocationAutocomplete({
+  value,
+  onChange,
+  placeholder = "Buscar ciudad o aeropuerto...",
+  label,
+  required,
+}: {
+  value: LocationItem | null;
+  onChange: (loc: LocationItem | null) => void;
+  placeholder?: string;
+  label: string;
+  required?: boolean;
+}) {
+  const [query, setQuery] = useState(value?.label ?? "");
+  const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: results = [], isFetching } = useQuery<LocationItem[]>({
+    queryKey: ["travel-locations", query],
+    queryFn: () => apiFetch<LocationItem[]>(`/api/travel/locations?q=${encodeURIComponent(query)}`),
+    enabled: focused && query.length >= 1,
+    staleTime: 10000,
+  });
+
+  useEffect(() => {
+    if (value) setQuery(value.label);
+  }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setFocused(false);
+        if (!value) setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [value]);
+
+  const handleSelect = (loc: LocationItem) => {
+    onChange(loc);
+    setQuery(loc.label);
+    setOpen(false);
+    setFocused(false);
+  };
+
+  const handleClear = () => {
+    onChange(null);
+    setQuery("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="space-y-1.5" ref={ref}>
+      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label} {required && <span className="text-destructive">*</span>}
+      </Label>
+      <div className="relative">
+        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <Input
+          value={query}
+          onChange={e => {
+            setQuery(e.target.value);
+            setOpen(true);
+            if (!e.target.value) onChange(null);
+          }}
+          onFocus={() => { setFocused(true); setOpen(query.length >= 1); }}
+          placeholder={placeholder}
+          className="h-9 pl-8 pr-8"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {open && focused && query.length >= 1 && (
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            {isFetching && (
+              <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Buscando...
+              </div>
+            )}
+            {!isFetching && results.length === 0 && (
+              <div className="px-3 py-2 text-sm text-muted-foreground">Sin resultados para "{query}"</div>
+            )}
+            {results.map(loc => (
+              <button
+                key={loc.id}
+                type="button"
+                onClick={() => handleSelect(loc)}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-start gap-2"
+              >
+                <span className="shrink-0 mt-0.5 text-muted-foreground">
+                  {loc.type === "airport" ? "✈" : "📍"}
+                </span>
+                <span>
+                  <span className="font-medium">{loc.label}</span>
+                  <span className="text-muted-foreground text-xs block">{loc.country} · {loc.region}</span>
+                </span>
+                {loc.code && (
+                  <span className="ml-auto text-xs font-mono text-muted-foreground shrink-0">{loc.code}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {value && (
+        <p className="text-xs text-muted-foreground">{value.country} · {value.region}</p>
+      )}
+    </div>
+  );
+}
+
+// ── MultiLocationAutocomplete ─────────────────────────────────────────────────
+
+function MultiLocationAutocomplete({
+  value,
+  onChange,
+  label,
+  placeholder,
+}: {
+  value: LocationItem[];
+  onChange: (locs: LocationItem[]) => void;
+  label: string;
+  placeholder?: string;
+}) {
+  const [single, setSingle] = useState<LocationItem | null>(null);
+
+  const handleAdd = (loc: LocationItem | null) => {
+    if (!loc) return;
+    if (!value.find(v => v.label === loc.label)) {
+      onChange([...value, loc]);
+    }
+    setSingle(null);
+  };
+
+  return (
+    <div className="space-y-2">
+      <LocationAutocomplete
+        value={single}
+        onChange={handleAdd}
+        label={label}
+        placeholder={placeholder}
+      />
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {value.map((loc, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs px-2 py-1 rounded-full"
+            >
+              {loc.code ? `${loc.label} (${loc.code})` : loc.label}
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+                className="hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Search Profile Form Dialog ────────────────────────────────────────────────
+
+function ProfileFormDialog({
   open,
   onClose,
   editing,
@@ -164,63 +418,84 @@ function OfferFormDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  editing: TravelOffer | null;
+  editing: SearchProfile | null;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
-  const [form, setForm] = useState<TravelOfferForm>(() =>
-    editing
-      ? {
-          origin:       editing.origin ?? "",
-          destination:  editing.destination,
-          description:  editing.description ?? "",
-          price:        editing.price,
-          currency:     (editing.currency as "ARS" | "USD" | "EUR") ?? "USD",
-          provider:     editing.provider,
-          travelType:   (editing.travelType as "nacional" | "internacional" | "corporativo") ?? "nacional",
-          duration:     String(editing.duration),
-          departureDate: editing.departureDate ?? "",
-          passengers:   editing.passengers != null ? String(editing.passengers) : "",
-          hotel:        editing.hotel ?? "",
-          hotelCategory: editing.hotelCategory != null ? String(editing.hotelCategory) : "",
-          region:       editing.region,
-          link:         editing.link === "#" ? "" : editing.link,
-          validUntil:   editing.validUntil ?? "",
-        }
-      : { ...EMPTY_FORM }
-  );
+  const [form, setForm] = useState<ProfileForm>(() => {
+    if (editing) {
+      return {
+        name: editing.name,
+        travelType: editing.travelType as ProfileForm["travelType"],
+        origin: editing.originJson,
+        destinationMode: editing.destinationMode as ProfileForm["destinationMode"],
+        destinations: editing.destinationsJson ?? [],
+        regions: editing.regionsJson ?? [],
+        maxBudget: editing.maxBudget,
+        currency: editing.currency as ProfileForm["currency"],
+        travelersCount: String(editing.travelersCount),
+        travelerProfile: editing.travelerProfile as ProfileForm["travelerProfile"],
+        minDays: editing.minDays != null ? String(editing.minDays) : "",
+        maxDays: editing.maxDays != null ? String(editing.maxDays) : "",
+        airlines: editing.airlinePreferencesJson?.join(", ") ?? "",
+        hotelMinStars: editing.hotelMinStars != null ? String(editing.hotelMinStars) : "",
+        mealPlan: editing.mealPlan ?? "",
+        directFlightOnly: editing.directFlightOnly,
+        dateFlexibilityDays: editing.dateFlexibilityDays != null ? String(editing.dateFlexibilityDays) : "",
+        refreshFrequencyHours: String(editing.refreshFrequencyHours),
+        tolerancePercent: String(editing.tolerancePercent),
+        notes: editing.notes ?? "",
+        isActive: editing.isActive,
+      };
+    }
+    return { ...EMPTY_FORM };
+  });
   const [formError, setFormError] = useState<string | null>(null);
 
-  const set = (k: keyof TravelOfferForm, v: string) =>
-    setForm(f => ({ ...f, [k]: v }));
+  const set = useCallback(<K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) =>
+    setForm(f => ({ ...f, [k]: v })), []);
 
   const mutation = useMutation({
-    mutationFn: async (data: TravelOfferForm) => {
+    mutationFn: async (data: ProfileForm) => {
+      if (!data.origin) throw new Error("El origen es obligatorio.");
+      if (data.destinationMode === "specific" && data.destinations.length === 0)
+        throw new Error("Agregá al menos un destino.");
+      if (data.destinationMode === "region" && data.regions.length === 0)
+        throw new Error("Seleccioná al menos una región.");
+
       const body = {
-        origin:        data.origin.trim() || null,
-        destination:   data.destination.trim(),
-        description:   data.description.trim() || null,
-        price:         Number(data.price),
-        currency:      data.currency,
-        provider:      data.provider.trim(),
-        offerType:     "paquete",
-        travelType:    data.travelType,
-        duration:      Number(data.duration),
-        departureDate: data.departureDate || null,
-        passengers:    data.passengers ? Number(data.passengers) : null,
-        hotel:         data.hotel.trim() || null,
-        hotelCategory: data.hotelCategory ? Number(data.hotelCategory) : null,
-        region:        data.region,
-        link:          data.link.trim() || "#",
-        validUntil:    data.validUntil || null,
+        name: data.name.trim(),
+        travelType: data.travelType,
+        originJson: data.origin,
+        destinationMode: data.destinationMode,
+        destinationsJson: data.destinations.length > 0 ? data.destinations : null,
+        regionsJson: data.regions.length > 0 ? data.regions : null,
+        maxBudget: Number(data.maxBudget),
+        currency: data.currency,
+        travelersCount: Number(data.travelersCount) || 1,
+        travelerProfile: data.travelerProfile,
+        minDays: data.minDays ? Number(data.minDays) : null,
+        maxDays: data.maxDays ? Number(data.maxDays) : null,
+        airlinePreferencesJson: data.airlines
+          ? data.airlines.split(",").map(s => s.trim()).filter(Boolean)
+          : null,
+        hotelMinStars: data.hotelMinStars ? Number(data.hotelMinStars) : null,
+        mealPlan: data.mealPlan || null,
+        directFlightOnly: data.directFlightOnly,
+        dateFlexibilityDays: data.dateFlexibilityDays ? Number(data.dateFlexibilityDays) : null,
+        refreshFrequencyHours: Number(data.refreshFrequencyHours) || 24,
+        tolerancePercent: Number(data.tolerancePercent) || 20,
+        notes: data.notes.trim() || null,
+        isActive: data.isActive,
       };
+
       if (editing) {
-        return apiFetch(`/api/travel/${editing.id}`, { method: "PUT", body: JSON.stringify(body) });
+        return apiFetch(`/api/travel/search-profiles/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       }
-      return apiFetch("/api/travel", { method: "POST", body: JSON.stringify(body) });
+      return apiFetch("/api/travel/search-profiles", { method: "POST", body: JSON.stringify(body) });
     },
     onSuccess: () => {
-      toast({ title: editing ? "Oferta actualizada" : "Oferta creada" });
+      toast({ title: editing ? "Búsqueda actualizada" : "Búsqueda creada" });
       onSaved();
       onClose();
     },
@@ -229,13 +504,14 @@ function OfferFormDialog({
 
   const handleSubmit = () => {
     setFormError(null);
-    if (!form.destination.trim()) return setFormError("El destino es obligatorio.");
-    if (!form.provider.trim()) return setFormError("El proveedor es obligatorio.");
-    if (!form.price || isNaN(Number(form.price)) || Number(form.price) <= 0)
-      return setFormError("El precio debe ser mayor a 0.");
-    if (!form.duration || isNaN(Number(form.duration)) || Number(form.duration) < 1)
-      return setFormError("La duración debe ser al menos 1 día.");
-    if (!form.region) return setFormError("La región es obligatoria.");
+    if (!form.name.trim()) return setFormError("El nombre es obligatorio.");
+    if (!form.origin)       return setFormError("El origen es obligatorio.");
+    if (!form.maxBudget || isNaN(Number(form.maxBudget)) || Number(form.maxBudget) <= 0)
+      return setFormError("El presupuesto debe ser mayor a 0.");
+    if (form.destinationMode === "specific" && form.destinations.length === 0)
+      return setFormError("Agregá al menos un destino.");
+    if (form.destinationMode === "region" && form.regions.length === 0)
+      return setFormError("Seleccioná al menos una región.");
     mutation.mutate(form);
   };
 
@@ -243,9 +519,9 @@ function OfferFormDialog({
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? "Editar oferta de viaje" : "Nueva oferta de viaje"}</DialogTitle>
+          <DialogTitle>{editing ? "Editar búsqueda" : "Nueva búsqueda guardada"}</DialogTitle>
           <DialogDescription>
-            {editing ? `Editando: ${editing.destination}` : "Completá los datos de la oferta. Destino, precio y proveedor son obligatorios."}
+            Definí las reglas de monitoreo y el sistema buscará ofertas que coincidan automáticamente.
           </DialogDescription>
         </DialogHeader>
 
@@ -257,74 +533,125 @@ function OfferFormDialog({
             </div>
           )}
 
-          {/* Tipo + Región */}
+          {/* Nombre */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Nombre de la búsqueda <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              value={form.name}
+              onChange={e => set("name", e.target.value)}
+              placeholder="Ej: Escapada familiar Bariloche invierno"
+              className="h-9"
+            />
+          </div>
+
+          {/* Tipo de viaje + Perfil de viajero */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Tipo de viaje *
+                Tipo de viaje <span className="text-destructive">*</span>
               </Label>
               <select
                 value={form.travelType}
-                onChange={e => set("travelType", e.target.value)}
+                onChange={e => set("travelType", e.target.value as ProfileForm["travelType"])}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
-                <option value="nacional">Nacional</option>
-                <option value="internacional">Internacional</option>
-                <option value="corporativo">Corporativo</option>
+                {TRAVEL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Región *
+                Perfil de viajero
               </Label>
               <select
-                value={form.region}
-                onChange={e => set("region", e.target.value)}
+                value={form.travelerProfile}
+                onChange={e => set("travelerProfile", e.target.value as ProfileForm["travelerProfile"])}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
-                {REGION_OPTIONS.map(r => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
+                {TRAVELER_PROFILES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </div>
           </div>
 
-          {/* Origen + Destino */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Origen</Label>
-              <Input
-                value={form.origin}
-                onChange={e => set("origin", e.target.value)}
-                placeholder="Buenos Aires, Bariloche..."
-                className="h-9"
-              />
+          {/* Origen */}
+          <LocationAutocomplete
+            value={form.origin}
+            onChange={loc => set("origin", loc)}
+            label="Origen"
+            placeholder="Neuquén, Buenos Aires..."
+            required
+          />
+
+          {/* Modo de destino */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Destino <span className="text-destructive">*</span>
+            </Label>
+            <div className="flex gap-2">
+              {(["specific", "region", "mixed"] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => set("destinationMode", mode)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all
+                    ${form.destinationMode === mode
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted"
+                    }`}
+                >
+                  {mode === "specific" ? "Ciudad específica" : mode === "region" ? "Por región" : "Mixto"}
+                </button>
+              ))}
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Destino *
-              </Label>
-              <Input
-                value={form.destination}
-                onChange={e => set("destination", e.target.value)}
-                placeholder="Cancún, París, Neuquén..."
-                className="h-9"
+
+            {(form.destinationMode === "specific" || form.destinationMode === "mixed") && (
+              <MultiLocationAutocomplete
+                value={form.destinations}
+                onChange={locs => set("destinations", locs)}
+                label="Destinos"
+                placeholder="Bariloche, Cancún, París..."
               />
-            </div>
+            )}
+
+            {(form.destinationMode === "region" || form.destinationMode === "mixed") && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Regiones</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {REGIONS.map(r => {
+                    const active = form.regions.includes(r);
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => set("regions", active ? form.regions.filter(x => x !== r) : [...form.regions, r])}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all
+                          ${active
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted"
+                          }`}
+                      >
+                        {r}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Precio + Moneda + Duración */}
+          {/* Presupuesto + Moneda + Personas */}
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Precio *
+                Presupuesto máx. <span className="text-destructive">*</span>
               </Label>
               <Input
                 type="number"
                 min="0"
-                value={form.price}
-                onChange={e => set("price", e.target.value)}
-                placeholder="1500"
+                value={form.maxBudget}
+                onChange={e => set("maxBudget", e.target.value)}
+                placeholder="250000"
                 className="h-9"
               />
             </div>
@@ -332,134 +659,158 @@ function OfferFormDialog({
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Moneda</Label>
               <select
                 value={form.currency}
-                onChange={e => set("currency", e.target.value)}
+                onChange={e => set("currency", e.target.value as ProfileForm["currency"])}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
-                {CURRENCY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                {(["ARS", "USD", "EUR"] as const).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Duración (días) *
+                Personas <span className="text-destructive">*</span>
               </Label>
               <Input
                 type="number"
                 min="1"
-                value={form.duration}
-                onChange={e => set("duration", e.target.value)}
-                placeholder="7"
-                className="h-9"
-              />
-            </div>
-          </div>
-
-          {/* Proveedor + Pasajeros */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Proveedor *
-              </Label>
-              <Input
-                value={form.provider}
-                onChange={e => set("provider", e.target.value)}
-                placeholder="Aerolíneas Argentinas, TUI..."
-                className="h-9"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Personas
-              </Label>
-              <Input
-                type="number"
-                min="1"
-                value={form.passengers}
-                onChange={e => set("passengers", e.target.value)}
+                value={form.travelersCount}
+                onChange={e => set("travelersCount", e.target.value)}
                 placeholder="2"
                 className="h-9"
               />
             </div>
           </div>
 
-          {/* Fechas */}
+          {/* Tolerancia + Frecuencia */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Fecha de salida
+                Tolerancia de precio (%)
               </Label>
               <Input
-                type="date"
-                value={form.departureDate}
-                onChange={e => set("departureDate", e.target.value)}
+                type="number"
+                min="0"
+                max="100"
+                value={form.tolerancePercent}
+                onChange={e => set("tolerancePercent", e.target.value)}
+                placeholder="20"
                 className="h-9"
               />
+              <p className="text-xs text-muted-foreground">Acepta ofertas hasta este % sobre el presupuesto</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Válido hasta
+                Actualizar cada (horas)
               </Label>
               <Input
-                type="date"
-                value={form.validUntil}
-                onChange={e => set("validUntil", e.target.value)}
+                type="number"
+                min="1"
+                value={form.refreshFrequencyHours}
+                onChange={e => set("refreshFrequencyHours", e.target.value)}
+                placeholder="24"
                 className="h-9"
               />
             </div>
           </div>
 
-          {/* Hotel */}
+          {/* Opcional — duración */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Hotel <span className="font-normal normal-case">(opcional)</span>
+                Duración mín. (días) <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
               </Label>
               <Input
-                value={form.hotel}
-                onChange={e => set("hotel", e.target.value)}
-                placeholder="Nombre del hotel"
+                type="number" min="1"
+                value={form.minDays}
+                onChange={e => set("minDays", e.target.value)}
+                placeholder="Sin mínimo"
                 className="h-9"
               />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Categoría (★)
+                Duración máx. (días) <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
+              </Label>
+              <Input
+                type="number" min="1"
+                value={form.maxDays}
+                onChange={e => set("maxDays", e.target.value)}
+                placeholder="Sin máximo"
+                className="h-9"
+              />
+            </div>
+          </div>
+
+          {/* Opcional — aerolínea + hotel */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Aerolínea preferida <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
+              </Label>
+              <Input
+                value={form.airlines}
+                onChange={e => set("airlines", e.target.value)}
+                placeholder="Aerolíneas, LATAM, Flybondi..."
+                className="h-9"
+              />
+              <p className="text-xs text-muted-foreground">Separadas por coma</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Hotel mín. (★) <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
               </Label>
               <select
-                value={form.hotelCategory}
-                onChange={e => set("hotelCategory", e.target.value)}
+                value={form.hotelMinStars}
+                onChange={e => set("hotelMinStars", e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
-                <option value="">Sin especificar</option>
-                {[1, 2, 3, 4, 5].map(n => (
-                  <option key={n} value={n}>{n} estrella{n > 1 ? "s" : ""}</option>
-                ))}
+                <option value="">Sin preferencia</option>
+                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} ★</option>)}
               </select>
             </div>
           </div>
 
-          {/* Link */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Link de la oferta
-            </Label>
-            <Input
-              type="url"
-              value={form.link}
-              onChange={e => set("link", e.target.value)}
-              placeholder="https://..."
-              className="h-9"
-            />
+          {/* Régimen + Vuelo directo */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Régimen de comidas <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
+              </Label>
+              <select
+                value={form.mealPlan}
+                onChange={e => set("mealPlan", e.target.value)}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Sin preferencia</option>
+                <option value="sin comidas">Sin comidas</option>
+                <option value="desayuno">Desayuno</option>
+                <option value="media pensión">Media pensión</option>
+                <option value="pensión completa">Pensión completa</option>
+                <option value="todo incluido">Todo incluido</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Opciones</Label>
+              <label className="flex items-center gap-2 h-9 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.directFlightOnly}
+                  onChange={e => set("directFlightOnly", e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm">Solo vuelo directo</span>
+              </label>
+            </div>
           </div>
 
-          {/* Descripción */}
+          {/* Notas */}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Descripción <span className="font-normal normal-case">(opcional)</span>
+              Notas <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
             </Label>
             <textarea
-              value={form.description}
-              onChange={e => set("description", e.target.value)}
-              placeholder="Detalles adicionales de la oferta..."
+              value={form.notes}
+              onChange={e => set("notes", e.target.value)}
+              placeholder="Observaciones adicionales sobre esta búsqueda..."
               rows={2}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
             />
@@ -467,11 +818,9 @@ function OfferFormDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
-            Cancelar
-          </Button>
+          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>Cancelar</Button>
           <Button onClick={handleSubmit} disabled={mutation.isPending}>
-            {mutation.isPending ? "Guardando..." : editing ? "Guardar cambios" : "Crear oferta"}
+            {mutation.isPending ? "Guardando..." : editing ? "Guardar cambios" : "Crear búsqueda"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -479,77 +828,406 @@ function OfferFormDialog({
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────────
+// ── Search Profile Card ────────────────────────────────────────────────────────
+
+function ProfileCard({
+  profile,
+  onEdit,
+  onDelete,
+  onRun,
+  onToggle,
+  onDuplicate,
+  resultsCount,
+}: {
+  profile: SearchProfile;
+  onEdit: () => void;
+  onDelete: () => void;
+  onRun: () => void;
+  onToggle: () => void;
+  onDuplicate: () => void;
+  resultsCount: number;
+  isRunning?: boolean;
+}) {
+  const origin = profile.originJson;
+  const dests = profile.destinationsJson ?? [];
+  const regions = profile.regionsJson ?? [];
+
+  const destLabel = profile.destinationMode === "region"
+    ? regions.join(", ")
+    : dests.map(d => d.code ?? d.label).join(", ") || "—";
+
+  return (
+    <Card className={`transition-all hover:shadow-md ${!profile.isActive ? "opacity-60 bg-muted/30" : "bg-card"}`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className={`text-xs ${travelTypeColor(profile.travelType)}`}>
+                {travelTypeLabel(profile.travelType)}
+              </Badge>
+              {!profile.isActive && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">Pausada</Badge>
+              )}
+            </div>
+            <CardTitle className="text-base mt-1.5 leading-snug">{profile.name}</CardTitle>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onToggle} title={profile.isActive ? "Pausar" : "Activar"}>
+              {profile.isActive ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            </Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit} title="Editar">
+              <Edit2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onDuplicate} title="Duplicar">
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={onDelete} title="Eliminar">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        {/* Origen → Destino */}
+        <div className="flex items-center gap-2 text-sm">
+          <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-muted-foreground truncate">
+            <span className="text-foreground font-medium">{origin.code ?? origin.label}</span>
+            {" → "}
+            <span className="text-foreground">{destLabel}</span>
+          </span>
+        </div>
+
+        {/* Presupuesto + Personas */}
+        <div className="flex items-center gap-4 text-sm">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <DollarSign className="h-3.5 w-3.5" />
+            <span className="font-semibold text-foreground">{fmtPrice(profile.maxBudget, profile.currency)}</span>
+            <span className="text-xs">(±{profile.tolerancePercent}%)</span>
+          </span>
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Users className="h-3.5 w-3.5" />
+            <span>{profile.travelersCount} pax · {profile.travelerProfile}</span>
+          </span>
+        </div>
+
+        {/* Filtros opcionales */}
+        <div className="flex flex-wrap gap-1.5">
+          {profile.minDays != null && profile.maxDays != null && (
+            <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              {profile.minDays}–{profile.maxDays} días
+            </span>
+          )}
+          {profile.minDays != null && profile.maxDays == null && (
+            <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              mín. {profile.minDays} días
+            </span>
+          )}
+          {profile.hotelMinStars != null && (
+            <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              {"★".repeat(profile.hotelMinStars)} mín.
+            </span>
+          )}
+          {profile.directFlightOnly && (
+            <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              Vuelo directo
+            </span>
+          )}
+          {profile.airlinePreferencesJson && profile.airlinePreferencesJson.length > 0 && (
+            <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              {profile.airlinePreferencesJson.join(", ")}
+            </span>
+          )}
+          {profile.mealPlan && (
+            <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              {profile.mealPlan}
+            </span>
+          )}
+        </div>
+
+        {/* Footer: última ejecución + resultados */}
+        <div className="flex items-center justify-between pt-1 border-t border-border/50">
+          <div className="text-xs text-muted-foreground">
+            {profile.lastRunAt ? (
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {fmtRelative(profile.lastRunAt)}
+                {profile.lastRunStatus === "error" && (
+                  <span className="text-destructive ml-1">· error</span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground/60">Sin ejecutar</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {resultsCount > 0 && (
+              <span className="text-xs font-medium text-primary">
+                {resultsCount} oferta{resultsCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={onRun}>
+              <Play className="h-3 w-3" />
+              Ejecutar
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Result Card ───────────────────────────────────────────────────────────────
+
+function ResultCard({
+  result,
+  profileName,
+  onStatusChange,
+}: {
+  result: SearchResult;
+  profileName: string;
+  onStatusChange: (status: string) => void;
+}) {
+  const validConf = VALIDATION_CONFIG[result.validationStatus] ?? VALIDATION_CONFIG.pending!;
+  const statusConf = STATUS_CONFIG[result.status] ?? STATUS_CONFIG.new!;
+  const ValidIcon = validConf.icon;
+
+  const isWeak = result.validationStatus === "weak_match";
+  const isInactive = result.validationStatus === "broken_link" || result.validationStatus === "expired" || result.status === "dismissed";
+
+  return (
+    <Card className={`transition-all hover:shadow-md
+      ${isWeak ? "border-amber-300 dark:border-amber-700" : ""}
+      ${isInactive ? "opacity-50 bg-muted/20" : "bg-card"}
+    `}>
+      <CardContent className="pt-4 space-y-3">
+        {/* Badges */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge className={`text-xs ${validConf.color}`}>
+            <ValidIcon className="h-3 w-3 mr-1" />
+            {validConf.label}
+          </Badge>
+          <Badge className={`text-xs ${statusConf.color}`}>{statusConf.label}</Badge>
+          <span className="text-xs text-muted-foreground ml-auto">score {result.confidenceScore}</span>
+        </div>
+
+        {/* Title + Source */}
+        <div>
+          <p className="font-medium text-sm leading-snug">{result.title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{result.source} · {profileName}</p>
+        </div>
+
+        {/* Origin → Destination */}
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          <span>{(result.originJson as LocationItem).code ?? (result.originJson as LocationItem).label}</span>
+          <span>→</span>
+          <span className="text-foreground font-medium">{(result.destinationJson as LocationItem).label}</span>
+        </div>
+
+        {/* Price */}
+        <div className="flex items-end justify-between">
+          <div>
+            <div className="text-xl font-bold">{fmtPrice(result.price, result.currency)}</div>
+            {result.priceOriginal && (
+              <div className="text-xs text-muted-foreground line-through">{fmtPrice(result.priceOriginal, result.currency)}</div>
+            )}
+          </div>
+          <div className="text-right text-xs text-muted-foreground space-y-0.5">
+            {result.days && <div>{result.days} días · {result.nights} noches</div>}
+            {result.airline && <div className="flex items-center gap-1 justify-end"><Plane className="h-3 w-3" />{result.airline}</div>}
+            {result.hotelName && <div className="flex items-center gap-1 justify-end"><Building className="h-3 w-3" />{result.hotelName}</div>}
+          </div>
+        </div>
+
+        {/* Dates */}
+        {result.departureDate && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Calendar className="h-3 w-3" />
+            {fmtDate(result.departureDate)}
+            {result.returnDate && <> → {fmtDate(result.returnDate)}</>}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1 border-t border-border/50">
+          {result.status !== "saved" && (
+            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1" onClick={() => onStatusChange("saved")}>
+              <Bookmark className="h-3 w-3" /> Guardar
+            </Button>
+          )}
+          {result.status !== "seen" && result.status !== "saved" && (
+            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1" onClick={() => onStatusChange("seen")}>
+              <Eye className="h-3 w-3" /> Vista
+            </Button>
+          )}
+          {result.status !== "dismissed" && (
+            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1 text-muted-foreground" onClick={() => onStatusChange("dismissed")}>
+              <XCircle className="h-3 w-3" /> Descartar
+            </Button>
+          )}
+          {result.externalUrl && (
+            <a href={result.externalUrl} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+                <Globe className="h-3 w-3" /> Ver
+              </Button>
+            </a>
+          )}
+        </div>
+
+        <p className="text-xs text-muted-foreground/50">Encontrado {fmtRelative(result.foundAt)}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TravelPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [typeFilter, setTypeFilter] = useState("");
-  const [regionFilter, setRegionFilter] = useState("");
+
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<TravelOffer | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<SearchProfile | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [resultFilter, setResultFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [seeding, setSeeding] = useState(false);
 
-  const params = new URLSearchParams();
-  if (typeFilter)   params.set("type", typeFilter);
-  if (regionFilter) params.set("region", regionFilter);
-  const qs = params.toString() ? `?${params.toString()}` : "";
+  // ── Queries ────────────────────────────────────────────────────────────────
 
-  const { data: offers, isLoading, error } = useQuery<TravelOffer[]>({
-    queryKey: ["travel-offers", typeFilter, regionFilter],
-    queryFn: () => apiFetch<TravelOffer[]>(`/api/travel${qs}`),
+  const { data: profiles = [], isLoading: loadingProfiles } = useQuery<SearchProfile[]>({
+    queryKey: ["travel-profiles"],
+    queryFn: () => apiFetch<SearchProfile[]>("/api/travel/search-profiles"),
   });
 
+  const { data: results = [], isLoading: loadingResults } = useQuery<SearchResult[]>({
+    queryKey: ["travel-results"],
+    queryFn: () => apiFetch<SearchResult[]>("/api/travel/search-results"),
+  });
+
+  const { data: locations = [] } = useQuery<LocationItem[]>({
+    queryKey: ["travel-locations-catalog"],
+    queryFn: () => apiFetch<LocationItem[]>("/api/travel/locations-catalog"),
+  });
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiFetch(`/api/travel/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => apiFetch(`/api/travel/search-profiles/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["travel-offers"] });
-      setConfirmDeleteId(null);
-      toast({ title: "Oferta eliminada" });
+      qc.invalidateQueries({ queryKey: ["travel-profiles"] });
+      qc.invalidateQueries({ queryKey: ["travel-results"] });
+      setDeleteId(null);
+      toast({ title: "Búsqueda eliminada" });
     },
     onError: (err: Error) => toast({ title: "Error al eliminar", description: err.message, variant: "destructive" }),
   });
 
-  const openCreate = () => {
-    setEditing(null);
-    setDialogOpen(true);
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      apiFetch(`/api/travel/search-profiles/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["travel-profiles"] }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const runMutation = useMutation({
+    mutationFn: (id: string) => apiFetch<{ ok: boolean; resultsFound: number }>(`/api/travel/search-profiles/${id}/run`, { method: "POST" }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["travel-profiles"] });
+      qc.invalidateQueries({ queryKey: ["travel-results"] });
+      setRunningId(null);
+      toast({ title: `Búsqueda completada`, description: `${data.resultsFound} oferta${data.resultsFound !== 1 ? "s" : ""} encontrada${data.resultsFound !== 1 ? "s" : ""}` });
+    },
+    onError: (err: Error) => {
+      setRunningId(null);
+      toast({ title: "Error al ejecutar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiFetch(`/api/travel/search-results/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["travel-results"] }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  const handleRun = (id: string) => {
+    setRunningId(id);
+    runMutation.mutate(id);
   };
 
-  const openEdit = (offer: TravelOffer) => {
-    setEditing(offer);
-    setDialogOpen(true);
+  const handleDuplicate = async (profile: SearchProfile) => {
+    try {
+      await apiFetch("/api/travel/search-profiles", {
+        method: "POST",
+        body: JSON.stringify({
+          name: `${profile.name} (copia)`,
+          travelType: profile.travelType,
+          originJson: profile.originJson,
+          destinationMode: profile.destinationMode,
+          destinationsJson: profile.destinationsJson,
+          regionsJson: profile.regionsJson,
+          maxBudget: Number(profile.maxBudget),
+          currency: profile.currency,
+          travelersCount: profile.travelersCount,
+          travelerProfile: profile.travelerProfile,
+          minDays: profile.minDays,
+          maxDays: profile.maxDays,
+          airlinePreferencesJson: profile.airlinePreferencesJson,
+          hotelMinStars: profile.hotelMinStars,
+          mealPlan: profile.mealPlan,
+          directFlightOnly: profile.directFlightOnly,
+          dateFlexibilityDays: profile.dateFlexibilityDays,
+          refreshFrequencyHours: profile.refreshFrequencyHours,
+          tolerancePercent: profile.tolerancePercent,
+          notes: profile.notes,
+          isActive: false,
+        }),
+      });
+      qc.invalidateQueries({ queryKey: ["travel-profiles"] });
+      toast({ title: "Búsqueda duplicada (pausada)" });
+    } catch (err: unknown) {
+      toast({ title: "Error al duplicar", description: (err as Error).message, variant: "destructive" });
+    }
   };
 
-  const onSaved = () => {
-    qc.invalidateQueries({ queryKey: ["travel-offers"] });
+  const handleSeedLocations = async () => {
+    setSeeding(true);
+    try {
+      const result = await apiFetch<{ ok: boolean; count: number; message?: string }>("/api/travel/seed-locations", { method: "POST" });
+      qc.invalidateQueries({ queryKey: ["travel-locations-catalog"] });
+      toast({ title: result.message ?? `${result.count} ubicaciones cargadas` });
+    } catch (err: unknown) {
+      toast({ title: "Error al cargar ubicaciones", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setSeeding(false);
+    }
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Derived data ───────────────────────────────────────────────────────────
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-9 w-40" />
-          <Skeleton className="h-9 w-36 rounded-lg" />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-24 rounded-full" />)}
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-72 rounded-xl" />)}
-        </div>
-      </div>
-    );
-  }
+  const profileResultCounts = profiles.reduce<Record<string, number>>((acc, p) => {
+    acc[p.id] = results.filter(r => r.searchProfileId === p.id && r.status !== "dismissed" && r.status !== "expired").length;
+    return acc;
+  }, {});
 
-  if (error) {
-    return (
-      <div className="text-destructive p-4 rounded-lg border border-destructive/20 bg-destructive/5">
-        Error al cargar ofertas de viaje. Intentá recargar la página.
-      </div>
-    );
-  }
+  const filteredResults = results.filter(r => {
+    if (resultFilter && r.searchProfileId !== resultFilter) return false;
+    if (statusFilter && r.status !== statusFilter) return false;
+    return true;
+  });
+
+  const profileNameMap = profiles.reduce<Record<string, string>>((acc, p) => {
+    acc[p.id] = p.name;
+    return acc;
+  }, {});
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -559,300 +1237,244 @@ export default function TravelPage() {
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Viajes</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Ofertas corporativas y de beneficios. {offers?.length ?? 0} disponibles.
+            Búsquedas guardadas y ofertas detectadas automáticamente.
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2 shrink-0">
-          <Plus className="h-4 w-4" />
-          Agregar oferta
+        <Button onClick={() => { setEditing(null); setDialogOpen(true); }} className="gap-2 shrink-0">
+          <Search className="h-4 w-4" />
+          Nueva búsqueda
         </Button>
       </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border border-border/60 bg-card/50 p-4 space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wider">
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Tipo:
-          </span>
-          {TYPE_FILTERS.map(f => (
-            <button
-              key={f.value}
-              onClick={() => setTypeFilter(f.value)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border whitespace-nowrap
-                ${typeFilter === f.value
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                  : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
-                }`}
-            >
-              {f.label}
-            </button>
-          ))}
-          {typeFilter && (
-            <button onClick={() => setTypeFilter("")} className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">
-              limpiar
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 uppercase tracking-wider">
-            <Globe className="h-3.5 w-3.5" /> Región:
-          </span>
-          {REGION_FILTERS.map(f => (
-            <button
-              key={f.value}
-              onClick={() => setRegionFilter(f.value)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border whitespace-nowrap
-                ${regionFilter === f.value
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                  : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
-                }`}
-            >
-              {f.label}
-            </button>
-          ))}
-          {regionFilter && (
-            <button onClick={() => setRegionFilter("")} className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">
-              limpiar
-            </button>
-          )}
-        </div>
-
-        {(typeFilter || regionFilter) && (
-          <div className="flex items-center gap-2 pt-1 border-t border-border/40">
-            <span className="text-[10px] text-muted-foreground">Filtrando:</span>
-            {typeFilter && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
-                {TYPE_FILTERS.find(f => f.value === typeFilter)?.label}
-                <button onClick={() => setTypeFilter("")}><X className="h-2.5 w-2.5" /></button>
+      {/* Tabs */}
+      <Tabs defaultValue="profiles">
+        <TabsList className="mb-4">
+          <TabsTrigger value="profiles" className="gap-1.5">
+            <Search className="h-3.5 w-3.5" />
+            Mis búsquedas
+            {profiles.length > 0 && (
+              <span className="ml-1 text-xs bg-primary/20 text-primary rounded-full px-1.5 py-0.5">{profiles.length}</span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="results" className="gap-1.5">
+            <Plane className="h-3.5 w-3.5" />
+            Ofertas encontradas
+            {results.filter(r => r.status === "new").length > 0 && (
+              <span className="ml-1 text-xs bg-blue-500 text-white rounded-full px-1.5 py-0.5">
+                {results.filter(r => r.status === "new").length}
               </span>
             )}
-            {regionFilter && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
-                {REGION_FILTERS.find(f => f.value === regionFilter)?.label}
-                <button onClick={() => setRegionFilter("")}><X className="h-2.5 w-2.5" /></button>
-              </span>
-            )}
-            <button
-              onClick={() => { setTypeFilter(""); setRegionFilter(""); }}
-              className="ml-auto text-[10px] text-muted-foreground hover:text-foreground underline"
-            >
-              limpiar todo
-            </button>
-          </div>
-        )}
-      </div>
+          </TabsTrigger>
+          <TabsTrigger value="config" className="gap-1.5">
+            <Settings className="h-3.5 w-3.5" />
+            Configuración
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Empty state */}
-      {offers?.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-16 text-center border-2 border-dashed rounded-xl">
-          <Plane className="h-12 w-12 text-muted-foreground/30 mb-4" />
-          <h3 className="text-lg font-semibold mb-1">
-            {typeFilter || regionFilter ? "Sin resultados" : "Sin ofertas de viaje"}
-          </h3>
-          <p className="text-muted-foreground text-sm max-w-sm">
-            {typeFilter || regionFilter
-              ? "No hay ofertas que coincidan con los filtros. Probá cambiando la selección."
-              : "Todavía no hay ofertas cargadas. Agregá la primera usando el botón de arriba."}
-          </p>
-          {(typeFilter || regionFilter) ? (
-            <Button variant="outline" className="mt-4" onClick={() => { setTypeFilter(""); setRegionFilter(""); }}>
-              Limpiar filtros
-            </Button>
+        {/* ── TAB 1: Mis búsquedas ─────────────────────────────────────────── */}
+        <TabsContent value="profiles">
+          {loadingProfiles ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-64 rounded-xl" />)}
+            </div>
+          ) : profiles.length === 0 ? (
+            <div className="text-center py-16 border border-dashed rounded-xl text-muted-foreground bg-muted/10">
+              <Search className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No tenés búsquedas guardadas todavía</p>
+              <p className="text-sm mt-1">Creá una regla de monitoreo y el sistema buscará ofertas que coincidan.</p>
+              <Button variant="outline" className="mt-4 gap-2" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+                <Plus className="h-4 w-4" />
+                Nueva búsqueda
+              </Button>
+            </div>
           ) : (
-            <Button className="mt-4 gap-2" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Agregar primera oferta
-            </Button>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {profiles.map(profile => (
+                <ProfileCard
+                  key={profile.id}
+                  profile={profile}
+                  resultsCount={profileResultCounts[profile.id] ?? 0}
+                  isRunning={runningId === profile.id}
+                  onEdit={() => { setEditing(profile); setDialogOpen(true); }}
+                  onDelete={() => setDeleteId(profile.id)}
+                  onRun={() => handleRun(profile.id)}
+                  onToggle={() => toggleMutation.mutate({ id: profile.id, isActive: !profile.isActive })}
+                  onDuplicate={() => handleDuplicate(profile)}
+                />
+              ))}
+            </div>
           )}
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {offers?.map(offer => {
-            const score = offer.qualityScore ?? 70;
-            const issues = parseIssues(offer.qualityIssues);
-            const priceFormatted = fmtPrice(offer.price, offer.currency);
-            const isExpired = offer.validUntil ? new Date(offer.validUntil) < new Date() : false;
+        </TabsContent>
 
-            return (
-              <Card
-                key={offer.id}
-                className={`flex flex-col border-border/60 hover:shadow-md hover:shadow-black/5 dark:hover:shadow-black/20 transition-all duration-200
-                  ${offer.needsReview ? "border-amber-300 dark:border-amber-700" : "hover:border-primary/40"}`}
+        {/* ── TAB 2: Ofertas encontradas ────────────────────────────────────── */}
+        <TabsContent value="results">
+          {/* Filters */}
+          <div className="flex gap-3 flex-wrap mb-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+              <select
+                value={resultFilter}
+                onChange={e => setResultFilter(e.target.value)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
               >
-                <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${TYPE_COLORS[offer.travelType] ?? "bg-muted text-muted-foreground"}`}>
-                      {offer.travelType.charAt(0).toUpperCase() + offer.travelType.slice(1)}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {offer.needsReview && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                          <AlertTriangle className="h-2.5 w-2.5" /> Revisar
-                        </span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => openEdit(offer)}
-                        title="Editar"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => setConfirmDeleteId(offer.id)}
-                        title="Eliminar"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                <option value="">Todas las búsquedas</option>
+                {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Todos los estados</option>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+            {(resultFilter || statusFilter) && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => { setResultFilter(""); setStatusFilter(""); }}>
+                <X className="h-3 w-3" /> Limpiar
+              </Button>
+            )}
+            <span className="ml-auto text-xs text-muted-foreground self-center">
+              {filteredResults.length} oferta{filteredResults.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {loadingResults ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-72 rounded-xl" />)}
+            </div>
+          ) : filteredResults.length === 0 ? (
+            <div className="text-center py-16 border border-dashed rounded-xl text-muted-foreground bg-muted/10">
+              <Plane className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No hay ofertas encontradas aún</p>
+              <p className="text-sm mt-1">
+                {profiles.length === 0
+                  ? "Primero creá una búsqueda guardada para que el sistema detecte ofertas."
+                  : 'Ejecutá una búsqueda desde "Mis búsquedas" para encontrar resultados.'
+                }
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredResults.map(result => (
+                <ResultCard
+                  key={result.id}
+                  result={result}
+                  profileName={profileNameMap[result.searchProfileId] ?? "—"}
+                  onStatusChange={status => statusMutation.mutate({ id: result.id, status })}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── TAB 3: Configuración ─────────────────────────────────────────── */}
+        <TabsContent value="config">
+          <div className="space-y-6">
+            {/* Catálogo de ubicaciones */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  Catálogo de ubicaciones
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-muted-foreground flex-1">
+                    El catálogo incluye aeropuertos y ciudades para el autocomplete.
+                    {locations.length > 0
+                      ? ` Actualmente hay ${locations.length} ubicaciones cargadas.`
+                      : " No hay ubicaciones cargadas."}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={handleSeedLocations} disabled={seeding || locations.length > 0}>
+                    {seeding ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                    {locations.length > 0 ? "Ya cargado" : "Cargar ubicaciones"}
+                  </Button>
+                </div>
+
+                {locations.length > 0 && (
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <div className="grid grid-cols-4 gap-2 px-3 py-2 bg-muted/50 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      <span>Ubicación</span>
+                      <span>Código</span>
+                      <span>País</span>
+                      <span>Región</span>
                     </div>
-                  </div>
-
-                  <CardTitle className="text-xl flex items-center gap-2">
-                    <MapPin className="h-5 w-5 text-primary shrink-0" />
-                    <span className="leading-tight">{offer.destination}</span>
-                  </CardTitle>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    {offer.origin && (
-                      <span className="text-xs text-muted-foreground">desde {offer.origin}</span>
-                    )}
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal capitalize">
-                      {offer.region}
-                    </Badge>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 ${qualityColor(score)}`}>
-                      <ShieldCheck className="h-2.5 w-2.5" /> {score}
-                    </span>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="flex-1 space-y-3">
-                  {/* Price */}
-                  <div className={`rounded-lg p-3 text-center ${!priceFormatted ? "bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-800" : "bg-primary/5 border border-primary/10"}`}>
-                    {!priceFormatted ? (
-                      <p className="text-sm text-red-600 dark:text-red-400 font-medium flex items-center justify-center gap-1">
-                        <AlertTriangle className="h-3.5 w-3.5" /> Precio no disponible
-                      </p>
-                    ) : (
-                      <>
-                        <p className="text-xs text-muted-foreground mb-0.5">Precio desde</p>
-                        <p className="text-2xl font-bold text-primary">{priceFormatted}</p>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Details */}
-                  <div className="space-y-1.5 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5 shrink-0" />
-                      <span>{offer.duration} días</span>
-                      {offer.passengers && (
-                        <>
-                          <span className="text-border">·</span>
-                          <Users className="h-3.5 w-3.5 shrink-0" />
-                          <span>{offer.passengers} persona{offer.passengers > 1 ? "s" : ""}</span>
-                        </>
-                      )}
-                    </div>
-                    {offer.departureDate && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="h-3.5 w-3.5 shrink-0" />
-                        <span>Salida: {fmtDate(offer.departureDate)}</span>
-                      </div>
-                    )}
-                    {offer.hotel && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Building className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">
-                          {offer.hotel}
-                          {offer.hotelCategory ? ` · ${offer.hotelCategory}★` : ""}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <DollarSign className="h-3.5 w-3.5 shrink-0" />
-                      <span className="text-xs">{offer.provider}</span>
-                    </div>
-                  </div>
-
-                  {offer.description && (
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 leading-relaxed line-clamp-2">
-                      {offer.description}
-                    </p>
-                  )}
-
-                  {offer.validUntil && (
-                    <p className={`text-xs border-t pt-2 ${isExpired ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
-                      {isExpired ? "⚠ Oferta vencida: " : "Válido hasta: "}
-                      <span className={isExpired ? "line-through" : ""}>{fmtDate(offer.validUntil)}</span>
-                    </p>
-                  )}
-
-                  {issues.length > 0 && (
-                    <div className="flex flex-wrap gap-1 border-t pt-2">
-                      {issues.map((issue, i) => (
-                        <span key={i} className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted/80 text-muted-foreground flex items-center gap-0.5">
-                          <Info className="h-2.5 w-2.5 shrink-0" /> {issue}
-                        </span>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-border/50">
+                      {locations.slice(0, 60).map(loc => (
+                        <div key={loc.id} className="grid grid-cols-4 gap-2 px-3 py-2 text-sm hover:bg-muted/30">
+                          <span className="font-medium truncate">{loc.label}</span>
+                          <span className="text-muted-foreground font-mono">{loc.code ?? "—"}</span>
+                          <span className="text-muted-foreground truncate">{loc.country}</span>
+                          <span className="text-muted-foreground truncate">{loc.region}</span>
+                        </div>
                       ))}
                     </div>
-                  )}
-                </CardContent>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-                <CardFooter className="pt-0">
-                  {offer.link && offer.link !== "#" ? (
-                    <Button asChild className="w-full" variant="outline" size="sm">
-                      <a href={offer.link} target="_blank" rel="noopener noreferrer">
-                        Ver oferta completa <ExternalLink className="ml-2 h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button variant="outline" size="sm" className="w-full text-muted-foreground" disabled>
-                      Sin link externo
-                    </Button>
-                  )}
-                </CardFooter>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+            {/* Fuentes de datos */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Globe className="h-4 w-4" />
+                  Fuentes de datos
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {["Despegar.com", "Almundo", "Aero Sur Turismo", "TUI Argentina", "Flybondi", "Aerolíneas Argentinas", "LATAM", "American Express Travel"].map(source => (
+                    <div key={source} className="flex items-center justify-between py-2 border-b border-border/40 last:border-0">
+                      <span className="text-sm font-medium">{source}</span>
+                      <Badge variant="outline" className="text-xs text-emerald-600 dark:text-emerald-400">Activa</Badge>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-3 flex items-start gap-1.5">
+                  <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  La integración con fuentes externas está en desarrollo. Por ahora el sistema genera resultados simulados para validar el flujo.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
 
-      {/* Create/Edit dialog */}
-      {dialogOpen && (
-        <OfferFormDialog
-          open={dialogOpen}
-          onClose={() => { setDialogOpen(false); setEditing(null); }}
-          editing={editing}
-          onSaved={onSaved}
-        />
-      )}
+      {/* ── Dialogs ──────────────────────────────────────────────────────────── */}
 
-      {/* Delete confirmation */}
-      <Dialog open={confirmDeleteId !== null} onOpenChange={v => { if (!v) setConfirmDeleteId(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>¿Eliminar oferta?</DialogTitle>
-            <DialogDescription>
-              Esta acción no se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={deleteMutation.isPending}
-              onClick={() => confirmDeleteId && deleteMutation.mutate(confirmDeleteId)}
+      <ProfileFormDialog
+        open={dialogOpen}
+        onClose={() => { setDialogOpen(false); setEditing(null); }}
+        editing={editing}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["travel-profiles"] });
+        }}
+      />
+
+      <AlertDialog open={deleteId !== null} onOpenChange={v => { if (!v) setDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar búsqueda</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará la búsqueda y todos los resultados asociados. No se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteMutation.isPending ? "Eliminando..." : "Eliminar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
