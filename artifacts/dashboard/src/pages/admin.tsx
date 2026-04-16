@@ -12,7 +12,8 @@ import {
   Mail, CloudSun, Newspaper, Briefcase, MoreHorizontal, Clock,
   Trash2, Lock, Unlock, Crown, LayoutDashboard, Search,
   AlertTriangle, FileText, ToggleLeft, ToggleRight, Filter,
-  UserPlus, ThumbsUp, ThumbsDown, Hourglass,
+  UserPlus, ThumbsUp, ThumbsDown, Hourglass, Zap, RefreshCw,
+  CircleSlash, CheckCircle, Timer,
 } from "lucide-react";
 import { AdminEmailPanel } from "@/components/admin-email-panel";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -114,6 +115,151 @@ function timeAgo(dateStr: string) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `hace ${hours}h`;
   return `hace ${Math.floor(hours / 24)}d`;
+}
+
+interface JobRun { id: number; status: string; startedAt: string; durationMs: number | null; errorMessage: string | null; recordsAffected: number | null; }
+interface JobSummary { jobName: string; lastStatus: string; lastRunAt: string; lastFinishedAt: string | null; lastDurationMs: number | null; lastError: string | null; successRate: number | null; recentRuns: JobRun[]; }
+interface CircuitBreaker { sourceName: string; state: string; failureCount: number; openUntil: string | null; lastSuccessAt: string | null; lastFailureAt: string | null; }
+
+const JOB_LABELS: Record<string, string> = {
+  weather: "Clima", news: "Noticias", fiscal: "Fiscal", currency: "Divisas",
+  semaforos: "Semáforos", email_alerts: "Alertas Email",
+};
+
+function JobStatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    success: "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400",
+    failed:  "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400",
+    running: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400",
+    skipped: "bg-muted text-muted-foreground",
+  };
+  const label: Record<string, string> = { success: "OK", failed: "Error", running: "Ejecutando", skipped: "Omitido" };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${map[status] ?? "bg-muted text-muted-foreground"}`}>
+      {status === "success" && <CheckCircle className="h-3 w-3" />}
+      {status === "failed" && <XCircle className="h-3 w-3" />}
+      {status === "running" && <RefreshCw className="h-3 w-3 animate-spin" />}
+      {label[status] ?? status}
+    </span>
+  );
+}
+
+function CircuitStateBadge({ state }: { state: string }) {
+  const map: Record<string, string> = {
+    closed: "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400",
+    open:   "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400",
+    half_open: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400",
+  };
+  const label: Record<string, string> = { closed: "Cerrado", open: "Abierto", half_open: "Semi-abierto" };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${map[state] ?? "bg-muted text-muted-foreground"}`}>
+      {label[state] ?? state}
+    </span>
+  );
+}
+
+function JobsHealthPanel() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery<{ ok: boolean; jobs: JobSummary[]; circuitBreakers: CircuitBreaker[] }>({
+    queryKey: ["admin-jobs"],
+    queryFn: () => fetch(`${BASE}/api/admin/jobs`, { credentials: "include" }).then(r => r.json()),
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="p-6 text-center text-sm text-muted-foreground">Cargando...</div>;
+  const jobs = data?.jobs ?? [];
+  const breakers = data?.circuitBreakers ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Estado de Jobs de Sistema</h3>
+        <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ["admin-jobs"] })}>
+          <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Actualizar
+        </Button>
+      </div>
+
+      {jobs.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">No hay ejecuciones registradas todavía.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {jobs.map(job => (
+            <Card key={job.jobName} className="overflow-hidden">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">{JOB_LABELS[job.jobName] ?? job.jobName}</CardTitle>
+                  <JobStatusBadge status={job.lastStatus} />
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-2">
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Timer className="h-3 w-3" />
+                  {timeAgo(job.lastRunAt)}
+                  {job.lastDurationMs !== null && <span className="ml-1">· {job.lastDurationMs}ms</span>}
+                </div>
+                {job.successRate !== null && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${job.successRate}%` }} />
+                    </div>
+                    <span className="text-xs text-muted-foreground">{job.successRate}%</span>
+                  </div>
+                )}
+                {job.lastError && (
+                  <p className="text-xs text-red-600 dark:text-red-400 truncate" title={job.lastError}>
+                    {job.lastError}
+                  </p>
+                )}
+                <div className="flex gap-1 flex-wrap pt-1">
+                  {job.recentRuns.slice(0, 7).map((run, i) => (
+                    <span
+                      key={i}
+                      title={`${run.status} · ${run.durationMs ?? "?"}ms`}
+                      className={`h-4 w-4 rounded-sm ${
+                        run.status === "success" ? "bg-green-500/80" :
+                        run.status === "failed" ? "bg-red-500/80" :
+                        "bg-muted"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {breakers.length > 0 && (
+        <>
+          <h3 className="text-sm font-semibold pt-2">Circuit Breakers</h3>
+          <div className="rounded-lg border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fuente</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Fallos</TableHead>
+                  <TableHead>Abierto hasta</TableHead>
+                  <TableHead>Último éxito</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {breakers.map(cb => (
+                  <TableRow key={cb.sourceName}>
+                    <TableCell className="font-medium text-sm">{cb.sourceName}</TableCell>
+                    <TableCell><CircuitStateBadge state={cb.state} /></TableCell>
+                    <TableCell className="text-sm">{cb.failureCount}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{cb.openUntil ? new Date(cb.openUntil).toLocaleTimeString("es-AR") : "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{cb.lastSuccessAt ? timeAgo(cb.lastSuccessAt) : "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -387,6 +533,7 @@ export default function AdminPage() {
           <TabsTrigger value="security-logs"><FileText className="h-3.5 w-3.5 mr-1.5" />Auditoría</TabsTrigger>
           <TabsTrigger value="integrations"><Activity className="h-3.5 w-3.5 mr-1.5" />Integraciones</TabsTrigger>
           <TabsTrigger value="sync"><Clock className="h-3.5 w-3.5 mr-1.5" />Sincronización</TabsTrigger>
+          <TabsTrigger value="jobs"><Zap className="h-3.5 w-3.5 mr-1.5" />Jobs</TabsTrigger>
           <TabsTrigger value="email"><Mail className="h-3.5 w-3.5 mr-1.5" />Email del sistema</TabsTrigger>
         </TabsList>
 
@@ -858,6 +1005,10 @@ export default function AdminPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="jobs" className="mt-0 space-y-4">
+          <JobsHealthPanel />
         </TabsContent>
 
         <TabsContent value="email" className="mt-0">

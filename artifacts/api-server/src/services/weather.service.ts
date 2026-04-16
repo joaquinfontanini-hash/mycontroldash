@@ -2,12 +2,33 @@ import { db, weatherSnapshotsTable, appSettingsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { fetchOpenMeteoForecast, type OpenMeteoDay } from "../adapters/openmeteo.adapter.js";
 import { withSyncLog } from "./sync.service.js";
+import { recordSuccess, recordFailure, isCircuitOpen } from "./cache.service.js";
 import { logger } from "../lib/logger.js";
 
 const DEFAULT_LAT = "-38.9516";
 const DEFAULT_LON = "-68.0591";
 const DEFAULT_LOCATION = "Neuquén, Argentina";
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const SOURCE_NAME = "OpenMeteo";
+
+async function getLocationSettings() {
+  const [settings] = await db.select().from(appSettingsTable).limit(1);
+  return {
+    lat: settings?.weatherLatitude ?? DEFAULT_LAT,
+    lon: settings?.weatherLongitude ?? DEFAULT_LON,
+    location: settings?.weatherLocation ?? DEFAULT_LOCATION,
+  };
+}
+
+async function getLatestSnapshot(location: string) {
+  const [cached] = await db
+    .select()
+    .from(weatherSnapshotsTable)
+    .where(eq(weatherSnapshotsTable.location, location))
+    .orderBy(desc(weatherSnapshotsTable.fetchedAt))
+    .limit(1);
+  return cached ?? null;
+}
 
 export async function getWeatherForecast(): Promise<{
   forecast: OpenMeteoDay[];
@@ -15,30 +36,22 @@ export async function getWeatherForecast(): Promise<{
   fetchedAt: string;
   source: "live" | "cache";
 }> {
-  const [settings] = await db.select().from(appSettingsTable).limit(1);
-  const lat = settings?.weatherLatitude ?? DEFAULT_LAT;
-  const lon = settings?.weatherLongitude ?? DEFAULT_LON;
-  const location = settings?.weatherLocation ?? DEFAULT_LOCATION;
-
-  const [cached] = await db
-    .select()
-    .from(weatherSnapshotsTable)
-    .where(eq(weatherSnapshotsTable.location, location))
-    .orderBy(desc(weatherSnapshotsTable.fetchedAt))
-    .limit(1);
-
+  const { lat, lon, location } = await getLocationSettings();
+  const cached = await getLatestSnapshot(location);
   const now = Date.now();
-  const cacheAge = cached
-    ? now - new Date(cached.fetchedAt).getTime()
-    : Infinity;
+  const cacheAge = cached ? now - new Date(cached.fetchedAt).getTime() : Infinity;
 
+  // Serve fresh cache if within TTL
   if (cached && cacheAge < CACHE_TTL_MS) {
-    return {
-      forecast: cached.forecast as OpenMeteoDay[],
-      location,
-      fetchedAt: cached.fetchedAt.toISOString(),
-      source: "cache",
-    };
+    return { forecast: cached.forecast as OpenMeteoDay[], location, fetchedAt: cached.fetchedAt.toISOString(), source: "cache" };
+  }
+
+  // Check circuit breaker — if open, fall back to stale cache or mock
+  if (await isCircuitOpen(SOURCE_NAME)) {
+    logger.warn({ SOURCE_NAME }, "weather.service: circuit open, using stale cache");
+    const stale = cached ?? null;
+    if (stale) return { forecast: stale.forecast as OpenMeteoDay[], location, fetchedAt: stale.fetchedAt.toISOString(), source: "cache" };
+    return { forecast: getMockForecast(), location, fetchedAt: new Date().toISOString(), source: "cache" };
   }
 
   try {
@@ -47,59 +60,44 @@ export async function getWeatherForecast(): Promise<{
       return { count: data.length, result: data };
     });
 
-    await db.insert(weatherSnapshotsTable).values({
-      location,
-      latitude: lat,
-      longitude: lon,
-      forecast: forecast as any,
-    });
+    await db.insert(weatherSnapshotsTable).values({ location, latitude: lat, longitude: lon, forecast: forecast as any });
+    await recordSuccess(SOURCE_NAME);
 
-    return {
-      forecast,
-      location,
-      fetchedAt: new Date().toISOString(),
-      source: "live",
-    };
+    return { forecast, location, fetchedAt: new Date().toISOString(), source: "live" };
   } catch (err) {
+    await recordFailure(SOURCE_NAME);
     logger.error({ err }, "Weather fetch failed, trying cache fallback");
 
-    if (cached) {
-      return {
-        forecast: cached.forecast as OpenMeteoDay[],
-        location,
-        fetchedAt: cached.fetchedAt.toISOString(),
-        source: "cache",
-      };
-    }
-
-    return {
-      forecast: getMockForecast(),
-      location,
-      fetchedAt: new Date().toISOString(),
-      source: "cache",
-    };
+    if (cached) return { forecast: cached.forecast as OpenMeteoDay[], location, fetchedAt: cached.fetchedAt.toISOString(), source: "cache" };
+    return { forecast: getMockForecast(), location, fetchedAt: new Date().toISOString(), source: "cache" };
   }
 }
 
 export async function refreshWeather() {
-  const [settings] = await db.select().from(appSettingsTable).limit(1);
-  const lat = settings?.weatherLatitude ?? DEFAULT_LAT;
-  const lon = settings?.weatherLongitude ?? DEFAULT_LON;
-  const location = settings?.weatherLocation ?? DEFAULT_LOCATION;
+  const { lat, lon, location } = await getLocationSettings();
 
-  const forecast = await withSyncLog("weather", async () => {
-    const data = await fetchOpenMeteoForecast(lat, lon, 3);
-    return { count: data.length, result: data };
-  });
+  if (await isCircuitOpen(SOURCE_NAME)) {
+    logger.warn("weather.service: circuit open, skipping refresh");
+    const cached = await getLatestSnapshot(location);
+    if (cached) return { forecast: cached.forecast as OpenMeteoDay[], location, fetchedAt: cached.fetchedAt.toISOString(), source: "cache" as const };
+    return { forecast: getMockForecast(), location, fetchedAt: new Date().toISOString(), source: "cache" as const };
+  }
 
-  await db.insert(weatherSnapshotsTable).values({
-    location,
-    latitude: lat,
-    longitude: lon,
-    forecast: forecast as any,
-  });
+  try {
+    const forecast = await withSyncLog("weather", async () => {
+      const data = await fetchOpenMeteoForecast(lat, lon, 3);
+      return { count: data.length, result: data };
+    });
 
-  return { forecast, location, fetchedAt: new Date().toISOString(), source: "live" as const };
+    await db.insert(weatherSnapshotsTable).values({ location, latitude: lat, longitude: lon, forecast: forecast as any });
+    await recordSuccess(SOURCE_NAME);
+
+    return { forecast, location, fetchedAt: new Date().toISOString(), source: "live" as const };
+  } catch (err) {
+    await recordFailure(SOURCE_NAME);
+    logger.error({ err }, "refreshWeather failed");
+    throw err;
+  }
 }
 
 function getMockForecast(): OpenMeteoDay[] {

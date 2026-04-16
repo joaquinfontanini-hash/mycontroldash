@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/components/theme-provider";
 import GlobalSearch, { useGlobalSearch } from "@/components/global-search";
 import AlertsBell from "@/components/alerts-bell";
+import { NotificationBell } from "@/components/notification-bell";
 import ModoHoy from "@/components/modo-hoy";
 import {
   LayoutDashboard, CheckSquare, Link as LinkIcon, Newspaper, Mail,
@@ -483,6 +484,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <span className="sr-only">Actualizar datos</span>
             </Button>
             <AlertsBell />
+            <NotificationBell />
             <Button
               variant="ghost"
               size="icon"

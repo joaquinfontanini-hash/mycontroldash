@@ -113,6 +113,20 @@ const DOMAIN_STRONG_NEGATIVES: string[] = [
   "viral en redes",
   "se volvió viral",
   "boda de celebridades",
+  // Additional entertainment exclusions
+  "espectáculos", "espectaculos",
+  "entretenimiento",
+  "celebrities", "famosos",
+  "selfie", "stories de",
+  "su look", "su outfit",
+  "salud y bienestar",
+  "receta de cocina", "recetas de",
+  "tips de moda", "moda y estilo",
+  "horóscopo de", "zodiaco",
+  "netflix", "disney plus", "streaming",
+  "deporte", "fútbol", "futbol", "gol de", "selección argentina",
+  "copa del mundo", "libertadores", "superliga",
+  "tenis", "básquet", "basketball",
 ];
 
 // Términos negativos moderados: presencia sugiere contenido de entretenimiento
@@ -355,15 +369,32 @@ export function scoreImpact(
 // PASO 5: PRIORITY SCORING FINAL
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Source tier: tiered score (0-100) based on editorial relevance
+const SOURCE_SCORES: Record<string, number> = {
+  "Infobae":           80,
+  "LM Neuquén":       100, // primary regional source
+  "Ámbito":            85,
+  "La Nación":         75,
+  "Diario Río Negro":  90, // primary regional source
+  "Clarín":            70,
+  "El Cronista":       80,
+  "Tributum":          90, // specialist fiscal source
+  "Contadores en Red": 90,
+  "Página 12":         60,
+};
+
+function getSourceScore(sourceName: string): number {
+  return SOURCE_SCORES[sourceName] ?? 60;
+}
+
 /**
  * PASO 5 — Combina todos los scores en un priority_score final (0-100).
  *
- * Pesos:
- *  - domain_fit_score    30% — si la noticia no es del dominio, no puede rankear
- *  - impact_score        30% — noticias de alto impacto suben naturalmente
- *  - recency             20% — noticias recientes prevalecen (decae en 20h)
- *  - regional_bonus      10% — cercanía geográfica al usuario
- *  - category_confidence 10% — clasificación más segura = más confiable
+ * Pesos (actualizados):
+ *  - impact_score        40% — noticias de alto impacto suben naturalmente
+ *  - domain_fit_score    30% — relevancia al dominio profesional (keywords)
+ *  - source_score        20% — calidad y relevancia de la fuente
+ *  - recency             10% — noticias recientes prevalecen (decae en 24h)
  */
 export function calcPriorityScore(
   domainFitScore: number,
@@ -371,22 +402,30 @@ export function calcPriorityScore(
   impactScore: number,
   regionLevel: string,
   publishedAt: string,
+  sourceName?: string,
 ): number {
-  // Recencia: 100 al publicar, decae linealmente a 0 a las 20 horas
+  // Recencia: 100 al publicar, decae linealmente a 0 en 24 horas
   const ageHours = (Date.now() - new Date(publishedAt).getTime()) / (1000 * 60 * 60);
-  const recencyScore = Math.max(0, 100 - ageHours * 5);
+  const recencyScore = Math.max(0, 100 - ageHours * (100 / 24));
 
-  // Bonus de cercanía geográfica
-  const regionalScore = regionLevel === "regional" ? 100
-    : regionLevel === "nacional" ? 50
-    : 0;
+  // Boost regional: noticias regionales tienen mayor impacto percibido
+  const adjustedImpact = regionLevel === "regional"
+    ? Math.min(100, impactScore + 15)
+    : regionLevel === "nacional"
+    ? Math.min(100, impactScore + 5)
+    : impactScore;
+
+  // Source quality score
+  const sourceScore = sourceName ? getSourceScore(sourceName) : 60;
+
+  // Keywords score: combina domain fit + category confidence
+  const keywordsScore = domainFitScore * 0.70 + categoryConfidence * 0.30;
 
   const priority =
-    domainFitScore * 0.30
-    + impactScore * 0.30
-    + recencyScore * 0.20
-    + regionalScore * 0.10
-    + categoryConfidence * 0.10;
+    adjustedImpact * 0.40
+    + keywordsScore * 0.30
+    + sourceScore   * 0.20
+    + recencyScore  * 0.10;
 
   return Math.round(Math.min(100, priority));
 }
@@ -484,7 +523,7 @@ export function classifyArticle(item: {
 
   // PASO 5: Priority
   const priorityScore = calcPriorityScore(
-    domainFitScore, categoryConfidence, impactScore, regionLevel, pubDate,
+    domainFitScore, categoryConfidence, impactScore, regionLevel, pubDate, sourceName,
   );
 
   // PASO 6: Tags

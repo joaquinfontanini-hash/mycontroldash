@@ -31,6 +31,8 @@ import fiscalAdminRouter from "./fiscal-admin";
 import passwordResetRouter from "./password-reset";
 import adminEmailRouter from "./admin-email";
 import notificationsRouter from "./notifications";
+import inAppNotificationsRouter from "./in-app-notifications";
+import preferencesRouter from "./preferences";
 
 const router: IRouter = Router();
 
@@ -48,9 +50,11 @@ router.use(usersRouter);
 router.use(userSettingsRouter);
 
 // ── Email, notifications, password reset (public + auth guarded) ───────────────
-router.use(passwordResetRouter);   // POST /auth/forgot-password, GET+POST /auth/reset-password
-router.use(adminEmailRouter);      // GET/POST /admin/email-provider/*, GET /admin/email-logs
-router.use(notificationsRouter);   // GET/PATCH /me/notification-preferences
+router.use(passwordResetRouter);             // POST /auth/forgot-password, GET+POST /auth/reset-password
+router.use(adminEmailRouter);                // GET/POST /admin/email-provider/*, GET /admin/email-logs
+router.use(notificationsRouter);             // GET/PATCH /me/notification-preferences
+router.use("/notifications", inAppNotificationsRouter);   // GET /notifications, PATCH /:id/read
+router.use("/me/preferences", preferencesRouter);         // GET/PUT /me/preferences/:key
 
 // ── Module-guarded routes ──────────────────────────────────────────────────────
 // Pattern: guard middleware applied to matching path prefix (no sub-router path

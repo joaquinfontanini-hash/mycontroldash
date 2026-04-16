@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { getAuth } from "@clerk/express";
 import { db, usersTable, modulesTable, userModulePermissionsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
@@ -16,26 +15,18 @@ export type AuthenticatedRequest = Request & {
   };
 };
 
+// Single source of truth: sessions only.
+// All auth paths (local login, Clerk Google OAuth) must create an Express session.
+// The session stores userId (integer FK to usersTable).
 async function resolveUser(req: Request): Promise<typeof usersTable.$inferSelect | null> {
   const sessionUserId = req.session?.userId;
-  if (sessionUserId) {
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, sessionUserId));
-    return user ?? null;
-  }
+  if (!sessionUserId) return null;
 
-  const clerkId = getAuth(req)?.userId;
-  if (clerkId) {
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.clerkId, clerkId));
-    return user ?? null;
-  }
-
-  return null;
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, sessionUserId));
+  return user ?? null;
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {

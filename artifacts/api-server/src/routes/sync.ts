@@ -3,6 +3,8 @@ import { refreshWeather } from "../services/weather.service.js";
 import { refreshNews } from "../services/news.service.js";
 import { refreshFiscalSources } from "../services/fiscal.service.js";
 import { getRecentSyncLogs, getLastSync } from "../services/sync.service.js";
+import { getJobSummary } from "../services/job-logger.js";
+import { db, circuitBreakerTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
@@ -80,6 +82,20 @@ router.post("/sync/:module", async (req, res): Promise<void> => {
   } catch (err: any) {
     logger.error({ err, module }, "Manual sync error");
     res.status(500).json({ error: err?.message ?? "Sync failed", module });
+  }
+});
+
+// ── GET /api/admin/jobs ───────────────────────────────────────────────────────
+router.get("/admin/jobs", async (_req, res): Promise<void> => {
+  try {
+    const [summary, breakers] = await Promise.all([
+      getJobSummary(),
+      db.select().from(circuitBreakerTable),
+    ]);
+    res.json({ ok: true, jobs: summary, circuitBreakers: breakers });
+  } catch (err) {
+    logger.error({ err }, "Admin jobs error");
+    res.status(500).json({ ok: false, error: "Error al obtener estado de jobs" });
   }
 });
 

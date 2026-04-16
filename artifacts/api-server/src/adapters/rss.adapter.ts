@@ -1,5 +1,6 @@
 import Parser from "rss-parser";
 import { logger } from "../lib/logger.js";
+import { recordSuccess, recordFailure, isCircuitOpen } from "../services/cache.service.js";
 
 export interface RssItem {
   title: string;
@@ -57,12 +58,29 @@ function isValidUrl(url: string): boolean {
   }
 }
 
+/** Derive a stable circuit-breaker key from the feed hostname */
+function cbKey(feedUrl: string): string {
+  try {
+    return `rss:${new URL(feedUrl).hostname}`;
+  } catch {
+    return `rss:${feedUrl.slice(0, 40)}`;
+  }
+}
+
 export async function fetchRssSource(
   feedUrl: string,
   sourceName: string,
   category: string,
   limit = 10
 ): Promise<RssItem[]> {
+  const key = cbKey(feedUrl);
+
+  // Skip if circuit is open for this host
+  if (await isCircuitOpen(key)) {
+    logger.warn({ feedUrl, sourceName }, "rss.adapter: circuit open, skipping fetch");
+    return [];
+  }
+
   try {
     const feed = await parser.parseURL(feedUrl);
     const items: RssItem[] = [];
@@ -87,8 +105,10 @@ export async function fetchRssSource(
       });
     }
 
+    await recordSuccess(key);
     return items;
   } catch (err) {
+    await recordFailure(key);
     logger.warn({ feedUrl, sourceName, err }, "RSS fetch failed");
     return [];
   }

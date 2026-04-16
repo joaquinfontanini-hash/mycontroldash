@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   AlertTriangle, Zap, TrendingUp, Info, ArrowRight,
   Brain, Activity, Heart, Wind, RefreshCw,
@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDecisionEngine, type DecisionItem, type DecisionLevel } from "@/hooks/use-decision-engine";
+import { usePreferences } from "@/hooks/use-preferences";
 import { cn } from "@/lib/utils";
 
 const TYPE_META: Record<string, { icon: React.ElementType; label: string; color: string }> = {
@@ -119,6 +120,9 @@ export default function DecisionsPage() {
   const qc = useQueryClient();
   const { decisions, scores } = useDecisionEngine();
 
+  const prefs = usePreferences();
+
+  // Start from localStorage as immediate fallback while DB loads
   const [salud, setSaludRaw] = useState(() => {
     const v = parseInt(localStorage.getItem(LS_KEY_SALUD) ?? "70");
     return isNaN(v) ? 70 : v;
@@ -128,8 +132,26 @@ export default function DecisionsPage() {
     return isNaN(v) ? 40 : v;
   });
 
-  function setSalud(v: number) { setSaludRaw(v); localStorage.setItem(LS_KEY_SALUD, String(v)); }
-  function setEstres(v: number) { setEstresRaw(v); localStorage.setItem(LS_KEY_ESTRES, String(v)); }
+  // Once preferences load from DB, sync local state
+  useEffect(() => {
+    if (!prefs.isLoading) {
+      const dbSalud = prefs.getNumber(LS_KEY_SALUD, -1);
+      const dbEstres = prefs.getNumber(LS_KEY_ESTRES, -1);
+      if (dbSalud >= 0) setSaludRaw(dbSalud);
+      if (dbEstres >= 0) setEstresRaw(dbEstres);
+    }
+  }, [prefs.isLoading]);
+
+  function setSalud(v: number) {
+    setSaludRaw(v);
+    localStorage.setItem(LS_KEY_SALUD, String(v)); // local fallback
+    prefs.set(LS_KEY_SALUD, v);
+  }
+  function setEstres(v: number) {
+    setEstresRaw(v);
+    localStorage.setItem(LS_KEY_ESTRES, String(v));
+    prefs.set(LS_KEY_ESTRES, v);
+  }
 
   const problems = decisions.filter(d => d.type === "problem");
   const actions = decisions.filter(d => d.type === "action");
