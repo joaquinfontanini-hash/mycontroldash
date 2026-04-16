@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, desc, and, ilike, or, sql as drizzleSql, ne } from "drizzle-orm";
+import { eq, desc, and, ilike, or, sql as drizzleSql } from "drizzle-orm";
 import {
   db,
   travelLocationsTable,
@@ -9,6 +9,8 @@ import {
 import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import { requireAuth, requireAdmin, getCurrentUserIdNum } from "../middleware/require-auth.js";
+import { runSearchProfile, getApiQuotas } from "../services/travelSearchService.js";
+import { getTravelSchedulerStatus } from "../jobs/scheduler.js";
 
 const router: IRouter = Router();
 
@@ -96,6 +98,9 @@ const ProfileBody = z.object({
   priority: z.coerce.number().int().default(0),
   notes: z.string().optional().nullable(),
   isActive: z.boolean().default(true),
+  searchType: z.enum(["vuelos", "paquetes", "ambos"]).default("ambos"),
+  departureDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  departureDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
 });
 
 router.post("/travel/search-profiles", requireAuth, async (req: Request, res: Response): Promise<void> => {
@@ -135,6 +140,9 @@ router.post("/travel/search-profiles", requireAuth, async (req: Request, res: Re
     priority: d.priority,
     notes: d.notes ?? null,
     sourceConfigsJson: [],
+    searchType: d.searchType,
+    departureDateFrom: d.departureDateFrom ?? null,
+    departureDateTo: d.departureDateTo ?? null,
   }).returning();
 
   res.status(201).json(created);
@@ -192,6 +200,9 @@ router.patch("/travel/search-profiles/:id", requireAuth, async (req: Request, re
   if (d.tolerancePercent !== undefined)       updates.tolerancePercent = d.tolerancePercent;
   if (d.priority !== undefined)               updates.priority = d.priority;
   if (d.notes !== undefined)                  updates.notes = d.notes;
+  if (d.searchType !== undefined)             updates.searchType = d.searchType;
+  if (d.departureDateFrom !== undefined)      updates.departureDateFrom = d.departureDateFrom;
+  if (d.departureDateTo !== undefined)        updates.departureDateTo = d.departureDateTo;
 
   const [updated] = await db
     .update(travelSearchProfilesTable)
@@ -231,176 +242,17 @@ router.delete("/travel/search-profiles/:id", requireAuth, async (req: Request, r
 
 // ── POST /travel/search-profiles/:id/run ─────────────────────────────────────
 
-const SIMULATED_SOURCES = [
-  "Despegar.com", "Almundo", "Aero Sur Turismo", "TUI Argentina",
-  "Flybondi", "Aerolíneas Argentinas", "LATAM", "American Express Travel",
-];
-
-const SIMULATED_RESULTS: Array<{
-  titleTemplate: string;
-  airline?: string;
-  hotel?: string;
-  hotelStars?: number;
-  priceFactorMin: number;
-  priceFactorMax: number;
-  daysMin: number;
-  daysMax: number;
-  mealPlan?: string;
-}> = [
-  { titleTemplate: "Paquete todo incluido", airline: "Aerolíneas Argentinas", hotel: "Hotel Loi Suites", hotelStars: 4, priceFactorMin: 0.80, priceFactorMax: 0.95, daysMin: 5, daysMax: 7, mealPlan: "todo incluido" },
-  { titleTemplate: "Escapada vuelo + hotel", airline: "LATAM", hotel: "Ibis Hotel", hotelStars: 3, priceFactorMin: 0.65, priceFactorMax: 0.80, daysMin: 3, daysMax: 5 },
-  { titleTemplate: "Oferta flash — cupos limitados", airline: "Flybondi", hotel: "Apart Hotel Premium", hotelStars: 3, priceFactorMin: 0.55, priceFactorMax: 0.75, daysMin: 4, daysMax: 6 },
-  { titleTemplate: "Paquete familiar", hotel: "Resort & Spa", hotelStars: 5, priceFactorMin: 0.90, priceFactorMax: 1.10, daysMin: 7, daysMax: 10, mealPlan: "media pensión" },
-  { titleTemplate: "Tarifa corporativa especial", airline: "American Airlines", hotel: "NH Collection", hotelStars: 4, priceFactorMin: 0.70, priceFactorMax: 0.85, daysMin: 2, daysMax: 4 },
-];
-
-function randomBetween(a: number, b: number) {
-  return a + Math.random() * (b - a);
-}
-
-function addDays(base: Date, days: number): string {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0]!;
-}
-
 router.post("/travel/search-profiles/:id/run", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string };
   const userId = getCurrentUserIdNum(req);
-
-  const [profile] = await db
-    .select()
-    .from(travelSearchProfilesTable)
-    .where(and(
-      eq(travelSearchProfilesTable.id, id),
-      eq(travelSearchProfilesTable.userId, userId),
-    ))
-    .limit(1);
-
-  if (!profile) {
-    res.status(404).json({ error: "Búsqueda no encontrada" });
-    return;
-  }
-
   try {
-    const budget = Number(profile.maxBudget);
-    const tolerance = profile.tolerancePercent ?? 20;
-    const maxBudgetWithTolerance = budget * (1 + tolerance / 100);
-
-    const now = new Date();
-    const resultCount = Math.floor(randomBetween(2, 5));
-
-    const destinations = (profile.destinationsJson as Array<{ label: string; country?: string; region?: string }> | null) ?? [];
-    const regions = (profile.regionsJson as string[] | null) ?? [];
-    const origin = profile.originJson as { label: string; code?: string | null };
-
-    // ── Fetch existing externalIds for this profile to avoid duplicates ────────
-    const existingRows = await db
-      .select({ externalId: travelSearchResultsTable.externalId })
-      .from(travelSearchResultsTable)
-      .where(eq(travelSearchResultsTable.searchProfileId, id));
-    const existingIds = new Set(existingRows.map(r => r.externalId).filter(Boolean));
-
-    // ── Build all new result rows ──────────────────────────────────────────────
-    type InsertRow = typeof travelSearchResultsTable.$inferInsert;
-    const toInsert: InsertRow[] = [];
-
-    for (let i = 0; i < resultCount; i++) {
-      const template = SIMULATED_RESULTS[i % SIMULATED_RESULTS.length]!;
-      const source = SIMULATED_SOURCES[Math.floor(Math.random() * SIMULATED_SOURCES.length)]!;
-
-      let destLabel = "Destino simulado";
-      let destCountry = "Argentina";
-      let destRegion = "Argentina";
-
-      if (profile.destinationMode === "specific" && destinations.length > 0) {
-        const dest = destinations[i % destinations.length]!;
-        destLabel = dest.label;
-        destCountry = dest.country ?? "Argentina";
-        destRegion = dest.region ?? "Argentina";
-      } else if (profile.destinationMode === "region" && regions.length > 0) {
-        destLabel = `Destino en ${regions[i % regions.length]}`;
-        destRegion = regions[i % regions.length]!;
-      }
-
-      const days = Math.round(randomBetween(
-        profile.minDays ?? template.daysMin,
-        profile.maxDays ?? template.daysMax,
-      ));
-      const nights = days - 1;
-
-      const priceFactor = randomBetween(template.priceFactorMin, template.priceFactorMax);
-      const price = Math.round(budget * priceFactor);
-      const confidenceScore = price <= budget ? Math.round(randomBetween(75, 98)) : Math.round(randomBetween(55, 74));
-      const validationStatus = confidenceScore >= 75 ? "validated" : "weak_match";
-
-      const departureDate = addDays(now, Math.round(randomBetween(14, 90)));
-      const returnDate = addDays(new Date(departureDate), days);
-
-      // Deterministic dedup key: template + destination + profile — avoids re-inserting same offer
-      const dedupKey = `${id}:${template.titleTemplate}:${destLabel}:${i}`;
-      if (existingIds.has(dedupKey)) continue;
-
-      toInsert.push({
-        id: uid(),
-        searchProfileId: id,
-        userId,
-        source,
-        externalId: dedupKey,
-        externalUrl: null,
-        title: `${template.titleTemplate} — ${destLabel}`,
-        originJson: origin,
-        destinationJson: { label: destLabel, country: destCountry, region: destRegion },
-        region: destRegion,
-        country: destCountry,
-        price: Math.min(price, Math.round(maxBudgetWithTolerance)).toString(),
-        currency: profile.currency,
-        priceOriginal: price > budget ? price.toString() : null,
-        days,
-        nights,
-        travelersCount: profile.travelersCount,
-        airline: profile.airlinePreferencesJson
-          ? (profile.airlinePreferencesJson as string[])[0] ?? template.airline ?? null
-          : template.airline ?? null,
-        hotelName: template.hotel ?? null,
-        hotelStars: template.hotelStars != null && (profile.hotelMinStars == null || template.hotelStars >= profile.hotelMinStars)
-          ? template.hotelStars
-          : null,
-        mealPlan: template.mealPlan ?? profile.mealPlan ?? null,
-        departureDate,
-        returnDate,
-        confidenceScore,
-        validationStatus,
-        status: "new" as const,
-        rawPayloadJson: { simulated: true, profileId: id, runAt: now.toISOString() },
-      });
-    }
-
-    // ── Bulk insert (single query, not N+1) ───────────────────────────────────
-    let insertedResults: unknown[] = [];
-    if (toInsert.length > 0) {
-      insertedResults = await db.insert(travelSearchResultsTable).values(toInsert).returning();
-    }
-
-    // ── Update profile run metadata ───────────────────────────────────────────
-    await db.update(travelSearchProfilesTable)
-      .set({
-        lastRunAt: now,
-        lastRunStatus: "ok",
-        lastRunSummaryJson: { count: insertedResults.length, skipped: resultCount - toInsert.length, ranAt: now.toISOString() },
-        updatedAt: now,
-      })
-      .where(eq(travelSearchProfilesTable.id, id));
-
-    res.json({ ok: true, resultsFound: insertedResults.length, skipped: resultCount - toInsert.length, results: insertedResults });
+    const result = await runSearchProfile(id, userId);
+    res.json(result);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error al ejecutar la búsqueda";
+    const status = msg.includes("Esperá") ? 429 : msg.includes("no encontrado") ? 404 : 500;
     logger.error({ err }, "Travel search run error");
-
-    await db.update(travelSearchProfilesTable)
-      .set({ lastRunAt: new Date(), lastRunStatus: "error", updatedAt: new Date() })
-      .where(eq(travelSearchProfilesTable.id, id));
-
-    res.status(500).json({ error: "Error al ejecutar la búsqueda" });
+    res.status(status).json({ error: msg });
   }
 });
 
@@ -410,6 +262,8 @@ const ResultsQuery = z.object({
   profileId:        z.string().optional(),
   status:           z.enum(["new", "seen", "saved", "dismissed", "expired"]).optional(),
   validationStatus: z.enum(["pending", "validated", "weak_match", "broken_link", "expired"]).optional(),
+  searchType:       z.enum(["vuelo", "paquete"]).optional(),
+  apiSource:        z.enum(["serpapi", "amadeus"]).optional(),
   limit:            z.coerce.number().int().min(1).max(200).default(100),
   offset:           z.coerce.number().int().min(0).default(0),
 });
@@ -426,6 +280,8 @@ router.get("/travel/search-results", requireAuth, async (req: Request, res: Resp
     if (q.data.profileId)         conditions.push(eq(travelSearchResultsTable.searchProfileId, q.data.profileId));
     if (q.data.status)            conditions.push(eq(travelSearchResultsTable.status, q.data.status));
     if (q.data.validationStatus)  conditions.push(eq(travelSearchResultsTable.validationStatus, q.data.validationStatus));
+    if (q.data.searchType)        conditions.push(eq(travelSearchResultsTable.searchType, q.data.searchType));
+    if (q.data.apiSource)         conditions.push(eq(travelSearchResultsTable.apiSource, q.data.apiSource));
     limit = q.data.limit;
     offset = q.data.offset;
   }
@@ -557,6 +413,40 @@ router.post("/travel/seed-locations", requireAdmin, async (_req: Request, res: R
     .returning();
 
   res.json({ ok: true, count: inserted.length });
+});
+
+// ── GET /travel/api-quotas ────────────────────────────────────────────────────
+
+router.get("/travel/api-quotas", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const quotas = await getApiQuotas();
+    res.json(quotas);
+  } catch (err) {
+    logger.error({ err }, "Error fetching API quotas");
+    res.status(500).json({ error: "Error al obtener cuotas" });
+  }
+});
+
+// ── GET /travel/scheduler-status ─────────────────────────────────────────────
+
+router.get("/travel/scheduler-status", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const scheduler = getTravelSchedulerStatus();
+    const quotas = await getApiQuotas();
+
+    const activeProfiles = await db
+      .select({ id: travelSearchProfilesTable.id })
+      .from(travelSearchProfilesTable)
+      .where(eq(travelSearchProfilesTable.isActive, true));
+
+    res.json({
+      scheduler: { ...scheduler, activeProfiles: activeProfiles.length },
+      quotas,
+    });
+  } catch (err) {
+    logger.error({ err }, "Error fetching scheduler status");
+    res.status(500).json({ error: "Error al obtener estado del scheduler" });
+  }
 });
 
 export default router;

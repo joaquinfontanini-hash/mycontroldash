@@ -61,6 +61,9 @@ interface SearchProfile {
   tolerancePercent: number;
   priority: number;
   notes: string | null;
+  searchType: "vuelos" | "paquetes" | "ambos";
+  departureDateFrom: string | null;
+  departureDateTo: string | null;
   createdAt: string;
   updatedAt: string;
   lastRunAt: string | null;
@@ -96,6 +99,12 @@ interface SearchResult {
   validationStatus: string;
   status: string;
   foundAt: string;
+  searchType: "vuelo" | "paquete" | null;
+  apiSource: "serpapi" | "amadeus" | "simulado" | null;
+  durationMinutes: number | null;
+  stops: number | null;
+  departureTime: string | null;
+  arrivalTime: string | null;
 }
 
 interface ProfileForm {
@@ -120,6 +129,9 @@ interface ProfileForm {
   tolerancePercent: string;
   notes: string;
   isActive: boolean;
+  searchType: "vuelos" | "paquetes" | "ambos";
+  departureDateFrom: string;
+  departureDateTo: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -146,6 +158,9 @@ const EMPTY_FORM: ProfileForm = {
   tolerancePercent: "20",
   notes: "",
   isActive: true,
+  searchType: "ambos",
+  departureDateFrom: "",
+  departureDateTo: "",
 };
 
 const TRAVEL_TYPES = [
@@ -446,6 +461,9 @@ function ProfileFormDialog({
         tolerancePercent: String(editing.tolerancePercent),
         notes: editing.notes ?? "",
         isActive: editing.isActive,
+        searchType: editing.searchType ?? "ambos",
+        departureDateFrom: editing.departureDateFrom ?? "",
+        departureDateTo: editing.departureDateTo ?? "",
       };
     }
     return { ...EMPTY_FORM };
@@ -487,6 +505,9 @@ function ProfileFormDialog({
         tolerancePercent: Number(data.tolerancePercent) || 20,
         notes: data.notes.trim() || null,
         isActive: data.isActive,
+        searchType: data.searchType,
+        departureDateFrom: data.departureDateFrom || null,
+        departureDateTo: data.departureDateTo || null,
       };
 
       if (editing) {
@@ -802,6 +823,49 @@ function ProfileFormDialog({
             </div>
           </div>
 
+          {/* Tipo de búsqueda + Fechas de salida */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1.5 col-span-1">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipo de búsqueda</Label>
+              <div className="flex gap-1">
+                {(["vuelos", "paquetes", "ambos"] as const).map(opt => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => set("searchType", opt)}
+                    className={`flex-1 text-xs py-1.5 rounded border font-medium transition-colors ${
+                      form.searchType === opt
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-input bg-background hover:bg-accent"
+                    }`}
+                  >
+                    {opt === "vuelos" ? "✈ Vuelos" : opt === "paquetes" ? "🏨 Paquetes" : "⚡ Ambos"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Salida desde <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
+              </Label>
+              <Input
+                type="date"
+                value={form.departureDateFrom}
+                onChange={e => set("departureDateFrom", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Salida hasta <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
+              </Label>
+              <Input
+                type="date"
+                value={form.departureDateTo}
+                onChange={e => set("departureDateTo", e.target.value)}
+              />
+            </div>
+          </div>
+
           {/* Notas */}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -864,6 +928,9 @@ function ProfileCard({
             <div className="flex items-center gap-2 flex-wrap">
               <Badge className={`text-xs ${travelTypeColor(profile.travelType)}`}>
                 {travelTypeLabel(profile.travelType)}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {profile.searchType === "vuelos" ? "✈ Vuelos" : profile.searchType === "paquetes" ? "🏨 Paquetes" : "⚡ Ambos"}
               </Badge>
               {!profile.isActive && (
                 <Badge variant="outline" className="text-xs text-muted-foreground">Pausada</Badge>
@@ -1009,6 +1076,20 @@ function ResultCard({
             {validConf.label}
           </Badge>
           <Badge className={`text-xs ${statusConf.color}`}>{statusConf.label}</Badge>
+          {result.searchType && (
+            <Badge variant="outline" className="text-xs">
+              {result.searchType === "vuelo" ? "✈ Vuelo" : "🏨 Paquete"}
+            </Badge>
+          )}
+          {result.apiSource && (
+            <Badge variant="outline" className={`text-xs ${
+              result.apiSource === "serpapi" ? "border-green-400 text-green-700 dark:text-green-400" :
+              result.apiSource === "amadeus" ? "border-blue-400 text-blue-700 dark:text-blue-400" :
+              "border-gray-300 text-muted-foreground"
+            }`}>
+              {result.apiSource === "serpapi" ? "SerpAPI" : result.apiSource === "amadeus" ? "Amadeus" : "Simulado"}
+            </Badge>
+          )}
           <span className="text-xs text-muted-foreground ml-auto">score {result.confidenceScore}</span>
         </div>
 
@@ -1024,7 +1105,19 @@ function ResultCard({
           <span>{(result.originJson as LocationItem).code ?? (result.originJson as LocationItem).label}</span>
           <span>→</span>
           <span className="text-foreground font-medium">{(result.destinationJson as LocationItem).label}</span>
+          {result.departureTime && <span className="ml-1 text-xs">dep {result.departureTime}</span>}
+          {result.arrivalTime && <span className="text-xs">arr {result.arrivalTime}</span>}
         </div>
+        {(result.durationMinutes != null || result.stops != null) && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {result.durationMinutes != null && (
+              <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{Math.floor(result.durationMinutes / 60)}h {result.durationMinutes % 60}m</span>
+            )}
+            {result.stops != null && (
+              <span>{result.stops === 0 ? "Directo" : `${result.stops} escala${result.stops > 1 ? "s" : ""}`}</span>
+            )}
+          </div>
+        )}
 
         {/* Price */}
         <div className="flex items-end justify-between">
@@ -1082,6 +1175,88 @@ function ResultCard({
   );
 }
 
+// ── Api Quota Panel ───────────────────────────────────────────────────────────
+
+interface ApiQuota {
+  id: string;
+  apiName: string;
+  periodMonth: string;
+  callsUsed: number;
+  callsLimit: number;
+}
+
+function ApiQuotaPanel() {
+  const { data: quotas = [], isLoading } = useQuery<ApiQuota[]>({
+    queryKey: ["travel-api-quotas"],
+    queryFn: () => apiFetch<ApiQuota[]>("/api/travel/api-quotas"),
+    refetchInterval: 30000,
+  });
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const currentQuotas = quotas.filter(q => q.periodMonth === currentMonth);
+
+  const API_INFO: Record<string, { label: string; monthlyLimit: number; color: string; url?: string }> = {
+    serpapi:  { label: "SerpAPI",  monthlyLimit: 100,  color: "bg-green-500",  url: "https://serpapi.com" },
+    amadeus:  { label: "Amadeus",  monthlyLimit: 2000, color: "bg-blue-500",   url: "https://developers.amadeus.com" },
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" />APIs de búsqueda</CardTitle></CardHeader>
+        <CardContent><Skeleton className="h-20 rounded-lg" /></CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Globe className="h-4 w-4" />
+          APIs de búsqueda — cuotas {now.toLocaleString("es-AR", { month: "long", year: "numeric" })}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {Object.entries(API_INFO).map(([apiName, info]) => {
+          const quota = currentQuotas.find(q => q.apiName === apiName);
+          const used = quota?.callsUsed ?? 0;
+          const limit = quota?.callsLimit ?? info.monthlyLimit;
+          const pct = Math.min((used / limit) * 100, 100);
+          const hasKey = used > 0 || quota != null;
+          return (
+            <div key={apiName} className="space-y-1.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">{info.label}</span>
+                <span className="text-muted-foreground text-xs">
+                  {used} / {limit} llamadas
+                  {!hasKey && <span className="ml-1 text-amber-600 dark:text-amber-400">(sin configurar)</span>}
+                </span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                <div
+                  className={`h-2 rounded-full transition-all ${info.color} ${pct >= 90 ? "!bg-red-500" : pct >= 70 ? "!bg-amber-500" : ""}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              {pct >= 90 && (
+                <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Cuota casi agotada
+                </p>
+              )}
+            </div>
+          );
+        })}
+        <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-1 border-t border-border/40">
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          Configurá las variables de entorno SERPAPI_KEY y AMADEUS_CLIENT_ID/SECRET para activar búsquedas reales. Sin ellas el sistema usa datos simulados.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TravelPage() {
@@ -1094,6 +1269,8 @@ export default function TravelPage() {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [resultFilter, setResultFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [searchTypeFilter, setSearchTypeFilter] = useState<string>("");
+  const [apiSourceFilter, setApiSourceFilter] = useState<string>("");
   const [seeding, setSeeding] = useState(false);
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -1187,6 +1364,9 @@ export default function TravelPage() {
           tolerancePercent: profile.tolerancePercent,
           notes: profile.notes,
           isActive: false,
+          searchType: profile.searchType ?? "ambos",
+          departureDateFrom: profile.departureDateFrom ?? null,
+          departureDateTo: profile.departureDateTo ?? null,
         }),
       });
       qc.invalidateQueries({ queryKey: ["travel-profiles"] });
@@ -1219,6 +1399,8 @@ export default function TravelPage() {
   const filteredResults = results.filter(r => {
     if (resultFilter && r.searchProfileId !== resultFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
+    if (searchTypeFilter && r.searchType !== searchTypeFilter) return false;
+    if (apiSourceFilter && r.apiSource !== apiSourceFilter) return false;
     return true;
   });
 
@@ -1331,8 +1513,27 @@ export default function TravelPage() {
                 <option key={k} value={k}>{v.label}</option>
               ))}
             </select>
-            {(resultFilter || statusFilter) && (
-              <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => { setResultFilter(""); setStatusFilter(""); }}>
+            <select
+              value={searchTypeFilter}
+              onChange={e => setSearchTypeFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Vuelos + Paquetes</option>
+              <option value="vuelo">✈ Solo vuelos</option>
+              <option value="paquete">🏨 Solo paquetes</option>
+            </select>
+            <select
+              value={apiSourceFilter}
+              onChange={e => setApiSourceFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Todas las fuentes</option>
+              <option value="serpapi">SerpAPI</option>
+              <option value="amadeus">Amadeus</option>
+              <option value="simulado">Simulado</option>
+            </select>
+            {(resultFilter || statusFilter || searchTypeFilter || apiSourceFilter) && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => { setResultFilter(""); setStatusFilter(""); setSearchTypeFilter(""); setApiSourceFilter(""); }}>
                 <X className="h-3 w-3" /> Limpiar
               </Button>
             )}
@@ -1418,29 +1619,8 @@ export default function TravelPage() {
               </CardContent>
             </Card>
 
-            {/* Fuentes de datos */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Fuentes de datos
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {["Despegar.com", "Almundo", "Aero Sur Turismo", "TUI Argentina", "Flybondi", "Aerolíneas Argentinas", "LATAM", "American Express Travel"].map(source => (
-                    <div key={source} className="flex items-center justify-between py-2 border-b border-border/40 last:border-0">
-                      <span className="text-sm font-medium">{source}</span>
-                      <Badge variant="outline" className="text-xs text-emerald-600 dark:text-emerald-400">Activa</Badge>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-3 flex items-start gap-1.5">
-                  <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  La integración con fuentes externas está en desarrollo. Por ahora el sistema genera resultados simulados para validar el flujo.
-                </p>
-              </CardContent>
-            </Card>
+            {/* API Quota Panel */}
+            <ApiQuotaPanel />
           </div>
         </TabsContent>
       </Tabs>

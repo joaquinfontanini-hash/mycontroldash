@@ -1,5 +1,5 @@
 import {
-  pgTable, text, serial, timestamp, boolean, integer, numeric, jsonb, varchar, index,
+  pgTable, text, serial, timestamp, boolean, integer, numeric, jsonb, varchar, index, unique, uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -99,6 +99,10 @@ export const travelSearchProfilesTable = pgTable("travel_search_profiles", {
 
   notes: text("notes"),
 
+  searchType: text("search_type").default("ambos"),
+  departureDateFrom: text("departure_date_from"),
+  departureDateTo: text("departure_date_to"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
@@ -151,6 +155,13 @@ export const travelSearchResultsTable = pgTable("travel_search_results", {
   validationStatus: text("validation_status").notNull().default("pending"),
   status: text("status").notNull().default("new"),
 
+  searchType: text("search_type"),
+  apiSource: text("api_source"),
+  durationMinutes: integer("duration_minutes"),
+  stops: integer("stops").default(0),
+  departureTime: text("departure_time"),
+  arrivalTime: text("arrival_time"),
+
   rawPayloadJson: jsonb("raw_payload_json"),
 
   foundAt: timestamp("found_at", { withTimezone: true }).notNull().defaultNow(),
@@ -164,3 +175,19 @@ export const travelSearchResultsTable = pgTable("travel_search_results", {
 }));
 
 export type TravelSearchResult = typeof travelSearchResultsTable.$inferSelect;
+
+// ── travel_api_quotas — monthly API call budget tracking ──────────────────────
+
+export const travelApiQuotasTable = pgTable("travel_api_quotas", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  apiName: text("api_name").notNull(),
+  periodMonth: text("period_month").notNull(),
+  callsUsed: integer("calls_used").default(0),
+  callsLimit: integer("calls_limit").notNull(),
+  lastCallAt: timestamp("last_call_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  uniqueApiMonth: unique("travel_api_quotas_api_month_unique").on(t.apiName, t.periodMonth),
+}));
+
+export type TravelApiQuota = typeof travelApiQuotasTable.$inferSelect;
