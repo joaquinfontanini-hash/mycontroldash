@@ -18,3 +18,9 @@ id = "5ku3YKy6JBMIM4a92wxug"
 uri = "file://exports/dashboard-static-build.tar.gz"
 type = "unspecified"
 title = "dashboard-static-build.tar.gz — Build estática lista para hosting"
+
+[[outputs]]
+id = "e7YTjwbBWS6y7S-aTm_6J"
+uri = "file://proyecto-dashboard.zip"
+type = "unspecified"
+title = "Proyecto Dashboard (ZIP)"
