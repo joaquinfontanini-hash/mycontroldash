@@ -303,6 +303,7 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
   const [selectedWidgetId, setSelectedWidgetId] = useState<number | null>(null);
   const [dashName, setDashName] = useState("");
   const [dashStatus, setDashStatus] = useState("draft");
+  const [dashRefreshInterval, setDashRefreshInterval] = useState<number | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [paletteCategory, setPaletteCategory] = useState<string>("datos");
 
@@ -318,9 +319,31 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
       setWidgets([...(dash.widgets ?? [])].sort((a, b) => a.orderIndex - b.orderIndex));
       setDashName(dash.name);
       setDashStatus(dash.status);
+      setDashRefreshInterval(dash.refreshIntervalSeconds ?? null);
       setHasUnsavedChanges(false);
     }
   }, [dash]);
+
+  // E3: Warn browser on page reload/close when there are unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedChanges]);
+
+  // E3: Guard navigation back with unsaved layout changes
+  const handleBack = useCallback(() => {
+    if (hasUnsavedChanges) {
+      const ok = window.confirm("Tenés cambios sin guardar en el layout. ¿Salir de todas formas?");
+      if (!ok) return;
+    }
+    onBack();
+  }, [hasUnsavedChanges, onBack]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -373,7 +396,8 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
       }),
     onSuccess: (updated: DashboardWidget) => {
       setWidgets(prev => prev.map(w => w.id === updated.id ? { ...w, ...updated } : w));
-      setHasUnsavedChanges(false);
+      // E4: Do NOT reset hasUnsavedChanges here — widget properties are saved,
+      // but layout order/position changes may still be pending.
       toast({ title: "Widget actualizado" });
     },
     onError: (err: Error) => {
@@ -399,39 +423,24 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
   // Save layout + reorder mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // 1) Update dashboard name/status if changed
-      if (dashName !== dash?.name || dashStatus !== dash?.status) {
-        await apiFetch(`api/studio/dashboards/${dashId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ name: dashName, status: dashStatus }),
-        });
-      }
-
-      // 2) Update each widget orderIndex
-      await Promise.all(
-        widgets.map((w, i) => {
-          if (w.orderIndex !== i) {
-            return apiFetch(`api/studio/widgets/${w.id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ orderIndex: i }),
-            });
-          }
-          return null;
-        }).filter(Boolean)
-      );
-
-      // 3) Save layout for active breakpoint
+      // D2: Atomic batch save — single request, backend wraps in a transaction
       const layout: LayoutItem[] = widgets.map((w, i) => ({
         widgetId: w.id,
-        x: activeBreakpoint === "mobile" ? 0 : (i % 3) * 4,
-        y: activeBreakpoint === "mobile" ? i * 5 : Math.floor(i / 3) * 4,
-        w: activeBreakpoint === "mobile" ? 12 : 4,
-        h: activeBreakpoint === "mobile" ? 5 : 4,
+        x: activeBreakpoint === "mobile" ? 0 : (i % 3),
+        y: activeBreakpoint === "mobile" ? i : Math.floor(i / 3),
+        w: activeBreakpoint === "mobile" ? 1 : 1,
+        h: 1,
       }));
 
-      await apiFetch(`api/studio/dashboards/${dashId}/layouts`, {
-        method: "PATCH",
-        body: JSON.stringify({ breakpoint: activeBreakpoint, layoutJson: layout }),
+      await apiFetch(`api/studio/dashboards/${dashId}/save`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: dashName,
+          status: dashStatus,
+          refreshIntervalSeconds: dashRefreshInterval,
+          widgetOrder: widgets.map((w, i) => ({ id: w.id, orderIndex: i })),
+          layout: { breakpoint: activeBreakpoint, layoutJson: layout },
+        }),
       });
     },
     onSuccess: () => {
@@ -487,7 +496,7 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
     <div className="flex flex-col h-full">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 py-3 border-b bg-background flex-shrink-0">
-        <Button variant="ghost" size="icon" onClick={onBack}>
+        <Button variant="ghost" size="icon" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
 
@@ -659,8 +668,10 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
                 <DashboardPropertiesPanel
                   dashName={dashName}
                   dashStatus={dashStatus}
+                  refreshIntervalSeconds={dashRefreshInterval}
                   onChangeName={n => { setDashName(n); setHasUnsavedChanges(true); }}
                   onChangeStatus={s => { setDashStatus(s); setHasUnsavedChanges(true); }}
+                  onChangeRefreshInterval={v => { setDashRefreshInterval(v); setHasUnsavedChanges(true); }}
                   breakpoint={activeBreakpoint}
                   widgetCount={widgets.length}
                 />
@@ -676,12 +687,14 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
 // ── Dashboard properties panel ─────────────────────────────────────────────────
 
 function DashboardPropertiesPanel({
-  dashName, dashStatus, onChangeName, onChangeStatus, breakpoint, widgetCount,
+  dashName, dashStatus, refreshIntervalSeconds, onChangeName, onChangeStatus, onChangeRefreshInterval, breakpoint, widgetCount,
 }: {
   dashName: string;
   dashStatus: string;
+  refreshIntervalSeconds: number | null;
   onChangeName: (n: string) => void;
   onChangeStatus: (s: string) => void;
+  onChangeRefreshInterval: (v: number | null) => void;
   breakpoint: Breakpoint;
   widgetCount: number;
 }) {
@@ -705,6 +718,26 @@ function DashboardPropertiesPanel({
           <SelectContent>
             <SelectItem value="draft">Borrador</SelectItem>
             <SelectItem value="active">Activo</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs">Auto-refresh de datos</Label>
+        <Select
+          value={refreshIntervalSeconds ? String(refreshIntervalSeconds) : "none"}
+          onValueChange={v => onChangeRefreshInterval(v === "none" ? null : parseInt(v))}
+        >
+          <SelectTrigger className="h-8 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Manual (sin auto-refresh)</SelectItem>
+            <SelectItem value="30">Cada 30 segundos</SelectItem>
+            <SelectItem value="60">Cada 1 minuto</SelectItem>
+            <SelectItem value="300">Cada 5 minutos</SelectItem>
+            <SelectItem value="900">Cada 15 minutos</SelectItem>
+            <SelectItem value="3600">Cada hora</SelectItem>
           </SelectContent>
         </Select>
       </div>

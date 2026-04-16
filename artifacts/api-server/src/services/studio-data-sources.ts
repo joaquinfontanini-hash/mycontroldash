@@ -191,9 +191,10 @@ export async function resolveDataSource(
       }
 
       case "tasks.teamBoard": {
-        // Summary of all tasks by status (not filtered by user — team board)
+        // Summary of the user's own tasks by status
         const rows = await db.select({ status: tasksTable.status })
-          .from(tasksTable);
+          .from(tasksTable)
+          .where(eq(tasksTable.userId, userIdStr));
         const byStatus: Record<string, number> = {};
         for (const r of rows) {
           const s = r.status ?? "unknown";

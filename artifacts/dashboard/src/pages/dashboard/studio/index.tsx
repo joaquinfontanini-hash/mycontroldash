@@ -17,6 +17,8 @@ import type { Dashboard, DashboardFull } from "./types";
 const CreateFromPromptModal = lazy(() => import("./modals/CreateFromPromptModal").then(m => ({ default: m.CreateFromPromptModal })));
 const TemplateGallery        = lazy(() => import("./modals/TemplateGallery").then(m => ({ default: m.TemplateGallery })));
 const WizardModal            = lazy(() => import("./modals/WizardModal").then(m => ({ default: m.WizardModal })));
+// C3: Must be at module level — never inside a render function (breaks state on re-render)
+const DashboardBuilder       = lazy(() => import("./builder").then(m => ({ default: m.DashboardBuilder })));
 
 // ── API helper ────────────────────────────────────────────────────────────────
 
@@ -142,8 +144,6 @@ export default function StudioPage() {
   }
 
   if (viewState.mode === "build") {
-    // Dynamically import builder
-    const DashboardBuilder = lazy(() => import("./builder").then(m => ({ default: m.DashboardBuilder })));
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
         <Suspense fallback={<div className="p-6"><Skeleton className="h-12 w-full" /></div>}>

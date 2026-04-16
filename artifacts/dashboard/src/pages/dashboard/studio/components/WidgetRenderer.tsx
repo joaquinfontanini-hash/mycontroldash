@@ -181,7 +181,7 @@ export function WidgetRenderer({
                   <p className="text-sm font-medium line-clamp-2">
                     {String(item.title ?? item.name ?? item.label ?? "")}
                   </p>
-                  {item.source && <p className="text-xs text-muted-foreground">{String(item.source)}</p>}
+                  {!!item.source && <p className="text-xs text-muted-foreground">{String(item.source)}</p>}
                 </div>
               </div>
             ))}
@@ -258,7 +258,7 @@ export function WidgetRenderer({
               <div key={i} className="flex items-center gap-2 py-1">
                 <div className="w-4 h-4 rounded border-2 border-muted-foreground/40 shrink-0" />
                 <span className="text-sm truncate">{String(t.title ?? t.name ?? "")}</span>
-                {t.status && <Badge variant="outline" className="text-xs ml-auto shrink-0">{String(t.status)}</Badge>}
+                {!!t.status && <Badge variant="outline" className="text-xs ml-auto shrink-0">{String(t.status)}</Badge>}
               </div>
             ))}
           </div>
@@ -322,7 +322,7 @@ export function WidgetRenderer({
                 <Activity className="h-3 w-3 text-muted-foreground mt-1 shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm truncate">{String(item.detail ?? item.action ?? item.title ?? "")}</p>
-                  {item.createdAt && (
+                  {!!item.createdAt && (
                     <p className="text-xs text-muted-foreground">
                       {new Date(String(item.createdAt)).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
                     </p>

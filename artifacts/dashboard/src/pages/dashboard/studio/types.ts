@@ -14,6 +14,7 @@ export interface Dashboard {
   isSystem?: boolean;
   sourceType?: string | null;
   version: number;
+  refreshIntervalSeconds?: number | null;
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;

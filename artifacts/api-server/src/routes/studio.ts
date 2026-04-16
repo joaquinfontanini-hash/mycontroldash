@@ -292,15 +292,16 @@ router.patch("/studio/dashboards/:id", studioAuth, async (req, res): Promise<voi
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
 
-    const { name, description, icon, color, category, status, isFavorite } = req.body;
+    const { name, description, icon, color, category, status, isFavorite, refreshIntervalSeconds } = req.body;
     const updates: Record<string, unknown> = { updatedAt: new Date(), version: dash.version + 1 };
-    if (name        !== undefined) updates.name        = name;
-    if (description !== undefined) updates.description = description;
-    if (icon        !== undefined) updates.icon        = icon;
-    if (color       !== undefined) updates.color       = color;
-    if (category    !== undefined) updates.category    = category;
-    if (status      !== undefined) updates.status      = status;
-    if (isFavorite  !== undefined) updates.isFavorite  = isFavorite;
+    if (name                   !== undefined) updates.name                   = name;
+    if (description            !== undefined) updates.description            = description;
+    if (icon                   !== undefined) updates.icon                   = icon;
+    if (color                  !== undefined) updates.color                  = color;
+    if (category               !== undefined) updates.category               = category;
+    if (status                 !== undefined) updates.status                 = status;
+    if (isFavorite             !== undefined) updates.isFavorite             = isFavorite;
+    if (refreshIntervalSeconds !== undefined) updates.refreshIntervalSeconds = refreshIntervalSeconds;
 
     if (name && name !== dash.name) {
       updates.slug = await uniqueSlug(name, userId, id);
@@ -418,7 +419,7 @@ router.post("/studio/dashboards/:id/archive", studioAuth, async (req, res): Prom
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
+    if (dash.ownerUserId !== userId) { res.status(403).json({ error: "Solo el propietario puede archivar este dashboard" }); return; }
 
     const [updated] = await db.update(dashboardsTable)
       .set({ status: "archived", archivedAt: new Date(), updatedAt: new Date() })
@@ -442,7 +443,7 @@ router.post("/studio/dashboards/:id/restore", studioAuth, async (req, res): Prom
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
+    if (dash.ownerUserId !== userId) { res.status(403).json({ error: "Solo el propietario puede restaurar este dashboard" }); return; }
 
     const [updated] = await db.update(dashboardsTable)
       .set({ status: "draft", archivedAt: null, updatedAt: new Date() })
@@ -466,7 +467,7 @@ router.delete("/studio/dashboards/:id", studioAuth, async (req, res): Promise<vo
 
     const [dash] = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
-    if (dash.ownerUserId !== userId) { assertOwnership(req, res, String(dash.ownerUserId)); return; }
+    if (dash.ownerUserId !== userId) { res.status(403).json({ error: "Solo el propietario puede eliminar este dashboard" }); return; }
     if (dash.isSystem)  { res.status(403).json({ error: "No se pueden eliminar dashboards del sistema" }); return; }
 
     await db.delete(dashboardsTable).where(eq(dashboardsTable.id, id));
@@ -538,6 +539,76 @@ router.patch("/studio/dashboards/:id/layouts", studioAuth, async (req, res): Pro
   }
 });
 
+// ── POST /api/studio/dashboards/:id/save ─────────────────────────────────────
+// D2: Atomic batch save — name + status + widget order + layout in one transaction
+
+router.post("/studio/dashboards/:id/save", studioAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserIdNum(req);
+    const id     = parseInt(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const access = await getDashboardAccess(id, userId, (req as any).dbUser);
+    if (!access || access === "view") {
+      res.status(access ? 403 : 404).json({ error: access ? "Sin permiso de edición" : "Dashboard no encontrado" });
+      return;
+    }
+
+    const {
+      name,
+      status,
+      refreshIntervalSeconds,
+      widgetOrder,   // Array<{ id: number; orderIndex: number }>
+      layout,        // { breakpoint: string; layoutJson: LayoutItem[] }
+    } = req.body;
+
+    await db.transaction(async (tx) => {
+      // 1) Update dashboard metadata
+      const [dash] = await tx.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
+      if (!dash) throw new Error("Dashboard no encontrado");
+
+      const updates: Record<string, unknown> = { updatedAt: new Date(), version: dash.version + 1 };
+      if (name !== undefined) updates.name = name;
+      if (status !== undefined) updates.status = status;
+      if (refreshIntervalSeconds !== undefined) updates.refreshIntervalSeconds = refreshIntervalSeconds;
+      if (name && name !== dash.name) {
+        updates.slug = await uniqueSlug(name, userId, id);
+      }
+      await tx.update(dashboardsTable).set(updates).where(eq(dashboardsTable.id, id));
+
+      // 2) Batch update widget order
+      if (Array.isArray(widgetOrder) && widgetOrder.length > 0) {
+        await Promise.all(
+          widgetOrder.map(({ id: wId, orderIndex }: { id: number; orderIndex: number }) =>
+            tx.update(dashboardWidgetsTable)
+              .set({ orderIndex })
+              .where(and(eq(dashboardWidgetsTable.id, wId), eq(dashboardWidgetsTable.dashboardId, id)))
+          )
+        );
+      }
+
+      // 3) Upsert layout
+      if (layout?.breakpoint && Array.isArray(layout.layoutJson)) {
+        const [existing] = await tx.select().from(dashboardLayoutsTable)
+          .where(and(eq(dashboardLayoutsTable.dashboardId, id), eq(dashboardLayoutsTable.breakpoint, layout.breakpoint)));
+        if (existing) {
+          await tx.update(dashboardLayoutsTable)
+            .set({ layoutJson: layout.layoutJson, updatedAt: new Date(), version: existing.version + 1 })
+            .where(eq(dashboardLayoutsTable.id, existing.id));
+        } else {
+          await tx.insert(dashboardLayoutsTable).values({ dashboardId: id, breakpoint: layout.breakpoint, layoutJson: layout.layoutJson });
+        }
+      }
+    });
+
+    await auditLog("studio_dashboard_saved", `Dashboard #${id} guardado (batch)`, userId);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "studio: batch save error");
+    res.status(500).json({ error: "Error al guardar dashboard" });
+  }
+});
+
 // ── GET /api/studio/dashboards/:id/permissions ───────────────────────────────
 
 router.get("/studio/dashboards/:id/permissions", studioAuth, async (req, res): Promise<void> => {
@@ -555,14 +626,22 @@ router.get("/studio/dashboards/:id/permissions", studioAuth, async (req, res): P
     const perms = await db.select().from(dashboardPermissionsTable)
       .where(eq(dashboardPermissionsTable.dashboardId, id));
 
-    // Enrich with user info where possible
-    const enriched = await Promise.all(perms.map(async p => {
-      if (p.subjectType === "user" && p.subjectId) {
-        const [user] = await db.select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
-          .from(usersTable).where(eq(usersTable.id, p.subjectId));
-        return { ...p, user: user ?? null };
-      }
-      return { ...p, user: null };
+    // Batch-load users in a single query (eliminates N+1)
+    const userIds = perms
+      .filter(p => p.subjectType === "user" && p.subjectId)
+      .map(p => p.subjectId as number);
+
+    const usersMap: Record<number, { id: number; email: string | null; name: string | null }> = {};
+    if (userIds.length > 0) {
+      const users = await db.select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+        .from(usersTable)
+        .where(sql`${usersTable.id} = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
+      for (const u of users) usersMap[u.id] = u;
+    }
+
+    const enriched = perms.map(p => ({
+      ...p,
+      user: (p.subjectType === "user" && p.subjectId ? usersMap[p.subjectId] ?? null : null),
     }));
 
     res.json(enriched);
@@ -681,7 +760,9 @@ router.get("/studio/widget-definitions", studioAuth, async (req, res): Promise<v
 // ── GET /api/studio/data-sources ─────────────────────────────────────────────
 
 router.get("/studio/data-sources", studioAuth, async (req, res): Promise<void> => {
-  res.json(DATA_SOURCE_CATALOG);
+  const isAdmin = (req as any).dbUser?.role === "super_admin";
+  const catalog = isAdmin ? DATA_SOURCE_CATALOG : DATA_SOURCE_CATALOG.filter(d => d.category !== "admin");
+  res.json(catalog);
 });
 
 // ── POST /api/studio/generate-from-prompt ────────────────────────────────────
@@ -855,6 +936,15 @@ router.post("/studio/dashboards/:id/widgets", studioAuth, async (req, res): Prom
     const access = await getDashboardAccess(dashboardId, userId, (req as any).dbUser);
     if (!access || access === "view") {
       res.status(access ? 403 : 404).json({ error: access ? "Sin permiso de edición" : "Dashboard no encontrado" });
+      return;
+    }
+
+    // D4: Widget limit — max 20 widgets per dashboard
+    const MAX_WIDGETS_PER_DASHBOARD = 20;
+    const [widgetCount] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(dashboardWidgetsTable).where(eq(dashboardWidgetsTable.dashboardId, dashboardId));
+    if ((widgetCount?.count ?? 0) >= MAX_WIDGETS_PER_DASHBOARD) {
+      res.status(400).json({ error: `Límite alcanzado: máximo ${MAX_WIDGETS_PER_DASHBOARD} widgets por dashboard` });
       return;
     }
 
@@ -1033,6 +1123,11 @@ router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<
             snapshotStatus: "fresh",
           };
         } else if (w.dataSourceKey) {
+          // C2: Gate admin-only data sources by role
+          if (w.dataSourceKey === "admin.jobs.health" && (req as any).dbUser?.role !== "super_admin") {
+            results[w.id] = { data: null, fromSnapshot: false };
+            return;
+          }
           const data = await resolveDataSource(w.dataSourceKey, userId, (w.configJson as Record<string, unknown>) ?? {});
           results[w.id] = { data, fromSnapshot: false };
 
@@ -1063,6 +1158,10 @@ router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<
 
 // ── POST /api/studio/dashboards/:id/smart-summary ────────────────────────────
 
+// D5: In-memory cache for smart summary (2-minute TTL per user)
+const smartSummaryCache = new Map<number, { data: unknown; expiresAt: number }>();
+const SMART_SUMMARY_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
 router.post("/studio/dashboards/:id/smart-summary", studioAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserIdNum(req);
@@ -1071,6 +1170,13 @@ router.post("/studio/dashboards/:id/smart-summary", studioAuth, async (req, res)
 
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
     if (!access) { res.status(403).json({ error: "Sin acceso" }); return; }
+
+    // Serve from cache if fresh
+    const cached = smartSummaryCache.get(userId);
+    if (cached && cached.expiresAt > Date.now()) {
+      res.json(cached.data);
+      return;
+    }
 
     // Resolve relevant data sources in parallel
     const [dueDates, upcomingDueDates, financeSummary, financeTransactions, tasks, newsPriority, systemNotifications] =
@@ -1094,7 +1200,9 @@ router.post("/studio/dashboards/:id/smart-summary", studioAuth, async (req, res)
       systemNotifications: Array.isArray(systemNotifications) ? systemNotifications as any : undefined,
     };
 
-    res.json(buildSmartSummary(ctx));
+    const summary = buildSmartSummary(ctx);
+    smartSummaryCache.set(userId, { data: summary, expiresAt: Date.now() + SMART_SUMMARY_TTL_MS });
+    res.json(summary);
   } catch (err) {
     logger.error({ err }, "studio: smart summary error");
     res.status(500).json({ error: "Error al generar resumen inteligente" });

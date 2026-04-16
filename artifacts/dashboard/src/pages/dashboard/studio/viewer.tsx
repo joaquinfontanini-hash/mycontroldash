@@ -47,11 +47,16 @@ export function DashboardViewer({ dashId, onBack, onEdit, onShare }: DashboardVi
     queryFn: () => apiFetch(`api/studio/dashboards/${dashId}`),
   });
 
+  // Derive refresh interval from dashboard config (min 30s, default 60s if not set)
+  const refreshIntervalMs = dash?.refreshIntervalSeconds
+    ? Math.max(dash.refreshIntervalSeconds, 30) * 1000
+    : 60000;
+
   const { data: widgetDataRaw = {}, refetch: refetchData, isFetching } = useQuery<Record<number, WidgetData>>({
     queryKey: ["studio-dashboard-data", dashId],
     queryFn: () => apiFetch(`api/studio/dashboards/${dashId}/data`),
     enabled: !!dash,
-    refetchInterval: 60000,
+    refetchInterval: refreshIntervalMs,
   });
 
   const refreshSnapshotMutation = useMutation({
@@ -121,6 +126,20 @@ export function DashboardViewer({ dashId, onBack, onEdit, onShare }: DashboardVi
     : [...visibleWidgets].sort((a, b) => a.orderIndex - b.orderIndex);
 
   const gridCols = activeBreakpoint === "mobile" ? 1 : 3;
+
+  // D1: Build column-span map from layout (w: 1-3 on a 3-col grid, 1 on mobile)
+  // Handles both 3-col system (w=1,2,3) and legacy 12-col system (w=4,8,12)
+  const colSpanMap = new Map<number, number>();
+  if (layout) {
+    for (const item of layout) {
+      if (activeBreakpoint === "mobile") { colSpanMap.set(item.widgetId, 1); continue; }
+      const rawW = item.w ?? 1;
+      const span = rawW >= 4
+        ? Math.min(Math.max(Math.round(rawW / 4), 1), gridCols)  // legacy 12-col → 3-col
+        : Math.min(Math.max(rawW, 1), gridCols);                  // new 3-col system
+      colSpanMap.set(item.widgetId, span);
+    }
+  }
 
   const canEdit = dash._access === "owner" || dash._access === "admin" || dash._access === "edit";
 
@@ -226,16 +245,23 @@ export function DashboardViewer({ dashId, onBack, onEdit, onShare }: DashboardVi
           className="grid gap-4"
           style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
         >
-          {orderedWidgets.map(w => (
-            <div key={w.id} className="min-h-48">
-              <WidgetRenderer
-                widget={w}
-                widgetData={widgetDataRaw[w.id]}
-                dashboardId={dashId}
-                onRefreshSnapshot={handleRefreshSnapshot}
-              />
-            </div>
-          ))}
+          {orderedWidgets.map(w => {
+            const colSpan = colSpanMap.get(w.id) ?? 1;
+            return (
+              <div
+                key={w.id}
+                className="min-h-48"
+                style={colSpan > 1 ? { gridColumn: `span ${colSpan}` } : undefined}
+              >
+                <WidgetRenderer
+                  widget={w}
+                  widgetData={widgetDataRaw[w.id]}
+                  dashboardId={dashId}
+                  onRefreshSnapshot={handleRefreshSnapshot}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
