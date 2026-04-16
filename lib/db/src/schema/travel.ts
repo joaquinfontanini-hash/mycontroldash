@@ -1,5 +1,5 @@
 import {
-  pgTable, text, serial, timestamp, boolean, integer, numeric, jsonb, varchar,
+  pgTable, text, serial, timestamp, boolean, integer, numeric, jsonb, varchar, index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -48,7 +48,11 @@ export const travelLocationsTable = pgTable("travel_locations", {
   type: text("type").notNull().default("city"),
   aliases: jsonb("aliases").notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => ({
+  normalizedNameIdx: index("travel_locations_normalized_name_idx").on(t.normalizedName),
+  codeIdx:           index("travel_locations_code_idx").on(t.code),
+  labelIdx:          index("travel_locations_label_idx").on(t.label),
+}));
 
 export type TravelLocation = typeof travelLocationsTable.$inferSelect;
 
@@ -100,7 +104,10 @@ export const travelSearchProfilesTable = pgTable("travel_search_profiles", {
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
   lastRunStatus: text("last_run_status"),
   lastRunSummaryJson: jsonb("last_run_summary_json"),
-});
+}, (t) => ({
+  userIdIdx:    index("travel_search_profiles_user_id_idx").on(t.userId),
+  isActiveIdx:  index("travel_search_profiles_is_active_idx").on(t.isActive),
+}));
 
 export type TravelSearchProfile = typeof travelSearchProfilesTable.$inferSelect;
 
@@ -148,6 +155,12 @@ export const travelSearchResultsTable = pgTable("travel_search_results", {
 
   foundAt: timestamp("found_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => ({
+  userIdIdx:         index("travel_search_results_user_id_idx").on(t.userId),
+  profileIdIdx:      index("travel_search_results_profile_id_idx").on(t.searchProfileId),
+  statusIdx:         index("travel_search_results_status_idx").on(t.status),
+  validationIdx:     index("travel_search_results_validation_idx").on(t.validationStatus),
+  userProfileIdx:    index("travel_search_results_user_profile_idx").on(t.userId, t.searchProfileId),
+}));
 
 export type TravelSearchResult = typeof travelSearchResultsTable.$inferSelect;

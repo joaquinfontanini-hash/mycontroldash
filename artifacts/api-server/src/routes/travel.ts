@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, desc, and, ilike, or, sql as drizzleSql } from "drizzle-orm";
+import { eq, desc, and, ilike, or, sql as drizzleSql, ne } from "drizzle-orm";
 import {
   db,
   travelLocationsTable,
@@ -8,7 +8,7 @@ import {
 } from "@workspace/db";
 import { z } from "zod";
 import { logger } from "../lib/logger.js";
-import { requireAuth, getCurrentUserIdNum } from "../middleware/require-auth.js";
+import { requireAuth, requireAdmin, getCurrentUserIdNum } from "../middleware/require-auth.js";
 
 const router: IRouter = Router();
 
@@ -27,7 +27,7 @@ router.get("/travel/locations", requireAuth, async (req: Request, res: Response)
     return;
   }
 
-  const pattern = `%${q.toLowerCase()}%`;
+  const pattern = `%${q}%`;
 
   const rows = await db
     .select()
@@ -37,6 +37,7 @@ router.get("/travel/locations", requireAuth, async (req: Request, res: Response)
         ilike(travelLocationsTable.normalizedName, pattern),
         ilike(travelLocationsTable.label, pattern),
         ilike(travelLocationsTable.code, pattern),
+        drizzleSql`${travelLocationsTable.aliases}::text ILIKE ${pattern}`,
       )
     )
     .orderBy(travelLocationsTable.label)
@@ -288,11 +289,21 @@ router.post("/travel/search-profiles/:id/run", requireAuth, async (req: Request,
 
     const now = new Date();
     const resultCount = Math.floor(randomBetween(2, 5));
-    const insertedResults: unknown[] = [];
 
     const destinations = (profile.destinationsJson as Array<{ label: string; country?: string; region?: string }> | null) ?? [];
     const regions = (profile.regionsJson as string[] | null) ?? [];
     const origin = profile.originJson as { label: string; code?: string | null };
+
+    // ── Fetch existing externalIds for this profile to avoid duplicates ────────
+    const existingRows = await db
+      .select({ externalId: travelSearchResultsTable.externalId })
+      .from(travelSearchResultsTable)
+      .where(eq(travelSearchResultsTable.searchProfileId, id));
+    const existingIds = new Set(existingRows.map(r => r.externalId).filter(Boolean));
+
+    // ── Build all new result rows ──────────────────────────────────────────────
+    type InsertRow = typeof travelSearchResultsTable.$inferInsert;
+    const toInsert: InsertRow[] = [];
 
     for (let i = 0; i < resultCount; i++) {
       const template = SIMULATED_RESULTS[i % SIMULATED_RESULTS.length]!;
@@ -326,16 +337,18 @@ router.post("/travel/search-profiles/:id/run", requireAuth, async (req: Request,
       const departureDate = addDays(now, Math.round(randomBetween(14, 90)));
       const returnDate = addDays(new Date(departureDate), days);
 
-      const title = `${template.titleTemplate} — ${destLabel}`;
+      // Deterministic dedup key: template + destination + profile — avoids re-inserting same offer
+      const dedupKey = `${id}:${template.titleTemplate}:${destLabel}:${i}`;
+      if (existingIds.has(dedupKey)) continue;
 
-      const [inserted] = await db.insert(travelSearchResultsTable).values({
+      toInsert.push({
         id: uid(),
         searchProfileId: id,
         userId,
         source,
-        externalId: `SIM-${Date.now()}-${i}`,
+        externalId: dedupKey,
         externalUrl: null,
-        title,
+        title: `${template.titleTemplate} — ${destLabel}`,
         originJson: origin,
         destinationJson: { label: destLabel, country: destCountry, region: destRegion },
         region: destRegion,
@@ -358,24 +371,28 @@ router.post("/travel/search-profiles/:id/run", requireAuth, async (req: Request,
         returnDate,
         confidenceScore,
         validationStatus,
-        status: "new",
-        rawPayloadJson: { simulated: true, profileId: id },
-      }).returning();
-
-      insertedResults.push(inserted);
+        status: "new" as const,
+        rawPayloadJson: { simulated: true, profileId: id, runAt: now.toISOString() },
+      });
     }
 
-    // Update profile run metadata
+    // ── Bulk insert (single query, not N+1) ───────────────────────────────────
+    let insertedResults: unknown[] = [];
+    if (toInsert.length > 0) {
+      insertedResults = await db.insert(travelSearchResultsTable).values(toInsert).returning();
+    }
+
+    // ── Update profile run metadata ───────────────────────────────────────────
     await db.update(travelSearchProfilesTable)
       .set({
         lastRunAt: now,
         lastRunStatus: "ok",
-        lastRunSummaryJson: { count: insertedResults.length, ranAt: now.toISOString() },
+        lastRunSummaryJson: { count: insertedResults.length, skipped: resultCount - toInsert.length, ranAt: now.toISOString() },
         updatedAt: now,
       })
       .where(eq(travelSearchProfilesTable.id, id));
 
-    res.json({ ok: true, resultsFound: insertedResults.length, results: insertedResults });
+    res.json({ ok: true, resultsFound: insertedResults.length, skipped: resultCount - toInsert.length, results: insertedResults });
   } catch (err) {
     logger.error({ err }, "Travel search run error");
 
@@ -390,9 +407,11 @@ router.post("/travel/search-profiles/:id/run", requireAuth, async (req: Request,
 // ── GET /travel/search-results ────────────────────────────────────────────────
 
 const ResultsQuery = z.object({
-  profileId: z.string().optional(),
-  status:    z.string().optional(),
-  validationStatus: z.string().optional(),
+  profileId:        z.string().optional(),
+  status:           z.enum(["new", "seen", "saved", "dismissed", "expired"]).optional(),
+  validationStatus: z.enum(["pending", "validated", "weak_match", "broken_link", "expired"]).optional(),
+  limit:            z.coerce.number().int().min(1).max(200).default(100),
+  offset:           z.coerce.number().int().min(0).default(0),
 });
 
 router.get("/travel/search-results", requireAuth, async (req: Request, res: Response): Promise<void> => {
@@ -400,18 +419,24 @@ router.get("/travel/search-results", requireAuth, async (req: Request, res: Resp
   const q = ResultsQuery.safeParse(req.query);
 
   const conditions = [eq(travelSearchResultsTable.userId, userId)];
+  let limit = 100;
+  let offset = 0;
 
   if (q.success) {
     if (q.data.profileId)         conditions.push(eq(travelSearchResultsTable.searchProfileId, q.data.profileId));
     if (q.data.status)            conditions.push(eq(travelSearchResultsTable.status, q.data.status));
     if (q.data.validationStatus)  conditions.push(eq(travelSearchResultsTable.validationStatus, q.data.validationStatus));
+    limit = q.data.limit;
+    offset = q.data.offset;
   }
 
   const rows = await db
     .select()
     .from(travelSearchResultsTable)
     .where(and(...conditions))
-    .orderBy(desc(travelSearchResultsTable.foundAt));
+    .orderBy(desc(travelSearchResultsTable.foundAt))
+    .limit(limit)
+    .offset(offset);
 
   res.json(rows);
 });
@@ -460,9 +485,9 @@ router.get("/travel/locations-catalog", requireAuth, async (_req: Request, res: 
   res.json(rows);
 });
 
-// ── POST /travel/seed-locations — seed catalog (internal) ────────────────────
+// ── POST /travel/seed-locations — seed catalog (admin only) ──────────────────
 
-router.post("/travel/seed-locations", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+router.post("/travel/seed-locations", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
   const existing = await db.select().from(travelLocationsTable).limit(1);
   if (existing.length > 0) {
     res.json({ ok: true, message: "Locations already seeded", count: 0 });
