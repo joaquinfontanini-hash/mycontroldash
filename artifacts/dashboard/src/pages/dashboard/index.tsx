@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useState, useMemo, useCallback, type ComponentType } from "react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

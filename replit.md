@@ -80,6 +80,9 @@ The project is built as a monorepo using `pnpm workspaces`.
 - **Module-based Access Control:** `modules` table defines features, their `isActive` status, and `allowedRoles`. `requireModule` middleware controls access.
 - **Security Logging:** `security_logs` table for auditing sensitive actions.
 - **Rate Limiting:** Implemented for general API requests and specific administrative actions.
+- **BASE URL centralization:** All fetch calls in the frontend use `import { BASE } from "@/lib/base-url"`. This file normalizes `import.meta.env.BASE_URL` (Vite's base), turning `"./"` and `"."` into `""` so that `${BASE}/api/...` always produces a correct absolute path in both dev and production.
+- **ModuleGuard robustness:** `module-protected-route.tsx` includes a 12-second timeout guard (GUARD_TIMEOUT_MS) and a LoadError component with a retry button to prevent infinite spinners if auth queries fail.
+- **useUserSync retry:** 4 attempts with exponential backoff (500ms → 1s → 2s → 4s → max 8s) for both `registerUser` and `establishGoogleSession`. Invalidates `["current-user"]` query on both success and failure.
 
 ## External Dependencies
 

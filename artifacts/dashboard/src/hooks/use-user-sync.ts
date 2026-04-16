@@ -3,8 +3,13 @@ import { useUser, useAuth } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { LOCAL_AUTH_MODE } from "@/lib/local-auth";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-const MAX_ATTEMPTS = 3;
+import { BASE } from "@/lib/base-url";
+
+const MAX_ATTEMPTS = 4;
+
+function backoffMs(attempt: number) {
+  return Math.min(500 * 2 ** attempt, 8000);
+}
 
 async function registerUser(
   clerkId: string,
@@ -12,7 +17,7 @@ async function registerUser(
   name: string | null,
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    if (attempt > 0) await new Promise(r => setTimeout(r, backoffMs(attempt)));
     try {
       const r = await fetch(`${BASE}/api/users`, {
         method: "POST",
@@ -21,15 +26,17 @@ async function registerUser(
         body: JSON.stringify({ clerkId, email, name }),
       });
       if (r.ok || r.status === 409) return;
-    } catch {
-      if (attempt === MAX_ATTEMPTS - 1) throw new Error("register failed");
+      console.warn(`[useUserSync] registerUser: HTTP ${r.status} (attempt ${attempt + 1})`);
+    } catch (err) {
+      console.warn(`[useUserSync] registerUser: network error (attempt ${attempt + 1})`, err);
+      if (attempt === MAX_ATTEMPTS - 1) throw new Error("register failed after retries");
     }
   }
 }
 
 async function establishGoogleSession(getToken: () => Promise<string | null>): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    if (attempt > 0) await new Promise(r => setTimeout(r, backoffMs(attempt)));
     try {
       const token = await getToken();
       const headers: Record<string, string> = {};
@@ -41,8 +48,10 @@ async function establishGoogleSession(getToken: () => Promise<string | null>): P
         credentials: "include",
       });
       if (r.ok) return;
-    } catch {
-      if (attempt === MAX_ATTEMPTS - 1) throw new Error("session sync failed");
+      console.warn(`[useUserSync] google-session: HTTP ${r.status} (attempt ${attempt + 1})`);
+    } catch (err) {
+      console.warn(`[useUserSync] google-session: network error (attempt ${attempt + 1})`, err);
+      if (attempt === MAX_ATTEMPTS - 1) throw new Error("session sync failed after retries");
     }
   }
 }
@@ -74,7 +83,8 @@ function useUserSyncClerk() {
           qc.invalidateQueries({ queryKey: ["current-user"] });
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[useUserSync] sync failed, invalidating to retry auth flow", err);
         if (!abortRef.current) {
           qc.invalidateQueries({ queryKey: ["current-user"] });
         }

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListEmailsQueryKey, getGetEmailStatsQueryKey } from "@workspace/api-client-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 const CATEGORY_COLORS: Record<string, string> = {
   trabajo: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",

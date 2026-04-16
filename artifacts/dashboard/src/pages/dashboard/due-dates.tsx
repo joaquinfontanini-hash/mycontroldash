@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

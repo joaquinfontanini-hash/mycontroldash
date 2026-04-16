@@ -1,0 +1,59 @@
+Actuá como desarrollador senior full stack.
+El módulo de Noticias funciona en desarrollo, pero cuando publico la página deja de cargar y muestra error.
+Necesito que revises y corrijas específicamente diferencias entre entorno local/dev y entorno publicado/producción.
+
+Objetivo
+
+Hacer que el módulo de Noticias funcione correctamente también en la versión publicada.
+
+Verificaciones obligatorias
+1) Revisar llamadas del frontend
+Buscar dónde el frontend consulta noticias.
+Verificar si usa:
+rutas relativas (/api/news)
+localhost
+URL interna de Replit
+variable de entorno incorrecta
+Corregir para que en producción use la URL correcta del backend o el mismo origen si corresponde.
+2) Revisar backend en producción
+Confirmar que el endpoint de noticias exista y esté expuesto en deployment.
+Verificar que el deployment publique tanto frontend como backend, no solo frontend.
+Confirmar que la ruta usada por el frontend realmente responde en producción.
+3) Revisar CORS
+Verificar si el backend está bloqueando el dominio publicado.
+Configurar CORS para permitir el dominio real del deployment.
+No dejar * abierto si hay autenticación; usar lista permitida de dominios.
+4) Revisar variables de entorno
+Auditar todas las variables necesarias para noticias RSS.
+Confirmar que estén cargadas también en producción/deployment.
+Si falta alguna, mostrar claramente cuál falta y evitar fallo silencioso.
+5) Revisar HTTPS
+Confirmar que no haya requests desde página HTTPS hacia endpoint HTTP.
+Corregir cualquier URL insegura que el navegador pueda bloquear.
+6) Agregar logs útiles
+En backend: loguear request entrante al endpoint de noticias, resultado del fetch RSS y errores reales.
+En frontend: capturar status HTTP y mensaje devuelto por backend.
+No dejar solo “Error al cargar noticias”; agregar detalle técnico en consola.
+7) Manejo robusto de errores
+Si falla el feed o la API:
+mostrar mensaje amigable al usuario
+no romper la pantalla
+registrar error técnico en consola/log
+Entregables
+
+Quiero que:
+
+identifiques la causa exacta,
+la corrijas,
+me dejes un resumen claro de:
+cuál era el problema,
+dónde estaba,
+qué cambiaste,
+cómo verificarlo publicado.
+Extra importante
+
+Si detectás que en published deployment el frontend no puede hablar con el backend por arquitectura, corregilo de forma definitiva:
+
+misma app sirviendo API y frontend, o
+URL pública correcta por variable de entorno,
+pero que quede estable para producción.

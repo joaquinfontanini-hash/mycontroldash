@@ -35,7 +35,7 @@ import {
   History, ChevronDown, Loader2, Search, Flag, X,
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {

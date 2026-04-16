@@ -21,7 +21,9 @@ function getCurrentUserId(req: Request): number {
 
 router.get("/news", requireAuth, async (req: Request, res): Promise<void> => {
   try {
-    ensureNewsUpToDate().catch(() => {});
+    ensureNewsUpToDate().catch((err) => {
+      logger.warn({ err }, "ensureNewsUpToDate background refresh failed");
+    });
 
     const regionLevel = typeof req.query.regionLevel === "string" ? req.query.regionLevel : undefined;
     const newsCategory = typeof req.query.newsCategory === "string" ? req.query.newsCategory : undefined;
@@ -32,19 +34,21 @@ router.get("/news", requireAuth, async (req: Request, res): Promise<void> => {
     let userId: number | undefined;
     try { userId = getCurrentUserId(req); } catch { /* not authenticated */ }
 
+    logger.info({ regionLevel, newsCategory, source, limit, userId }, "News GET: querying articles");
+
     const news = await getNews({ regionLevel, newsCategory, source, limit, search, userId });
+
+    logger.info({ count: news.length, userId }, "News GET: returning articles");
 
     res.json(news.map(n => ({
       id: n.id,
       title: n.title,
       source: n.source,
-      // New classification fields
       regionLevel: n.regionLevel,
       newsCategory: n.newsCategory,
       tags: n.tags ?? [],
       impactLevel: n.impactLevel,
       priorityScore: n.priorityScore,
-      // Basic fields
       date: n.publishedAt ?? n.fetchedAt,
       summary: n.summary,
       url: n.url ?? "",
@@ -52,8 +56,8 @@ router.get("/news", requireAuth, async (req: Request, res): Promise<void> => {
       savedByUser: n.savedByUser ?? false,
     })));
   } catch (err) {
-    logger.error({ err }, "News route error");
-    res.status(500).json({ error: "Error al obtener noticias", items: [] });
+    logger.error({ err }, "News GET: failed to fetch articles");
+    res.status(500).json({ error: "Error al obtener noticias" });
   }
 });
 

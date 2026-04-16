@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { KeyRound, Eye, EyeOff } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 export default function ChangePasswordPage() {
   const [, setLocation] = useLocation();

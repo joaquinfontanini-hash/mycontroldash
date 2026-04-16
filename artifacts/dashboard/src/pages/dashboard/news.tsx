@@ -18,17 +18,20 @@ import {
   TrendingUp, Briefcase, Scale, CheckCircle2,
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error ?? `HTTP ${res.status}`);
+    const msg = body?.error ?? `HTTP ${res.status}`;
+    console.error(`[News] apiFetch error: ${opts?.method ?? "GET"} ${url} → ${res.status}`, body);
+    throw new Error(msg);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -817,8 +820,9 @@ export default function NewsPage() {
               {[...Array(9)].map((_, i) => <Skeleton key={i} className="h-52 rounded-xl" />)}
             </div>
           ) : error ? (
-            <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/5 text-sm text-destructive">
-              Error al cargar noticias. Verificá la conexión e intentá de nuevo.
+            <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/5 text-sm text-destructive space-y-1">
+              <p className="font-medium">Error al cargar noticias</p>
+              <p className="text-xs opacity-70">{error instanceof Error ? error.message : "Error desconocido"} · Verificá la conexión e intentá de nuevo.</p>
             </div>
           ) : filteredNews.length === 0 ? (
             <EmptyState

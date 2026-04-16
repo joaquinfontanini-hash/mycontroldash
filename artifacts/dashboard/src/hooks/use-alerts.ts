@@ -3,7 +3,7 @@ import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import { useUserSettings } from "@/hooks/use-user-settings";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 interface DueDate {
   id: number;

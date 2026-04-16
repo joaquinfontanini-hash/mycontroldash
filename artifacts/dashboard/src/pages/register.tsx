@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Briefcase, Eye, EyeOff, CheckCircle2, Loader2, ArrowLeft } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 const FIELDS = [
   { id: "firstName", label: "Nombre", type: "text", placeholder: "Tu nombre", autoComplete: "given-name" },

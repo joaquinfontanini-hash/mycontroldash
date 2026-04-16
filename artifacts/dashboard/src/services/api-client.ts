@@ -1,4 +1,4 @@
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 export class ApiError extends Error {
   constructor(

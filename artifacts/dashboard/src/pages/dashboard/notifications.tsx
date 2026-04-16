@@ -15,7 +15,7 @@ import {
   Save, Loader2, Send, CheckCircle2, Info, ChevronDown, ChevronUp
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 interface NotificationPrefs {
   id: number | null;

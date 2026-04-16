@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { LOCAL_AUTH_MODE, LOCAL_NAME, LOCAL_EMAIL, getLocalSession } from "@/lib/local-auth";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 // ── Custom error class so callers can inspect the HTTP status ─────────────────
 export class HttpError extends Error {

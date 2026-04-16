@@ -28,7 +28,7 @@ import { useCurrentUser, isSuperAdmin, isAdmin } from "@/hooks/use-current-user"
 
 const USERS_QUERY_KEY = ["/api/users"] as const;
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 interface SyncStatus {
   weather?: { lastSync: string; status: string };

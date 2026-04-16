@@ -19,7 +19,7 @@ import {
   Zap, RotateCcw, FolderOpen, CalendarCheck, Info, ShieldAlert,
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 interface AnnualCalendar {
   id: number;

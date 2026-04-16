@@ -6,7 +6,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LOCAL_AUTH_MODE, getLocalSession } from "@/lib/local-auth";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

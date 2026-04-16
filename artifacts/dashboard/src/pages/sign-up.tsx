@@ -1,6 +1,5 @@
 import { SignUp } from "@clerk/react";
-
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { BASE as basePath } from "@/lib/base-url";
 
 export default function SignUpPage() {
   // To update login providers, app branding, or OAuth settings use the Auth pane in the workspace toolbar.

@@ -28,7 +28,7 @@ import {
   Clock, TrendingUp, AlertTriangle, Info, FileText
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 interface ProviderStatus {
   configured: boolean;

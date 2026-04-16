@@ -16,7 +16,7 @@ import { apiGet, apiPost, apiPut } from "@/services/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 interface UserProfile { phone: string | null; avatarUrl: string | null; area: string | null; }
 interface ConvUser { id: number; name: string | null; email: string; role: string; profile: UserProfile | null; }

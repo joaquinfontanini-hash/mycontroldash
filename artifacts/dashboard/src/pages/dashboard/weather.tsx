@@ -7,7 +7,7 @@ import { CloudSun, CloudRain, Sun, Cloud, Wind, Droplets, Thermometer, RefreshCw
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetWeatherQueryKey } from "@workspace/api-client-react";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+import { BASE } from "@/lib/base-url";
 
 function WeatherIcon({ icon, size = "lg" }: { icon: string; size?: "sm" | "lg" }) {
   const cls = size === "lg" ? "h-16 w-16" : "h-8 w-8";
