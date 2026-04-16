@@ -185,7 +185,7 @@ export default function ClientsPage() {
     setGeneratingId(clientId);
     setGenerateResult(null);
     try {
-      const endpoint = regenerate ? `/api/clients/${clientId}/regenerate-due-dates` : `/api/clients/${clientId}/generate-due-dates`;
+      const endpoint = regenerate ? `${BASE}/api/clients/${clientId}/regenerate-due-dates` : `${BASE}/api/clients/${clientId}/generate-due-dates`;
       const res = await fetch(endpoint, { method: "POST" });
       const data = await res.json();
       setGenerateResult(data);
