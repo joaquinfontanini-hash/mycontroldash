@@ -1,0 +1,120 @@
+Actuá como auditor técnico senior, arquitecto de software y revisor de producto.
+
+Quiero una auditoría completa de la Parte 1 del módulo "Dashboard Studio" ya implementada.
+
+Tu objetivo es revisar si la implementación quedó realmente sólida, coherente con la arquitectura existente y preparada para avanzar a la Parte 2 sin deuda técnica grave.
+
+==================================================
+QUÉ AUDITAR
+==================================================
+
+Revisar en profundidad:
+
+1. Integración con arquitectura existente
+- coherencia con monorepo
+- naming
+- uso de base URL
+- compatibilidad con módulos existentes
+- uso correcto de auth, roles y middleware
+
+2. Base de datos / Drizzle
+- schema correcto
+- relaciones sanas
+- índices razonables
+- constraints
+- camelCase en código / snake_case en DB
+- riesgos de inconsistencias
+
+3. CRUD y APIs
+- calidad de endpoints
+- validaciones
+- ownership
+- permisos
+- manejo de errores
+- payloads maliciosos o incompletos
+
+4. Generación inteligente v1
+- robustez de heurísticas
+- si inventa widgets o data sources inexistentes
+- si el JSON generado es realmente persistible
+- calidad del fallback cuando el prompt es ambiguo
+
+5. Catálogo de widgets
+- consistencia
+- extensibilidad
+- configuración tipada
+- riesgos de acoplamiento
+
+6. Catálogo de data sources
+- desacoplamiento real
+- si evita acceso caótico a tablas
+- si es mantenible
+- si está listo para Parte 2
+
+7. Frontend Parte 1
+- UX real
+- claridad de flujos
+- estados loading/empty/error
+- preview útil
+- consistencia visual
+
+8. Seguridad
+- acceso indebido a dashboards ajenos
+- problemas de permisos
+- rutas sin proteger
+- validación insuficiente
+
+9. Auditoría y trazabilidad
+- qué acciones registra
+- qué acciones faltan
+- utilidad real para admin
+
+10. Riesgos para Parte 2
+- cosas que van a dificultar builder visual
+- cosas que van a dificultar snapshots
+- cosas que van a dificultar layouts responsive
+
+==================================================
+FORMATO DE RESPUESTA
+==================================================
+
+Responder con esta estructura:
+
+A. Estado general
+- veredicto breve y honesto
+
+B. Lo que quedó bien
+- puntos fuertes reales
+
+C. Problemas críticos
+- lo que hay que corregir sí o sí antes de seguir
+
+D. Problemas importantes
+- no bloquean, pero conviene arreglar
+
+E. Deuda técnica detectada
+- qué se pateó hacia adelante
+
+F. Riesgos de escalabilidad
+- backend
+- frontend
+- DB
+- producto
+
+G. Recomendaciones concretas
+- cambios puntuales a hacer antes de Parte 2
+
+H. Veredicto final
+- ¿se puede avanzar a Parte 2 o no?
+- si sí, con qué condiciones exactas
+
+==================================================
+REGLAS
+==================================================
+
+- no suavizar hallazgos
+- no inventar problemas inexistentes
+- ser específico
+- citar archivos, módulos o decisiones reales si corresponde
+- diferenciar claramente crítico vs importante vs mejora futura
+- si algo quedó mockeado o incompleto, marcarlo sin rodeos
