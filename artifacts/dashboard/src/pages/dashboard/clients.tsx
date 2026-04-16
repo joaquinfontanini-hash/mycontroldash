@@ -121,7 +121,7 @@ export default function ClientsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: ClientForm }) => {
-      const res = await fetch(`/api/clients/${id}`, {
+      const res = await fetch(`${BASE}/api/clients/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, cuit: data.cuit.replace(/\D/g, "") }),
@@ -138,7 +138,7 @@ export default function ClientsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/clients/${id}`, { method: "DELETE" });
+      await fetch(`${BASE}/api/clients/${id}`, { method: "DELETE" });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["clients"] }); setConfirmDeleteId(null); },
   });

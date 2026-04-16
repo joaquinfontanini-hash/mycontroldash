@@ -75,12 +75,12 @@ function BatchRow({ batch }: { batch: SupplierBatch }) {
 
   const detailQuery = useQuery<SupplierBatch>({
     queryKey: ["supplier-batch-detail", batch.id],
-    queryFn: () => fetch(`/api/supplier-batches/${batch.id}`).then(r => r.json()),
+    queryFn: () => fetch(`${BASE}/api/supplier-batches/${batch.id}`).then(r => r.json()),
     enabled: expanded,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => fetch(`/api/supplier-batches/${id}`, { method: "DELETE" }).then(r => r.json()),
+    mutationFn: (id: number) => fetch(`${BASE}/api/supplier-batches/${id}`, { method: "DELETE" }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["supplier-batches"] }),
   });
 

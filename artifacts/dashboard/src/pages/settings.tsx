@@ -170,7 +170,7 @@ function ExternalSourcesSection() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: typeof EMPTY_SOURCE_FORM }) => {
-      const res = await fetch(`/api/external-sources/${id}`, {
+      const res = await fetch(`${BASE}/api/external-sources/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -187,7 +187,7 @@ function ExternalSourcesSection() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/external-sources/${id}`, { method: "DELETE" });
+      await fetch(`${BASE}/api/external-sources/${id}`, { method: "DELETE" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["external-sources"] }),
   });
