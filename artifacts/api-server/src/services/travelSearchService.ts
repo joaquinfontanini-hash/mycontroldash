@@ -33,22 +33,50 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().split("T")[0]!;
 }
 
-function normalizedCurrency(currency: string): string {
-  return currency === "ARS" ? "USD" : currency;
+// FIX 1 — tipo de cambio USD → ARS en tiempo real
+async function getUsdToArsRate(): Promise<number> {
+  try {
+    const res = await fetch("https://api.exchangerate-api.com/v4/latest/USD");
+    const data = await res.json() as { rates?: Record<string, number> };
+    return data.rates?.["ARS"] ?? 1200;
+  } catch {
+    return 1200;
+  }
 }
 
+// FIX 4 — rango de fechas multi-punto
 function generateDepartureDates(profile: typeof travelSearchProfilesTable.$inferSelect): string[] {
   const from = profile.departureDateFrom
     ? new Date(profile.departureDateFrom + "T12:00:00")
     : new Date(Date.now() + 14 * 86400000);
   const to = profile.departureDateTo
     ? new Date(profile.departureDateTo + "T12:00:00")
-    : new Date(Date.now() + 90 * 86400000);
-  const mid = new Date((from.getTime() + to.getTime()) / 2);
-  const dates: string[] = [from.toISOString().split("T")[0]!];
-  const midStr = mid.toISOString().split("T")[0]!;
-  if (midStr !== dates[0]) dates.push(midStr);
-  return dates;
+    : new Date(Date.now() + 60 * 86400000);
+
+  const dates: string[] = [];
+  const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000);
+
+  if (diffDays <= 7) {
+    for (let i = 0; i <= diffDays; i++) {
+      const d = new Date(from);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split("T")[0]!);
+    }
+  } else if (diffDays <= 30) {
+    for (let i = 0; i <= diffDays; i += 3) {
+      const d = new Date(from);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split("T")[0]!);
+    }
+  } else {
+    for (let i = 0; i <= diffDays && dates.length < 8; i += 7) {
+      const d = new Date(from);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split("T")[0]!);
+    }
+  }
+
+  return dates.length > 0 ? dates : [from.toISOString().split("T")[0]!];
 }
 
 function getDestinations(profile: typeof travelSearchProfilesTable.$inferSelect): Array<{ label: string; code: string | null; country: string; region: string }> {
@@ -186,6 +214,7 @@ export async function searchSerpApiFlights(
   profile: Profile,
   dest: Destination,
   departureDate: string,
+  usdToArs: number = 1,
 ): Promise<InsertResult[]> {
   const serpApiKey = process.env["SERPAPI_KEY"];
   if (!serpApiKey) throw new Error("SERPAPI_KEY no configurada");
@@ -193,22 +222,28 @@ export async function searchSerpApiFlights(
   const origin = profile.originJson as { code?: string | null; label: string };
   if (!origin.code) throw new Error("Origen sin código IATA");
 
-  const currency = normalizedCurrency(profile.currency);
+  const travelers = profile.travelersCount ?? 1;
+  const profileCurrency = profile.currency ?? "ARS";
+  const maxBudget = Number(profile.maxBudget ?? 0);
+  const tolerancePct = profile.tolerancePercent ?? 20;
+  const budgetWithTolerance = maxBudget * (1 + tolerancePct / 100);
+
+  // FIX 2 — return_date siempre presente (mínimo 3 días)
+  const minDays = profile.minDays ?? 3;
+  const returnDate = addDays(departureDate, minDays);
+
   const params = new URLSearchParams({
     engine: "google_flights",
     api_key: serpApiKey,
     departure_id: origin.code,
     arrival_id: dest.code,
     outbound_date: departureDate,
-    adults: String(profile.travelersCount ?? 1),
-    currency,
+    return_date: returnDate,
+    adults: String(travelers),
+    currency: "USD",
     hl: "es",
     type: profile.directFlightOnly ? "2" : "1",
   });
-
-  if (profile.minDays) {
-    params.set("return_date", addDays(departureDate, profile.minDays));
-  }
 
   const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
   const data = await res.json() as {
@@ -222,10 +257,33 @@ export async function searchSerpApiFlights(
 
   const flights = [...(data.best_flights ?? []), ...(data.other_flights ?? [])].slice(0, 3);
   const externalUrl = data.search_metadata?.google_flights_url ?? null;
+  const results: InsertResult[] = [];
 
-  return flights.map((flight, i) => {
+  for (let i = 0; i < flights.length; i++) {
+    const flight = flights[i]!;
     const seg = flight.flights?.[0];
-    return {
+
+    // FIX 3 — precio total = precio por persona × viajeros (SerpAPI retorna por persona)
+    const pricePerPersonUsd = flight.price ?? 0;
+    const totalPriceUsd = pricePerPersonUsd * travelers;
+
+    // FIX 1 — convertir a moneda del perfil para comparar con presupuesto
+    const totalInProfileCurrency = profileCurrency === "ARS"
+      ? totalPriceUsd * usdToArs
+      : totalPriceUsd;
+    const pricePerPersonInProfileCurrency = profileCurrency === "ARS"
+      ? pricePerPersonUsd * usdToArs
+      : pricePerPersonUsd;
+
+    if (maxBudget > 0 && totalInProfileCurrency > budgetWithTolerance) {
+      logger.info(
+        { total: Math.round(totalInProfileCurrency), budget: Math.round(budgetWithTolerance), currency: profileCurrency },
+        "[SerpAPI] Vuelo fuera de presupuesto — omitido",
+      );
+      continue;
+    }
+
+    results.push({
       id: uid(),
       searchProfileId: profile.id,
       userId: profile.userId,
@@ -239,21 +297,29 @@ export async function searchSerpApiFlights(
       destinationJson: dest,
       region: dest.region,
       country: dest.country,
-      price: String(Math.round(flight.price ?? 0)),
-      currency,
-      travelersCount: profile.travelersCount ?? 1,
+      price: String(Math.round(totalInProfileCurrency)),
+      currency: profileCurrency,
+      priceOriginal: String(totalPriceUsd),
+      priceOriginalCurrency: "USD",
+      pricePerPerson: String(Math.round(pricePerPersonInProfileCurrency)),
+      exchangeRate: profileCurrency === "ARS" ? String(usdToArs) : null,
+      travelersCount: travelers,
       airline: seg?.airline ?? null,
       stops: Math.max(0, (flight.flights?.length ?? 1) - 1),
       durationMinutes: flight.total_duration ?? null,
+      nights: minDays,
       departureDate: seg?.departure_airport?.time?.split(" ")[0] ?? departureDate,
+      returnDate,
       departureTime: seg?.departure_airport?.time?.split(" ")[1] ?? null,
       arrivalTime: seg?.arrival_airport?.time?.split(" ")[1] ?? null,
       confidenceScore: 95,
       validationStatus: "validated",
       status: "new",
       rawPayloadJson: { simulated: false, source: "serpapi", runAt: new Date().toISOString() },
-    } satisfies InsertResult;
-  });
+    } satisfies InsertResult);
+  }
+
+  return results;
 }
 
 // ── Amadeus — Flights ─────────────────────────────────────────────────────────
@@ -470,14 +536,22 @@ export async function runSearchProfile(profileId: string, userId: number): Promi
     throw new Error("No hay APIs de búsqueda configuradas. Configurá SERPAPI_KEY o AMADEUS_CLIENT_ID/SECRET en las variables de entorno.");
   }
 
-  for (const dest of destinations.slice(0, 3)) {
-    for (const date of departureDates.slice(0, 1)) {
+  // FIX 1 — obtener tipo de cambio una sola vez antes del loop
+  const usdToArs = (profile.currency === "ARS" && hasSerpApiKey) ? await getUsdToArsRate() : 1;
+  if (profile.currency === "ARS") {
+    logger.info({ usdToArs }, "[Travel] Tipo de cambio USD/ARS obtenido");
+  }
+
+  logger.info({ dates: departureDates.length, destinations: destinations.length }, "[Travel] Iniciando búsqueda multi-fecha");
+
+  for (const dest of destinations.slice(0, 2)) {
+    for (const date of departureDates) {
 
       // SerpAPI — vuelos
       if ((searchType === "vuelos" || searchType === "ambos") && hasSerpApiKey) {
         if (await canCallApi("serpapi")) {
           try {
-            const res = await searchSerpApiFlights(profile, dest, date);
+            const res = await searchSerpApiFlights(profile, dest, date, usdToArs);
             allResults.push(...res);
             await incrementQuota("serpapi");
           } catch (err) {
@@ -522,7 +596,6 @@ export async function runSearchProfile(profileId: string, userId: number): Promi
         }
       }
 
-      // Pausa entre destinos
       await new Promise(r => setTimeout(r, 500));
     }
   }
@@ -626,10 +699,12 @@ async function runSearchProfileForScheduler(profile: typeof travelSearchProfiles
     return { ok: false, resultsFound: 0, skipped: 0, errors: ["Sin API keys configuradas"] };
   }
 
-  for (const dest of destinations.slice(0, 3)) {
-    for (const date of departureDates.slice(0, 1)) {
+  const usdToArs = (profile.currency === "ARS" && hasSerpApiKey) ? await getUsdToArsRate() : 1;
+
+  for (const dest of destinations.slice(0, 2)) {
+    for (const date of departureDates) {
       if ((searchType === "vuelos" || searchType === "ambos") && hasSerpApiKey && await canCallApi("serpapi")) {
-        try { allResults.push(...await searchSerpApiFlights(profile, dest, date)); await incrementQuota("serpapi"); } catch (e) { errors.push(String(e)); }
+        try { allResults.push(...await searchSerpApiFlights(profile, dest, date, usdToArs)); await incrementQuota("serpapi"); } catch (e) { errors.push(String(e)); }
       }
       if ((searchType === "vuelos" || searchType === "ambos") && hasAmadeusKeys && await canCallApi("amadeus")) {
         try { allResults.push(...await searchAmadeusFlights(profile, dest, date)); await incrementQuota("amadeus"); } catch (e) { errors.push(String(e)); }

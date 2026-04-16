@@ -137,6 +137,9 @@ export const travelSearchResultsTable = pgTable("travel_search_results", {
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
   currency: text("currency").notNull().default("ARS"),
   priceOriginal: numeric("price_original", { precision: 12, scale: 2 }),
+  priceOriginalCurrency: text("price_original_currency"),
+  pricePerPerson: numeric("price_per_person", { precision: 12, scale: 2 }),
+  exchangeRate: numeric("exchange_rate", { precision: 12, scale: 4 }),
 
   days: integer("days"),
   nights: integer("nights"),

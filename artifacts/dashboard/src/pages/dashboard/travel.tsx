@@ -86,6 +86,9 @@ interface SearchResult {
   price: string;
   currency: string;
   priceOriginal: string | null;
+  priceOriginalCurrency: string | null;
+  pricePerPerson: string | null;
+  exchangeRate: string | null;
   days: number | null;
   nights: number | null;
   travelersCount: number | null;
@@ -1124,12 +1127,21 @@ function ResultCard({
         <div className="flex items-end justify-between">
           <div>
             <div className="text-xl font-bold">{fmtPrice(result.price, result.currency)}</div>
-            {result.priceOriginal && (
-              <div className="text-xs text-muted-foreground line-through">{fmtPrice(result.priceOriginal, result.currency)}</div>
+            {(result.travelersCount ?? 1) > 1 && result.pricePerPerson && (
+              <div className="text-xs text-muted-foreground">
+                {fmtPrice(result.pricePerPerson, result.currency)} por persona · {result.travelersCount} pax
+              </div>
+            )}
+            {result.priceOriginal && result.priceOriginalCurrency && result.currency !== result.priceOriginalCurrency && (
+              <div className="text-xs text-muted-foreground">
+                USD {Number(result.priceOriginal).toLocaleString("es-AR")}
+                {result.exchangeRate && ` · TC: ${Number(result.exchangeRate).toFixed(0)}`}
+              </div>
             )}
           </div>
           <div className="text-right text-xs text-muted-foreground space-y-0.5">
-            {result.days && <div>{result.days} días · {result.nights} noches</div>}
+            {result.nights != null && <div>{result.nights} noches</div>}
+            {result.days != null && !result.nights && <div>{result.days} días</div>}
             {result.airline && <div className="flex items-center gap-1 justify-end"><Plane className="h-3 w-3" />{result.airline}</div>}
             {result.hotelName && <div className="flex items-center gap-1 justify-end"><Building className="h-3 w-3" />{result.hotelName}</div>}
           </div>
