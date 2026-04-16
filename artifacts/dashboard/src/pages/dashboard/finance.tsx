@@ -1,470 +1,1119 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  DollarSign, TrendingUp, AlertTriangle, Plus, Pencil, Trash2,
-  Check, X, Wallet, Building2, Bitcoin, BarChart3, CreditCard, RefreshCw,
-  ShieldAlert, Info,
+  TrendingUp, TrendingDown, Wallet, Plus, Pencil, Trash2, RefreshCw,
+  ArrowUpCircle, ArrowDownCircle, Calendar, AlertTriangle, CheckCircle,
+  Clock, Repeat, ChevronDown, X, Filter, Sparkles, Building2,
+  CreditCard, Smartphone, Info, DollarSign,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  PieChart, Pie, Cell, Tooltip as RechartTooltip, ResponsiveContainer, Legend,
-} from "recharts";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
-interface FinanceAccount {
-  id: number;
-  type: string;
-  label: string;
-  amount: string;
-  currency: string;
-  notes: string | null;
-  updatedAt: string;
-}
+// ─── TYPES ────────────────────────────────────────────────────────────────
 
+interface FinanceCategory { id: number; type: string; name: string; icon: string; color: string; isDefault: boolean; }
+interface FinanceAccount { id: number; type: string; label: string; amount: string; currency: string; notes: string | null; }
+interface FinanceTransaction {
+  id: number; type: string; amount: number; currency: string;
+  categoryId: number | null; accountId: number | null; date: string;
+  status: string; paymentMethod: string | null; notes: string | null;
+  isFixed: boolean; isRecurring: boolean;
+  category: { name: string; color: string; icon: string } | null;
+}
+interface FinanceRecurringRule {
+  id: number; name: string; type: string; amount: string; currency: string;
+  categoryId: number | null; accountId: number | null; frequency: string;
+  dayOfMonth: number | null; nextDate: string | null; isActive: boolean; notes: string | null;
+}
 interface FinanceSummary {
-  patrimonio: number;
-  liquidez: number;
-  inversiones: number;
-  deudas: number;
+  ingresosMes: number; gastosMes: number; saldoEstimadoFinMes: number; saldoDisponible: number;
+  activos: number; deudas: number;
   accounts: FinanceAccount[];
-  alerts: { type: string; level: string; message: string }[];
-  config: Record<string, string>;
+  upcomingRecurrences: { id: number; name: string; type: string; amount: number; frequency: string; nextDate: string | null; category: { name: string; color: string } | null }[];
+  recentTransactions: FinanceTransaction[];
+  alerts: { level: "green" | "yellow" | "red"; message: string }[];
 }
 
-const TYPE_META: Record<string, { label: string; icon: React.ElementType; color: string; pieColor: string }> = {
-  caja:        { label: "Caja",        icon: Wallet,    color: "text-emerald-600 dark:text-emerald-400", pieColor: "#10b981" },
-  banco:       { label: "Banco",       icon: Building2, color: "text-blue-600 dark:text-blue-400",    pieColor: "#3b82f6" },
-  cripto:      { label: "Cripto",      icon: Bitcoin,   color: "text-amber-600 dark:text-amber-400",  pieColor: "#f59e0b" },
-  inversiones: { label: "Inversiones", icon: BarChart3, color: "text-violet-600 dark:text-violet-400",pieColor: "#8b5cf6" },
-  deuda:       { label: "Deuda",       icon: CreditCard,color: "text-red-600 dark:text-red-400",     pieColor: "#ef4444" },
-};
-
-const ALERT_STYLES: Record<string, { bg: string; icon: React.ElementType }> = {
-  critical: { bg: "border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800",     icon: ShieldAlert },
-  high:     { bg: "border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800", icon: AlertTriangle },
-  medium:   { bg: "border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800",   icon: Info },
-};
+// ─── HELPERS ──────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
-  return "$" + Math.abs(n).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return "$\u200B" + Math.abs(n).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+function fmtSigned(n: number) { return (n >= 0 ? "+" : "-") + fmt(n); }
+
+const ACCOUNT_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  caja:            { label: "Efectivo",          icon: Wallet,       color: "text-emerald-600 dark:text-emerald-400" },
+  banco:           { label: "Banco",             icon: Building2,    color: "text-blue-600 dark:text-blue-400" },
+  billetera_virtual: { label: "Billetera Virtual", icon: Smartphone,  color: "text-violet-600 dark:text-violet-400" },
+  tarjeta:         { label: "Tarjeta",           icon: CreditCard,   color: "text-amber-600 dark:text-amber-400" },
+  cripto:          { label: "Cripto",            icon: DollarSign,   color: "text-orange-600 dark:text-orange-400" },
+  inversiones:     { label: "Inversiones",       icon: TrendingUp,   color: "text-indigo-600 dark:text-indigo-400" },
+  deuda:           { label: "Deuda",             icon: AlertTriangle,color: "text-red-600 dark:text-red-400" },
+};
+
+const FREQ_LABEL: Record<string, string> = { weekly: "Semanal", monthly: "Mensual", annual: "Anual" };
+
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  confirmed: { label: "Confirmado", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" },
+  pending:   { label: "Pendiente",  color: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" },
+  expected:  { label: "Esperado",   color: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400" },
+  cancelled: { label: "Cancelado",  color: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
+};
+
+const PAYMENT_METHODS = ["Efectivo", "Transferencia", "Débito", "Crédito", "Billetera virtual", "Cripto", "Otro"];
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+function AlertDot({ level }: { level: "green" | "yellow" | "red" }) {
+  const c = level === "green" ? "bg-emerald-500" : level === "yellow" ? "bg-amber-500" : "bg-red-500";
+  return <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${c}`} />;
 }
 
-function SummaryCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent: string }) {
+// ─── SUMMARY CARD ─────────────────────────────────────────────────────────
+
+function SummaryCard({ label, value, sub, accent, icon: Icon, trend }: {
+  label: string; value: string; sub?: string; accent: string; icon: React.ElementType; trend?: "up" | "down" | null;
+}) {
   return (
-    <Card>
-      <CardContent className="pt-5 pb-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className={`text-2xl font-bold mt-1 ${accent}`}>{value}</p>
-        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+    <Card className="relative overflow-hidden">
+      <CardContent className="pt-4 pb-4 px-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">{label}</p>
+            <p className={`text-2xl font-bold mt-1 tabular-nums ${accent}`}>{value}</p>
+            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+          </div>
+          <div className={`rounded-xl p-2.5 shrink-0 ${accent.replace("text-", "bg-").replace("dark:text-", "dark:bg-").replace(/-([\d]+)/, "-100").replace("dark:bg-", "dark:bg-")}`} style={{ background: "rgba(var(--accent-rgb, 99 102 241)/0.1)" }}>
+            <Icon className={`h-5 w-5 ${accent}`} />
+          </div>
+        </div>
+        {trend && (
+          <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+            {trend === "up" ? <TrendingUp className="h-3 w-3 text-emerald-500" /> : <TrendingDown className="h-3 w-3 text-red-500" />}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-interface AccountFormData {
-  type: string;
-  label: string;
+// ─── TRANSACTION FORM ─────────────────────────────────────────────────────
+
+interface TxFormState {
+  type: "income" | "expense";
   amount: string;
-  currency: string;
+  categoryId: string;
+  accountId: string;
+  date: string;
+  status: string;
+  paymentMethod: string;
   notes: string;
+  isFixed: boolean;
+  isRecurring: boolean;
+  recurFrequency: string;
+  recurDay: string;
+  recurNextDate: string;
 }
 
-const EMPTY_FORM: AccountFormData = { type: "caja", label: "", amount: "0", currency: "ARS", notes: "" };
+const emptyTxForm = (type: "income" | "expense" = "expense"): TxFormState => ({
+  type, amount: "", categoryId: "", accountId: "", date: todayStr(),
+  status: "confirmed", paymentMethod: "", notes: "",
+  isFixed: false, isRecurring: false, recurFrequency: "monthly", recurDay: "", recurNextDate: "",
+});
 
-export default function FinancePage() {
-  const qc = useQueryClient();
+function TransactionModal({
+  open, onClose, tx, categories, accounts, onSaved,
+}: {
+  open: boolean; onClose: () => void;
+  tx: FinanceTransaction | null;
+  categories: FinanceCategory[]; accounts: FinanceAccount[];
+  onSaved: () => void;
+}) {
   const { toast } = useToast();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState<AccountFormData>(EMPTY_FORM);
-  const [configEditing, setConfigEditing] = useState(false);
-  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+  const [form, setForm] = useState<TxFormState>(() =>
+    tx ? {
+      type: tx.type as "income" | "expense",
+      amount: String(tx.amount),
+      categoryId: tx.categoryId ? String(tx.categoryId) : "",
+      accountId: tx.accountId ? String(tx.accountId) : "",
+      date: tx.date, status: tx.status,
+      paymentMethod: tx.paymentMethod ?? "",
+      notes: tx.notes ?? "",
+      isFixed: tx.isFixed, isRecurring: tx.isRecurring,
+      recurFrequency: "monthly", recurDay: "", recurNextDate: "",
+    } : emptyTxForm()
+  );
+  const [advanced, setAdvanced] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const { data: summary, isLoading } = useQuery<FinanceSummary>({
-    queryKey: ["finance-summary"],
-    queryFn: () => fetch(`${BASE}/api/finance/summary`).then(r => r.ok ? r.json() : Promise.reject("Error")),
-    staleTime: 30_000,
-  });
+  const incomeCategories = categories.filter(c => c.type === "income");
+  const expenseCategories = categories.filter(c => c.type === "expense");
+  const activeCats = form.type === "income" ? incomeCategories : expenseCategories;
 
-  const createMutation = useMutation({
-    mutationFn: (data: AccountFormData) =>
-      fetch(`${BASE}/api/finance/accounts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, amount: parseFloat(data.amount) || 0 }),
-      }).then(r => r.ok ? r.json() : Promise.reject("Error")),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-summary"] }); setDialogOpen(false); toast({ title: "Cuenta creada" }); },
-    onError: () => toast({ title: "Error al crear cuenta", variant: "destructive" }),
-  });
+  async function handleSave() {
+    if (!form.amount || parseFloat(form.amount) <= 0) { toast({ title: "Ingresá un monto válido", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        type: form.type, amount: parseFloat(form.amount),
+        categoryId: form.categoryId || null,
+        accountId: form.accountId || null,
+        date: form.date, status: form.status,
+        paymentMethod: form.paymentMethod || null,
+        notes: form.notes || null,
+        isFixed: form.isFixed, isRecurring: form.isRecurring,
+      };
+      const url = tx ? `${BASE}/api/finance/transactions/${tx.id}` : `${BASE}/api/finance/transactions`;
+      const method = tx ? "PUT" : "POST";
+      const r = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(await r.text());
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: AccountFormData }) =>
-      fetch(`${BASE}/api/finance/accounts/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, amount: parseFloat(data.amount) || 0 }),
-      }).then(r => r.ok ? r.json() : Promise.reject("Error")),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-summary"] }); setDialogOpen(false); toast({ title: "Cuenta actualizada" }); },
-    onError: () => toast({ title: "Error al actualizar", variant: "destructive" }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) =>
-      fetch(`${BASE}/api/finance/accounts/${id}`, { method: "DELETE" }).then(r => r.ok ? r.json() : Promise.reject("Error")),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-summary"] }); toast({ title: "Cuenta eliminada" }); },
-    onError: () => toast({ title: "Error al eliminar", variant: "destructive" }),
-  });
-
-  const configMutation = useMutation({
-    mutationFn: async (values: Record<string, string>) => {
-      for (const [key, value] of Object.entries(values)) {
-        await fetch(`${BASE}/api/finance/config/${key}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value }),
-        });
+      if (!tx && form.isRecurring && form.recurFrequency) {
+        const ruleBody = {
+          name: form.notes || (form.type === "income" ? "Ingreso recurrente" : "Gasto recurrente"),
+          type: form.type, amount: parseFloat(form.amount),
+          categoryId: form.categoryId || null, accountId: form.accountId || null,
+          frequency: form.recurFrequency,
+          dayOfMonth: form.recurDay ? parseInt(form.recurDay, 10) : null,
+          nextDate: form.recurNextDate || null,
+        };
+        await fetch(`${BASE}/api/finance/recurring-rules`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ruleBody) });
       }
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["finance-summary"] }); setConfigEditing(false); toast({ title: "Configuración guardada" }); },
-    onError: () => toast({ title: "Error al guardar configuración", variant: "destructive" }),
-  });
 
-  function openNew() {
-    setForm(EMPTY_FORM);
-    setEditId(null);
-    setDialogOpen(true);
+      toast({ title: tx ? "Movimiento actualizado" : "Movimiento registrado" });
+      onSaved(); onClose();
+    } catch { toast({ title: "Error al guardar", variant: "destructive" }); }
+    finally { setSaving(false); }
   }
 
-  function openEdit(a: FinanceAccount) {
-    setForm({ type: a.type, label: a.label, amount: a.amount, currency: a.currency, notes: a.notes ?? "" });
-    setEditId(a.id);
-    setDialogOpen(true);
-  }
+  const set = (k: keyof TxFormState, v: unknown) => setForm(f => ({ ...f, [k]: v }));
 
-  function submitForm() {
-    if (editId !== null) updateMutation.mutate({ id: editId, data: form });
-    else createMutation.mutate(form);
-  }
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {tx ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {tx ? "Editar movimiento" : "Nuevo movimiento"}
+          </DialogTitle>
+        </DialogHeader>
 
-  function startConfigEdit() {
-    setConfigValues(summary?.config ?? {});
-    setConfigEditing(true);
-  }
+        <div className="space-y-4 py-1">
+          <div className="flex rounded-lg border overflow-hidden">
+            {(["income", "expense"] as const).map(t => (
+              <button key={t} onClick={() => { set("type", t); set("categoryId", ""); }}
+                className={`flex-1 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 ${form.type === t
+                  ? t === "income" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                  : "bg-transparent text-muted-foreground hover:bg-muted"}`}>
+                {t === "income" ? <ArrowUpCircle className="h-4 w-4" /> : <ArrowDownCircle className="h-4 w-4" />}
+                {t === "income" ? "Ingreso" : "Gasto"}
+              </button>
+            ))}
+          </div>
 
-  const accounts = summary?.accounts ?? [];
-  const totalByType = Object.entries(TYPE_META).map(([type, meta]) => {
-    const sum = accounts.filter(a => a.type === type).reduce((acc, a) => acc + parseFloat(a.amount), 0);
-    return { name: meta.label, value: Math.abs(sum), color: meta.pieColor, type };
-  }).filter(d => d.value > 0);
+          <div>
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Monto</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold">$</span>
+              <Input type="number" min="0" step="any" placeholder="0" value={form.amount}
+                onChange={e => set("amount", e.target.value)}
+                className="pl-7 text-lg font-bold h-12" autoFocus />
+            </div>
+          </div>
 
-  const CONFIG_LABELS: Record<string, string> = {
-    gasto_mensual_umbral: "Umbral de gasto mensual (ARS)",
-    liquidez_minima: "Liquidez mínima (ARS)",
-    alerta_deuda_umbral: "Umbral de deuda (ARS)",
-  };
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Categoría</Label>
+              <Select value={form.categoryId} onValueChange={v => set("categoryId", v)}>
+                <SelectTrigger><SelectValue placeholder="Seleccioná" /></SelectTrigger>
+                <SelectContent>{activeCats.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Fecha</Label>
+              <Input type="date" value={form.date} onChange={e => set("date", e.target.value)} />
+            </div>
+          </div>
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted rounded-xl" />)}
+          <div>
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Cuenta</Label>
+            <Select value={form.accountId} onValueChange={v => set("accountId", v)}>
+              <SelectTrigger><SelectValue placeholder="Sin cuenta asignada" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Sin cuenta</SelectItem>
+                {accounts.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Nota (opcional)</Label>
+            <Input placeholder="Ej: Compra en supermercado" value={form.notes} onChange={e => set("notes", e.target.value)} />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+              <Checkbox checked={form.isFixed} onCheckedChange={v => set("isFixed", Boolean(v))} />
+              Fijo
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+              <Checkbox checked={form.isRecurring} onCheckedChange={v => { set("isRecurring", Boolean(v)); if (v) setAdvanced(true); }} />
+              Recurrente
+            </label>
+          </div>
+
+          {form.isRecurring && (
+            <div className="rounded-lg border border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-3">
+              <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1"><Repeat className="h-3 w-3" /> Recurrencia</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Frecuencia</Label>
+                  <Select value={form.recurFrequency} onValueChange={v => set("recurFrequency", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Semanal</SelectItem>
+                      <SelectItem value="monthly">Mensual</SelectItem>
+                      <SelectItem value="annual">Anual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Próxima fecha</Label>
+                  <Input type="date" value={form.recurNextDate} onChange={e => set("recurNextDate", e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors" onClick={() => setAdvanced(!advanced)}>
+            <ChevronDown className={`h-3 w-3 transition-transform ${advanced ? "rotate-180" : ""}`} />
+            {advanced ? "Menos opciones" : "Más opciones"}
+          </button>
+
+          {advanced && (
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Estado</Label>
+                  <Select value={form.status} onValueChange={v => set("status", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="confirmed">Confirmado</SelectItem>
+                      <SelectItem value="pending">Pendiente</SelectItem>
+                      <SelectItem value="expected">Esperado</SelectItem>
+                      <SelectItem value="cancelled">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 block">Medio de pago</Label>
+                  <Select value={form.paymentMethod} onValueChange={v => set("paymentMethod", v)}>
+                    <SelectTrigger><SelectValue placeholder="Sin especificar" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Sin especificar</SelectItem>
+                      {PAYMENT_METHODS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="h-64 bg-muted rounded-xl" />
-      </div>
-    );
+
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}
+            className={form.type === "income" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-500 hover:bg-red-600"}>
+            {saving ? "Guardando..." : tx ? "Guardar cambios" : form.type === "income" ? "Registrar ingreso" : "Registrar gasto"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── ACCOUNT MODAL ────────────────────────────────────────────────────────
+
+function AccountModal({ open, onClose, acct, onSaved }: {
+  open: boolean; onClose: () => void; acct: FinanceAccount | null; onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ type: acct?.type ?? "banco", label: acct?.label ?? "", amount: acct?.amount ?? "0", currency: acct?.currency ?? "ARS", notes: acct?.notes ?? "" });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!form.label) { toast({ title: "Ingresá un nombre", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const url = acct ? `${BASE}/api/finance/accounts/${acct.id}` : `${BASE}/api/finance/accounts`;
+      const r = await fetch(url, { method: acct ? "PUT" : "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (!r.ok) throw new Error();
+      toast({ title: acct ? "Cuenta actualizada" : "Cuenta creada" });
+      onSaved(); onClose();
+    } catch { toast({ title: "Error al guardar", variant: "destructive" }); }
+    finally { setSaving(false); }
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Finanzas</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Resumen patrimonial personal</p>
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>{acct ? "Editar cuenta" : "Nueva cuenta"}</DialogTitle></DialogHeader>
+        <div className="space-y-3 py-1">
+          <div>
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Tipo</Label>
+            <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(ACCOUNT_META).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Nombre</Label>
+            <Input placeholder="Ej: Cuenta corriente Galicia" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Saldo actual</Label>
+              <Input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Moneda</Label>
+              <Select value={form.currency} onValueChange={v => setForm(f => ({ ...f, currency: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ARS">ARS</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="USDT">USDT</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Notas</Label>
+            <Input placeholder="Opcional" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ["finance-summary"] })}>
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-            Actualizar
-          </Button>
-          <Button size="sm" onClick={openNew}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            Nueva cuenta
-          </Button>
-        </div>
-      </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : acct ? "Guardar" : "Crear cuenta"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-      {summary?.alerts && summary.alerts.length > 0 && (
-        <div className="space-y-2">
-          {summary.alerts.map((alert, i) => {
-            const styles = ALERT_STYLES[alert.level] ?? ALERT_STYLES.medium;
-            const Icon = styles.icon;
-            return (
-              <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${styles.bg}`}>
-                <Icon className="h-4 w-4 shrink-0 text-current" />
-                <p className="text-sm font-medium">{alert.message}</p>
+// ─── RECURRING MODAL ──────────────────────────────────────────────────────
+
+function RecurringModal({ open, onClose, rule, categories, accounts, onSaved }: {
+  open: boolean; onClose: () => void; rule: FinanceRecurringRule | null;
+  categories: FinanceCategory[]; accounts: FinanceAccount[]; onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    name: rule?.name ?? "", type: rule?.type ?? "expense",
+    amount: rule?.amount ?? "", categoryId: rule?.categoryId ? String(rule.categoryId) : "",
+    accountId: rule?.accountId ? String(rule.accountId) : "",
+    frequency: rule?.frequency ?? "monthly",
+    dayOfMonth: rule?.dayOfMonth ? String(rule.dayOfMonth) : "",
+    nextDate: rule?.nextDate ?? todayStr(),
+    isActive: rule?.isActive ?? true, notes: rule?.notes ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const activeCats = categories.filter(c => c.type === form.type);
+
+  async function handleSave() {
+    if (!form.name || !form.amount) { toast({ title: "Nombre y monto son obligatorios", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const body = { ...form, amount: parseFloat(form.amount), categoryId: form.categoryId || null, accountId: form.accountId || null, dayOfMonth: form.dayOfMonth ? parseInt(form.dayOfMonth, 10) : null };
+      const url = rule ? `${BASE}/api/finance/recurring-rules/${rule.id}` : `${BASE}/api/finance/recurring-rules`;
+      const r = await fetch(url, { method: rule ? "PUT" : "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error();
+      toast({ title: rule ? "Regla actualizada" : "Regla creada" });
+      onSaved(); onClose();
+    } catch { toast({ title: "Error al guardar", variant: "destructive" }); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>{rule ? "Editar recurrencia" : "Nueva recurrencia"}</DialogTitle></DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="flex rounded-lg border overflow-hidden">
+            {(["income", "expense"] as const).map(t => (
+              <button key={t} onClick={() => setForm(f => ({ ...f, type: t, categoryId: "" }))}
+                className={`flex-1 py-2 text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors ${form.type === t ? (t === "income" ? "bg-emerald-500 text-white" : "bg-red-500 text-white") : "text-muted-foreground hover:bg-muted"}`}>
+                {t === "income" ? <ArrowUpCircle className="h-4 w-4" /> : <ArrowDownCircle className="h-4 w-4" />}
+                {t === "income" ? "Ingreso" : "Gasto"}
+              </button>
+            ))}
+          </div>
+          <div>
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Nombre</Label>
+            <Input placeholder="Ej: Sueldo mensual" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Monto</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input type="number" className="pl-6" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
               </div>
-            );
-          })}
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Frecuencia</Label>
+              <Select value={form.frequency} onValueChange={v => setForm(f => ({ ...f, frequency: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">Semanal</SelectItem>
+                  <SelectItem value="monthly">Mensual</SelectItem>
+                  <SelectItem value="annual">Anual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Categoría</Label>
+              <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Seleccioná" /></SelectTrigger>
+                <SelectContent>{activeCats.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Cuenta</Label>
+              <Select value={form.accountId} onValueChange={v => setForm(f => ({ ...f, accountId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Sin cuenta</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Próxima fecha</Label>
+              <Input type="date" value={form.nextDate} onChange={e => setForm(f => ({ ...f, nextDate: e.target.value }))} />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Día del mes</Label>
+              <Input type="number" min="1" max="31" placeholder="1-31" value={form.dayOfMonth} onChange={e => setForm(f => ({ ...f, dayOfMonth: e.target.value }))} />
+            </div>
+          </div>
         </div>
-      )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : rule ? "Guardar" : "Crear"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard
-          label="Patrimonio neto"
-          value={fmt(summary?.patrimonio ?? 0)}
-          sub={summary?.patrimonio !== undefined && summary.patrimonio >= 0 ? "Posición positiva" : "Posición negativa"}
-          accent={(summary?.patrimonio ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}
-        />
-        <SummaryCard
-          label="Liquidez"
-          value={fmt(summary?.liquidez ?? 0)}
-          sub="Caja + Bancos"
-          accent={(summary?.liquidez ?? 0) >= parseFloat(summary?.config?.liquidez_minima ?? "0")
-            ? "text-blue-600 dark:text-blue-400"
-            : "text-red-600 dark:text-red-400"}
-        />
-        <SummaryCard
-          label="Inversiones"
-          value={fmt(summary?.inversiones ?? 0)}
-          sub="Cripto + mercados"
-          accent="text-violet-600 dark:text-violet-400"
-        />
-        <SummaryCard
-          label="Deudas"
-          value={fmt(summary?.deudas ?? 0)}
-          sub="Total pasivo"
-          accent={(summary?.deudas ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}
-        />
-      </div>
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-base">Cuentas y posiciones</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {accounts.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-10 text-center">
-                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                  <DollarSign className="h-6 w-6 text-muted-foreground" />
+export default function FinancePage() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const [tab, setTab] = useState("dashboard");
+  const [txModal, setTxModal] = useState<{ open: boolean; tx: FinanceTransaction | null }>({ open: false, tx: null });
+  const [acctModal, setAcctModal] = useState<{ open: boolean; acct: FinanceAccount | null }>({ open: false, acct: null });
+  const [recurModal, setRecurModal] = useState<{ open: boolean; rule: FinanceRecurringRule | null }>({ open: false, rule: null });
+
+  // Filters for movimientos tab
+  const [filter, setFilter] = useState({ type: "", categoryId: "", accountId: "", status: "", from: "", to: "" });
+
+  const { data: summary, isLoading: summaryLoading } = useQuery<FinanceSummary>({
+    queryKey: ["/api/finance/summary"],
+    queryFn: () => fetch(`${BASE}/api/finance/summary`, { credentials: "include" }).then(r => r.json()),
+    refetchInterval: 60000,
+  });
+
+  const { data: categoriesData } = useQuery<FinanceCategory[]>({
+    queryKey: ["/api/finance/categories"],
+    queryFn: () => fetch(`${BASE}/api/finance/categories`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  const { data: accountsData } = useQuery<FinanceAccount[]>({
+    queryKey: ["/api/finance/accounts"],
+    queryFn: () => fetch(`${BASE}/api/finance/accounts`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  const txParams = new URLSearchParams();
+  if (filter.type) txParams.set("type", filter.type);
+  if (filter.categoryId) txParams.set("categoryId", filter.categoryId);
+  if (filter.accountId) txParams.set("accountId", filter.accountId);
+  if (filter.status) txParams.set("status", filter.status);
+  if (filter.from) txParams.set("from", filter.from);
+  if (filter.to) txParams.set("to", filter.to);
+  txParams.set("limit", "200");
+
+  const { data: txData, isLoading: txLoading } = useQuery<{ transactions: FinanceTransaction[]; total: number }>({
+    queryKey: ["/api/finance/transactions", filter],
+    queryFn: () => fetch(`${BASE}/api/finance/transactions?${txParams}`, { credentials: "include" }).then(r => r.json()),
+    enabled: tab === "movimientos",
+  });
+
+  const { data: rulesData } = useQuery<FinanceRecurringRule[]>({
+    queryKey: ["/api/finance/recurring-rules"],
+    queryFn: () => fetch(`${BASE}/api/finance/recurring-rules`, { credentials: "include" }).then(r => r.json()),
+    enabled: tab === "recurrencias",
+  });
+
+  const categories = categoriesData ?? [];
+  const accounts = accountsData ?? [];
+
+  const catMap = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])), [categories]);
+  const acctMap = useMemo(() => Object.fromEntries(accounts.map(a => [a.id, a])), [accounts]);
+
+  function invalidateAll() {
+    qc.invalidateQueries({ queryKey: ["/api/finance/summary"] });
+    qc.invalidateQueries({ queryKey: ["/api/finance/transactions"] });
+    qc.invalidateQueries({ queryKey: ["/api/finance/accounts"] });
+    qc.invalidateQueries({ queryKey: ["/api/finance/recurring-rules"] });
+  }
+
+  const seedMutation = useMutation({
+    mutationFn: () => fetch(`${BASE}/api/finance/seed-demo`, { method: "POST", credentials: "include" }).then(r => r.json()),
+    onSuccess: (data) => {
+      toast({ title: data.skipped ? "Ya hay datos cargados" : "Datos demo cargados" });
+      invalidateAll();
+    },
+    onError: () => toast({ title: "Error al cargar demo", variant: "destructive" }),
+  });
+
+  async function deleteTx(id: number) {
+    if (!confirm("¿Eliminar este movimiento?")) return;
+    const r = await fetch(`${BASE}/api/finance/transactions/${id}`, { method: "DELETE", credentials: "include" });
+    if (r.ok) { toast({ title: "Eliminado" }); invalidateAll(); }
+    else toast({ title: "Error al eliminar", variant: "destructive" });
+  }
+
+  async function deleteAccount(id: number) {
+    if (!confirm("¿Eliminar esta cuenta?")) return;
+    const r = await fetch(`${BASE}/api/finance/accounts/${id}`, { method: "DELETE", credentials: "include" });
+    if (r.ok) { toast({ title: "Cuenta eliminada" }); invalidateAll(); }
+    else toast({ title: "Error al eliminar", variant: "destructive" });
+  }
+
+  async function deleteRule(id: number) {
+    if (!confirm("¿Eliminar esta regla?")) return;
+    const r = await fetch(`${BASE}/api/finance/recurring-rules/${id}`, { method: "DELETE", credentials: "include" });
+    if (r.ok) { toast({ title: "Regla eliminada" }); invalidateAll(); }
+    else toast({ title: "Error al eliminar", variant: "destructive" });
+  }
+
+  const hasFilters = Object.values(filter).some(Boolean);
+  const totalPages = txData ? Math.ceil(txData.total / 200) : 0;
+
+  return (
+    <div className="relative min-h-screen">
+      <div className="mx-auto max-w-5xl px-4 py-6 space-y-6 pb-24">
+
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <Wallet className="h-6 w-6 text-violet-500" /> Finanzas Personales
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Tu situación financiera en tiempo real</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}
+              className="text-xs gap-1.5">
+              <Sparkles className="h-3.5 w-3.5" />
+              {seedMutation.isPending ? "Cargando..." : "Cargar demo"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={invalidateAll} className="text-xs gap-1.5">
+              <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+            </Button>
+          </div>
+        </div>
+
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="w-full sm:w-auto grid grid-cols-4 sm:flex">
+            <TabsTrigger value="dashboard">Resumen</TabsTrigger>
+            <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
+            <TabsTrigger value="cuentas">Cuentas</TabsTrigger>
+            <TabsTrigger value="recurrencias">Recurrencias</TabsTrigger>
+          </TabsList>
+
+          {/* ── DASHBOARD TAB ── */}
+          <TabsContent value="dashboard" className="mt-5 space-y-5">
+            {summaryLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[...Array(6)].map((_, i) => <Card key={i}><CardContent className="h-24 animate-pulse bg-muted rounded-lg" /></Card>)}
+              </div>
+            ) : summary ? (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <SummaryCard label="Saldo disponible" value={fmt(summary.saldoDisponible)}
+                    sub="Activos menos deudas" accent="text-violet-600 dark:text-violet-400" icon={Wallet} />
+                  <SummaryCard label="Ingresos del mes" value={fmt(summary.ingresosMes)}
+                    sub="Confirmados" accent="text-emerald-600 dark:text-emerald-400" icon={TrendingUp} />
+                  <SummaryCard label="Gastos del mes" value={fmt(summary.gastosMes)}
+                    sub="Confirmados" accent="text-red-500 dark:text-red-400" icon={TrendingDown} />
+                  <SummaryCard
+                    label="Fin de mes estimado"
+                    value={fmt(summary.saldoEstimadoFinMes)}
+                    sub={summary.saldoEstimadoFinMes >= 0 ? "Saldo positivo" : "Déficit proyectado"}
+                    accent={summary.saldoEstimadoFinMes >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}
+                    icon={Calendar}
+                  />
+                  <SummaryCard label="Próx. recurrencias" value={String(summary.upcomingRecurrences.length)}
+                    sub="En 30 días" accent="text-amber-600 dark:text-amber-400" icon={Repeat} />
+                  <SummaryCard label="Alertas activas" value={String(summary.alerts.length)}
+                    sub={summary.alerts.length === 0 ? "Todo en orden" : "Ver detalle abajo"}
+                    accent={summary.alerts.some(a => a.level === "red") ? "text-red-500 dark:text-red-400" : summary.alerts.some(a => a.level === "yellow") ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}
+                    icon={AlertTriangle} />
                 </div>
-                <p className="text-sm font-medium">Sin cuentas registradas</p>
-                <p className="text-xs text-muted-foreground">Agregá caja, banco, cripto o inversiones para ver tu patrimonio</p>
-                <Button size="sm" variant="outline" onClick={openNew}>
-                  <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Agregar cuenta
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {Object.entries(TYPE_META).map(([type, meta]) => {
-                  const items = accounts.filter(a => a.type === type);
-                  if (items.length === 0) return null;
-                  const Icon = meta.icon;
-                  return (
-                    <div key={type}>
-                      <div className="flex items-center gap-2 mb-1.5 mt-3 first:mt-0">
-                        <Icon className={`h-3.5 w-3.5 ${meta.color}`} />
-                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{meta.label}</span>
-                      </div>
-                      {items.map(account => (
-                        <div key={account.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-muted/60 group transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{account.label}</p>
-                            {account.notes && <p className="text-xs text-muted-foreground truncate">{account.notes}</p>}
-                          </div>
-                          <div className="flex items-center gap-3 ml-3">
-                            <span className={`text-sm font-semibold tabular-nums ${meta.color}`}>
-                              {account.currency} {fmt(parseFloat(account.amount))}
-                            </span>
-                            <div className="hidden group-hover:flex items-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(account)}>
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
-                                onClick={() => deleteMutation.mutate(account.id)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
+
+                {/* Alerts */}
+                {summary.alerts.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2 pt-4">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" /> Alertas</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 pb-4">
+                      {summary.alerts.map((a, i) => (
+                        <div key={i} className="flex items-center gap-2.5 text-sm">
+                          <AlertDot level={a.level} />
+                          <span>{a.message}</span>
                         </div>
                       ))}
-                      <Separator className="mt-2" />
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className="grid md:grid-cols-2 gap-5">
+                  {/* Recent Transactions */}
+                  <Card>
+                    <CardHeader className="pb-2 pt-4">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground" /> Últimos movimientos
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pb-3">
+                      {summary.recentTransactions.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-4 text-center">Sin movimientos registrados</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {summary.recentTransactions.map(tx => (
+                            <div key={tx.id} className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 transition-colors group">
+                              <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0"
+                                style={{ background: (tx.category?.color ?? "#6b7280") + "22" }}>
+                                {tx.type === "income"
+                                  ? <ArrowUpCircle className="h-4 w-4 text-emerald-500" />
+                                  : <ArrowDownCircle className="h-4 w-4 text-red-500" />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">{tx.notes || tx.category?.name || (tx.type === "income" ? "Ingreso" : "Gasto")}</p>
+                                <p className="text-xs text-muted-foreground">{tx.date} · {tx.category?.name}</p>
+                              </div>
+                              <span className={`text-sm font-bold tabular-nums shrink-0 ${tx.type === "income" ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                                {tx.type === "income" ? "+" : "-"}{fmt(tx.amount)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <Button variant="link" size="sm" className="mt-1 text-xs px-2" onClick={() => setTab("movimientos")}>
+                        Ver todos los movimientos →
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Upcoming Recurrences */}
+                  <Card>
+                    <CardHeader className="pb-2 pt-4">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Repeat className="h-4 w-4 text-muted-foreground" /> Próximos movimientos recurrentes
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pb-3">
+                      {summary.upcomingRecurrences.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-4 text-center">No hay recurrencias próximas</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {summary.upcomingRecurrences.map(r => (
+                            <div key={r.id} className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 transition-colors">
+                              <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 bg-muted">
+                                {r.type === "income" ? <ArrowUpCircle className="h-4 w-4 text-emerald-500" /> : <ArrowDownCircle className="h-4 w-4 text-red-500" />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">{r.name}</p>
+                                <p className="text-xs text-muted-foreground">{r.nextDate} · {FREQ_LABEL[r.frequency]}</p>
+                              </div>
+                              <span className={`text-sm font-bold tabular-nums ${r.type === "income" ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                                {r.type === "income" ? "+" : "-"}{fmt(r.amount)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <Button variant="link" size="sm" className="mt-1 text-xs px-2" onClick={() => setTab("recurrencias")}>
+                        Gestionar recurrencias →
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Accounts mini */}
+                {summary.accounts.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2 pt-4">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Wallet className="h-4 w-4 text-muted-foreground" /> Cuentas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pb-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {summary.accounts.map(a => {
+                          const meta = ACCOUNT_META[a.type] ?? ACCOUNT_META["banco"];
+                          const Icon = meta.icon;
+                          return (
+                            <div key={a.id} className="rounded-lg border bg-card p-3 flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <Icon className={`h-3.5 w-3.5 ${meta.color}`} />
+                                <span className="text-xs text-muted-foreground truncate">{a.label}</span>
+                              </div>
+                              <p className={`text-base font-bold tabular-nums ${a.type === "deuda" ? "text-red-500" : "text-foreground"}`}>
+                                {a.currency !== "ARS" ? a.currency + " " : ""}{fmt(parseFloat(a.amount))}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <Button variant="link" size="sm" className="mt-2 text-xs px-2" onClick={() => setTab("cuentas")}>
+                        Gestionar cuentas →
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : null}
+          </TabsContent>
+
+          {/* ── MOVIMIENTOS TAB ── */}
+          <TabsContent value="movimientos" className="mt-5 space-y-4">
+            {/* Filters */}
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Select value={filter.type || "all"} onValueChange={v => setFilter(f => ({ ...f, type: v === "all" ? "" : v }))}>
+                    <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los tipos</SelectItem>
+                      <SelectItem value="income">Ingresos</SelectItem>
+                      <SelectItem value="expense">Gastos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={filter.categoryId || "all"} onValueChange={v => setFilter(f => ({ ...f, categoryId: v === "all" ? "" : v }))}>
+                    <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las categorías</SelectItem>
+                      {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filter.accountId || "all"} onValueChange={v => setFilter(f => ({ ...f, accountId: v === "all" ? "" : v }))}>
+                    <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Cuenta" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las cuentas</SelectItem>
+                      {accounts.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filter.status || "all"} onValueChange={v => setFilter(f => ({ ...f, status: v === "all" ? "" : v }))}>
+                    <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Estado" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los estados</SelectItem>
+                      {Object.entries(STATUS_META).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input type="date" className="h-8 w-36 text-xs" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} placeholder="Desde" />
+                  <Input type="date" className="h-8 w-36 text-xs" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} placeholder="Hasta" />
+                  {hasFilters && (
+                    <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => setFilter({ type: "", categoryId: "", accountId: "", status: "", from: "", to: "" })}>
+                      <X className="h-3 w-3" /> Limpiar
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {txLoading ? (
+              <Card><CardContent className="h-40 animate-pulse bg-muted rounded-lg mt-4" /></Card>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/30">
+                          <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fecha</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Descripción</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Categoría</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground hidden md:table-cell">Cuenta</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Estado</th>
+                          <th className="text-right py-3 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Monto</th>
+                          <th className="py-3 px-4 w-20"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {!txData?.transactions?.length ? (
+                          <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">
+                            <div className="flex flex-col items-center gap-2">
+                              <Wallet className="h-8 w-8 opacity-20" />
+                              <p>Sin movimientos{hasFilters ? " con estos filtros" : ""}</p>
+                              {!hasFilters && <Button size="sm" variant="outline" className="mt-2" onClick={() => setTxModal({ open: true, tx: null })}>Cargar primer movimiento</Button>}
+                            </div>
+                          </td></tr>
+                        ) : txData.transactions.map(tx => (
+                          <tr key={tx.id} className="border-b hover:bg-muted/30 transition-colors group">
+                            <td className="py-3 px-4 text-muted-foreground tabular-nums whitespace-nowrap">{tx.date}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                {tx.type === "income"
+                                  ? <ArrowUpCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                  : <ArrowDownCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+                                <span className="truncate max-w-[140px]">{tx.notes || tx.category?.name || (tx.type === "income" ? "Ingreso" : "Gasto")}</span>
+                                {tx.isRecurring && <Repeat className="h-3 w-3 text-muted-foreground shrink-0" />}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 hidden sm:table-cell">
+                              {tx.category ? (
+                                <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5"
+                                  style={{ background: tx.category.color + "22", color: tx.category.color }}>
+                                  {tx.category.name}
+                                </span>
+                              ) : <span className="text-muted-foreground text-xs">—</span>}
+                            </td>
+                            <td className="py-3 px-4 text-muted-foreground text-xs hidden md:table-cell">
+                              {tx.accountId ? acctMap[tx.accountId]?.label ?? "—" : "—"}
+                            </td>
+                            <td className="py-3 px-4 hidden sm:table-cell">
+                              {STATUS_META[tx.status] ? (
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_META[tx.status].color}`}>
+                                  {STATUS_META[tx.status].label}
+                                </span>
+                              ) : tx.status}
+                            </td>
+                            <td className={`py-3 px-4 text-right tabular-nums font-semibold whitespace-nowrap ${tx.type === "income" ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                              {tx.type === "income" ? "+" : "-"}{fmt(tx.amount)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTxModal({ open: true, tx })}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteTx(tx.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {txData && txData.total > 0 && (
+                    <div className="px-4 py-2 border-t text-xs text-muted-foreground flex items-center justify-between">
+                      <span>{txData.total} movimiento{txData.total !== 1 ? "s" : ""} en total</span>
+                      <span>
+                        Balance:{" "}
+                        <span className={
+                          txData.transactions.reduce((s, t) => s + (t.type === "income" ? t.amount : -t.amount), 0) >= 0
+                            ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                            : "text-red-500 dark:text-red-400 font-semibold"
+                        }>
+                          {fmtSigned(txData.transactions.reduce((s, t) => s + (t.type === "income" ? t.amount : -t.amount), 0))}
+                        </span>
+                      </span>
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── CUENTAS TAB ── */}
+          <TabsContent value="cuentas" className="mt-5 space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={() => setAcctModal({ open: true, acct: null })} className="gap-1.5">
+                <Plus className="h-4 w-4" /> Nueva cuenta
+              </Button>
+            </div>
+            {!accountsData?.length ? (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <Wallet className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-muted-foreground">No tenés cuentas creadas</p>
+                  <Button className="mt-4" onClick={() => setAcctModal({ open: true, acct: null })}>Crear primera cuenta</Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {accountsData.map(a => {
+                  const meta = ACCOUNT_META[a.type] ?? ACCOUNT_META["banco"];
+                  const Icon = meta.icon;
+                  const bal = parseFloat(a.amount);
+                  return (
+                    <Card key={a.id} className="group">
+                      <CardContent className="pt-5 pb-4 px-5">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-muted">
+                              <Icon className={`h-5 w-5 ${meta.color}`} />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-sm leading-tight">{a.label}</p>
+                              <p className="text-xs text-muted-foreground">{meta.label} · {a.currency}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAcctModal({ open: true, acct: a })}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteAccount(a.id)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className={`text-2xl font-bold tabular-nums mt-3 ${a.type === "deuda" ? "text-red-500 dark:text-red-400" : ""}`}>
+                          {a.currency !== "ARS" ? a.currency + " " : ""}{fmt(bal)}
+                        </p>
+                        {a.notes && <p className="text-xs text-muted-foreground mt-1 truncate">{a.notes}</p>}
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </TabsContent>
 
-        <div className="space-y-4">
-          {totalByType.length > 0 ? (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Distribución</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={180}>
-                  <PieChart>
-                    <Pie data={totalByType} cx="50%" cy="50%" innerRadius={40} outerRadius={72} paddingAngle={3} dataKey="value">
-                      {totalByType.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <RechartTooltip
-                      formatter={(v: number) => [fmt(v), ""]}
-                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                    />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">Alertas y umbrales</CardTitle>
-              {!configEditing && (
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={startConfigEdit}>
-                  <Pencil className="h-3 w-3 mr-1" />
-                  Editar
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {configEditing ? (
-                <div className="space-y-3">
-                  {Object.entries(CONFIG_LABELS).map(([key, label]) => (
-                    <div key={key}>
-                      <Label className="text-xs">{label}</Label>
-                      <Input
-                        type="number"
-                        value={configValues[key] ?? ""}
-                        onChange={e => setConfigValues(prev => ({ ...prev, [key]: e.target.value }))}
-                        className="mt-1 h-8 text-sm"
-                      />
-                    </div>
-                  ))}
-                  <div className="flex gap-2 pt-1">
-                    <Button size="sm" className="flex-1" onClick={() => configMutation.mutate(configValues)}>
-                      <Check className="h-3.5 w-3.5 mr-1" />
-                      Guardar
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setConfigEditing(false)}>
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {Object.entries(CONFIG_LABELS).map(([key, label]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{label}</span>
-                      <span className="text-xs font-semibold tabular-nums">
-                        {summary?.config?.[key] ? fmt(parseFloat(summary.config[key])) : "—"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+          {/* ── RECURRENCIAS TAB ── */}
+          <TabsContent value="recurrencias" className="mt-5 space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={() => setRecurModal({ open: true, rule: null })} className="gap-1.5">
+                <Plus className="h-4 w-4" /> Nueva recurrencia
+              </Button>
+            </div>
+            {!rulesData?.length ? (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <Repeat className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-muted-foreground">No tenés movimientos recurrentes configurados</p>
+                  <Button className="mt-4" onClick={() => setRecurModal({ open: true, rule: null })}>Crear primera recurrencia</Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {rulesData.map(rule => {
+                  const cat = rule.categoryId ? catMap[rule.categoryId] : null;
+                  const acct = rule.accountId ? acctMap[rule.accountId] : null;
+                  return (
+                    <Card key={rule.id} className={`group ${!rule.isActive ? "opacity-60" : ""}`}>
+                      <CardContent className="px-5 py-4">
+                        <div className="flex items-center gap-4">
+                          <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-muted shrink-0">
+                            {rule.type === "income"
+                              ? <ArrowUpCircle className="h-5 w-5 text-emerald-500" />
+                              : <ArrowDownCircle className="h-5 w-5 text-red-500" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-sm">{rule.name}</p>
+                              {!rule.isActive && <Badge variant="outline" className="text-xs">Inactiva</Badge>}
+                              <Badge variant="outline" className="text-xs">{FREQ_LABEL[rule.frequency]}</Badge>
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
+                              {cat && <span style={{ color: cat.color }}>{cat.name}</span>}
+                              {acct && <span>{acct.label}</span>}
+                              {rule.nextDate && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Próx: {rule.nextDate}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <p className={`text-base font-bold tabular-nums ${rule.type === "income" ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                              {rule.type === "income" ? "+" : "-"}{fmt(parseFloat(rule.amount))}
+                            </p>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRecurModal({ open: true, rule })}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteRule(rule.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editId !== null ? "Editar cuenta" : "Nueva cuenta"}</DialogTitle>
-            <DialogDescription>
-              {editId !== null ? "Modificá los datos de esta cuenta financiera." : "Agregá una nueva cuenta para registrar tu patrimonio."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label>Tipo</Label>
-              <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(TYPE_META).map(([k, m]) => (
-                    <SelectItem key={k} value={k}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Nombre / descripción</Label>
-              <Input
-                className="mt-1"
-                placeholder="Ej: Caja chica oficina"
-                value={form.label}
-                onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Monto</Label>
-                <Input
-                  type="number"
-                  className="mt-1"
-                  placeholder="0"
-                  value={form.amount}
-                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Moneda</Label>
-                <Select value={form.currency} onValueChange={v => setForm(f => ({ ...f, currency: v }))}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ARS">ARS — Pesos</SelectItem>
-                    <SelectItem value="USD">USD — Dólares</SelectItem>
-                    <SelectItem value="USDT">USDT — Tether</SelectItem>
-                    <SelectItem value="BTC">BTC — Bitcoin</SelectItem>
-                    <SelectItem value="EUR">EUR — Euros</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label>Notas (opcional)</Label>
-              <Input
-                className="mt-1"
-                placeholder="Observaciones..."
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={submitForm} disabled={!form.label || createMutation.isPending || updateMutation.isPending}>
-              {editId !== null ? "Guardar cambios" : "Crear cuenta"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Floating Action Button */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+        <Button
+          size="lg"
+          className="h-14 w-14 rounded-full shadow-2xl bg-violet-600 hover:bg-violet-700 text-white p-0"
+          onClick={() => setTxModal({ open: true, tx: null })}>
+          <Plus className="h-6 w-6" />
+        </Button>
+      </div>
+
+      {/* Modals */}
+      {txModal.open && (
+        <TransactionModal
+          open={txModal.open}
+          onClose={() => setTxModal({ open: false, tx: null })}
+          tx={txModal.tx}
+          categories={categories}
+          accounts={accounts}
+          onSaved={invalidateAll}
+        />
+      )}
+      {acctModal.open && (
+        <AccountModal
+          open={acctModal.open}
+          onClose={() => setAcctModal({ open: false, acct: null })}
+          acct={acctModal.acct}
+          onSaved={invalidateAll}
+        />
+      )}
+      {recurModal.open && (
+        <RecurringModal
+          open={recurModal.open}
+          onClose={() => setRecurModal({ open: false, rule: null })}
+          rule={recurModal.rule}
+          categories={categories}
+          accounts={accounts}
+          onSaved={invalidateAll}
+        />
+      )}
     </div>
   );
 }

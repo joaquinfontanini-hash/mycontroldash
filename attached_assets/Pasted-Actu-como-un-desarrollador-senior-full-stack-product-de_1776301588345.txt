@@ -1,0 +1,184 @@
+Actuá como un desarrollador senior full-stack + product designer UX, especializado en dashboards web modernos, rápidos y extremadamente usables.
+
+Quiero que desarrolles la FASE 1 del módulo “Finanzas Personales” dentro de mi dashboard web.
+
+OBJETIVO DE ESTA FASE
+Construir la base realmente usable del sistema para que el usuario:
+- vea su situación financiera básica en segundos
+- pueda cargar ingresos y gastos muy rápido
+- empiece a generar hábito de uso
+- tenga categorías simples
+- tenga recurrencias básicas
+- pueda usarlo en móvil y desktop sin fricción
+
+IMPORTANTE
+No hagas aún una solución sobrecargada.
+No hagas una planilla contable.
+No hagas demasiados reportes.
+La prioridad es:
+1. simplicidad
+2. rapidez
+3. claridad
+4. hábito de uso
+
+ENTREGABLE DE ESTA FASE
+Quiero una implementación completa, funcional y visualmente moderna de:
+
+1) DASHBOARD RESUMEN
+Crear la pantalla principal del módulo con:
+- tarjeta: Saldo disponible hoy
+- tarjeta: Ingresos del mes
+- tarjeta: Gastos del mes
+- tarjeta: Saldo estimado fin de mes
+- tarjeta: Próximos vencimientos
+- tarjeta: Alertas activas
+
+Debajo:
+- últimos movimientos
+- próximos movimientos recurrentes
+- ingresos recientes
+- gastos recientes
+
+Agregar semáforos visuales:
+- verde = saludable
+- amarillo = atención
+- rojo = riesgo
+
+2) CARGA RÁPIDA DE MOVIMIENTOS
+Agregar botón flotante principal:
+- “+ Cargar”
+
+Al tocarlo, abrir modal rápido con:
+- tipo: ingreso / gasto
+- monto
+- categoría
+- fecha
+- cuenta
+- medio de pago
+- nota opcional
+- checkbox: “repetir automáticamente”
+
+Debe existir también un modo “completo” con más detalles.
+
+La carga rápida debe estar optimizada para hacerse en menos de 10 segundos.
+
+3) INGRESOS
+Crear soporte para registrar ingresos simples.
+
+Categorías iniciales:
+- sueldo
+- clientes
+- ventas
+- extras
+- reintegros
+- otros
+
+Cada ingreso debe poder marcarse como:
+- fijo o variable
+- confirmado o esperado
+- recurrente o eventual
+
+4) GASTOS
+Crear soporte para registrar gastos simples.
+
+Categorías iniciales:
+- hogar
+- servicios
+- supermercado
+- transporte
+- salud
+- educación
+- hijos
+- mascotas
+- salidas
+- ropa
+- impuestos
+- suscripciones
+- otros
+
+Cada gasto debe poder marcarse como:
+- fijo o variable
+- confirmado o pendiente
+- recurrente o eventual
+
+5) CUENTAS
+Crear múltiples cuentas simples:
+- efectivo
+- banco
+- billetera virtual
+- tarjeta
+
+Cada movimiento debe impactar en una cuenta.
+
+6) RECURRENCIAS BÁSICAS
+Permitir marcar un movimiento como:
+- semanal
+- mensual
+- anual
+
+Debe guardarse la regla de recurrencia y mostrarse en el resumen de próximos movimientos.
+
+No automatices aún procesos complejos, pero sí dejar la base sólida para la siguiente fase.
+
+7) TABLA DE MOVIMIENTOS
+Crear una pantalla con tabla moderna de movimientos con:
+- fecha
+- tipo
+- categoría
+- cuenta
+- monto
+- estado
+- acciones: editar / duplicar / eliminar
+
+Agregar filtros por:
+- tipo
+- categoría
+- cuenta
+- fecha
+- estado
+
+8) UX / UI
+Diseño:
+- moderno
+- limpio
+- rápido
+- mobile-first
+- legible
+- elegante sin exceso visual
+
+Usar:
+- cards claras
+- botones evidentes
+- modales simples
+- colores suaves
+- iconografía entendible
+- jerarquía visual excelente
+
+9) DATOS Y ARQUITECTURA
+Definir e implementar estructura de datos para:
+- accounts
+- transactions
+- categories
+- recurring_rules
+
+Preparar arquitectura escalable para futuras fases.
+
+10) DATOS DEMO
+Precargar ejemplos realistas para mostrar el módulo funcionando:
+- ingresos de sueldo y clientes
+- gastos de supermercado, servicios y salidas
+- una suscripción recurrente
+- una cuenta bancaria y una billetera
+
+11) RESULTADO FINAL
+Entregar esta fase como un módulo funcional, limpio y productivo dentro del dashboard, listo para usarse y listo para expandirse en fases posteriores.
+
+Además:
+- proponer estructura de carpetas
+- componentes UI reutilizables
+- hooks o lógica de estado
+- validaciones
+- textos de interfaz claros
+- diseño responsive completo
+
+Construí esta FASE 1 con calidad de producción y foco absoluto en experiencia real de usuario.

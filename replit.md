@@ -21,7 +21,8 @@ The project is built as a monorepo using `pnpm workspaces`.
     - `/dashboard/news` (News feed with filters), `/dashboard/emails` (Email inbox), `/dashboard/weather` (3-day forecast)
     - `/dashboard/fiscal` (Monitor Fiscal with card/table toggle), `/dashboard/travel` (Travel offers browser)
     - `/register` (Public registration), `/admin` (Admin panel with 6 tabs)
-    - `/dashboard/due-dates` (Due dates tracker), `/dashboard/finance` (Personal finance summary)
+    - `/dashboard/due-dates` (Due dates tracker)
+    - `/dashboard/finance` (Finanzas Personales — Fase 1: dashboard resumen con semáforos, carga rápida de movimientos, tabla con filtros, cuentas, recurrencias. Botón flotante "+" para carga rápida. Demo data via POST /api/finance/seed-demo)
     - `/settings` (Dashboard configuration, including External Sources)
 - **UI/UX Decisions:**
     - Dashboard layout utilizes `lg:grid-cols-[1fr_288px]` for a main content area and a sticky right panel for widgets like `VencimientosWidget`.
@@ -62,6 +63,15 @@ The project is built as a monorepo using `pnpm workspaces`.
       - Extended clients table: emailSecondary, clientPriority, alertsActive, responsible.
       - Frontend (due-dates.tsx): KPI bar (9 tiles), semáforo badges, table/card toggle, trazabilidad modal with alert history + resend + mark-reviewed, tabs (Vencimientos / Alertas enviadas), filters (status, semáforo, category, text search), sorted by rojo-first then date.
       - Scheduler: semáforos recalculated at 7:00 AM, email alerts at 8:00 AM daily.
+    - **Finanzas Personales — Fase 1:**
+      - New DB tables (finance.ts schema): `finance_categories` (default income/expense categories per user), `finance_transactions` (type, amount, currency, categoryId, accountId, date, status, paymentMethod, notes, isFixed, isRecurring, recurringRuleId), `finance_recurring_rules` (name, type, amount, frequency weekly/monthly/annual, dayOfMonth, nextDate, isActive).
+      - Existing tables kept: `finance_accounts`, `finance_config`.
+      - Backend routes (finance.ts): CRUD for /api/finance/categories, /api/finance/transactions (with query filters: type, categoryId, accountId, status, from, to), /api/finance/recurring-rules, /api/finance/accounts, /api/finance/config. New endpoints: GET /api/finance/summary (aggregated view), POST /api/finance/seed-demo (preloads realistic demo data).
+      - Summary endpoint returns: ingresosMes, gastosMes, saldoEstimadoFinMes, saldoDisponible, activos, deudas, accounts, upcomingRecurrences (next 30 days), recentTransactions (last 8), alerts (green/yellow/red semáforos).
+      - Frontend (finance.tsx): 4 tabs — Resumen (6 summary cards + semáforos + recent transactions + upcoming recurrences + accounts mini), Movimientos (table with multi-filter, balance footer), Cuentas (card grid with edit/delete), Recurrencias (list with next date, frequency badge). Floating violet "+" FAB opens TransactionModal. Quick-add form optimized for speed (<10s); Advanced options toggle for status/payment method. Auto-creates recurring rule when checkbox selected.
+      - Income categories: Sueldo, Clientes, Ventas, Extras, Reintegros, Otros.
+      - Expense categories: Hogar, Servicios, Supermercado, Transporte, Salud, Educación, Hijos, Mascotas, Salidas, Ropa, Impuestos, Suscripciones, Otros.
+      - Account types: caja, banco, billetera_virtual, tarjeta, cripto, inversiones, deuda.
 
 **System Design Choices:**
 - **Monorepo:** Centralized management of frontend, backend, and shared libraries.
