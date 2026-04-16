@@ -1,0 +1,124 @@
+Actuá como auditor técnico senior, arquitecto SaaS, experto en frontend complejo, performance y seguridad.
+
+Quiero una auditoría completa de la Parte 2 del módulo "Dashboard Studio" ya implementada.
+
+Tu trabajo es evaluar si realmente quedó como capacidad premium del producto o si todavía tiene problemas serios de UX, performance, consistencia o seguridad.
+
+==================================================
+QUÉ AUDITAR
+==================================================
+
+1. Builder visual
+- claridad de UX
+- drag & drop usable
+- persistencia correcta
+- edición de widgets robusta
+- riesgo de estados corruptos
+- complejidad excesiva o mala experiencia
+
+2. Layouts responsive
+- uso correcto de dashboard_layouts
+- separación real por breakpoint
+- fallback sano
+- experiencia mobile real
+- si editar desktop/mobile confunde o no
+
+3. Snapshots
+- consistencia de invalidación
+- riesgo de datos viejos
+- cálculo correcto de dataSignature
+- manejo de expiración
+- riesgo de mostrar información errónea
+- valor real de performance
+
+4. Smart Summary
+- utilidad real
+- si inventa o exagera
+- robustez del fallback
+- claridad para el usuario
+
+5. Permisos y compartición
+- escalamiento indebido
+- dashboards expuestos incorrectamente
+- permisos mal resueltos
+- backend realmente seguro
+
+6. Performance frontend
+- rerenders
+- peso del builder
+- lazy loading
+- comportamiento en mobile
+- carga inicial
+
+7. Performance backend
+- costo de resolver widgets
+- concurrencia
+- snapshots
+- endpoints demasiado acoplados o lentos
+
+8. Integridad de datos
+- layouts corruptos
+- widgets huérfanos
+- permisos inconsistentes
+- snapshots obsoletos
+- duplicados mal resueltos
+
+9. Auditoría y trazabilidad
+- si sirve de verdad
+- qué acciones faltan
+- qué logs son inútiles o insuficientes
+
+10. Calidad general de producto
+- sensación premium real o no
+- qué partes parecen sólidas
+- qué partes todavía parecen prototipo
+
+==================================================
+FORMATO DE RESPUESTA
+==================================================
+
+Responder con esta estructura:
+
+A. Estado general
+- veredicto honesto
+
+B. Lo mejor logrado
+- fortalezas reales
+
+C. Problemas críticos
+- corregir sí o sí
+
+D. Problemas importantes
+- conviene resolver pronto
+
+E. Problemas de UX
+- puntos concretos
+
+F. Problemas de performance
+- frontend
+- backend
+
+G. Problemas de seguridad/permisos
+- concretos y accionables
+
+H. Deuda técnica
+- qué quedó flojo
+
+I. Recomendaciones concretas
+- lista priorizada de correcciones
+
+J. Veredicto final
+- ¿quedó listo para producción?
+- ¿listo solo para beta?
+- ¿qué condiciones faltan?
+
+==================================================
+REGLAS
+==================================================
+
+- no suavizar problemas
+- ser brutalmente honesto pero preciso
+- no inventar fallas
+- señalar archivos, rutas o decisiones reales si corresponde
+- separar claramente crítico / importante / mejora
+- si algo quedó “funcionando pero frágil”, decirlo así
