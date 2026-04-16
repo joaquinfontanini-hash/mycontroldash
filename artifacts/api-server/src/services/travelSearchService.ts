@@ -430,68 +430,6 @@ export async function searchAmadeusPackages(
   });
 }
 
-// ── Simulación fallback (cuando no hay API keys configuradas) ─────────────────
-
-const SIM_TEMPLATES = [
-  { title: "Paquete todo incluido",        airline: "Aerolíneas Argentinas", hotel: "Hotel Loi Suites",    hotelStars: 4, priceMin: 0.80, priceMax: 0.95, daysMin: 5, daysMax: 7,  meal: "todo incluido" },
-  { title: "Escapada vuelo + hotel",        airline: "LATAM",                 hotel: "Ibis Hotel",           hotelStars: 3, priceMin: 0.65, priceMax: 0.80, daysMin: 3, daysMax: 5  },
-  { title: "Oferta flash — cupos limitados",airline: "Flybondi",              hotel: "Apart Hotel Premium",  hotelStars: 3, priceMin: 0.55, priceMax: 0.75, daysMin: 4, daysMax: 6  },
-  { title: "Paquete familiar",              airline: null,                    hotel: "Resort & Spa",         hotelStars: 5, priceMin: 0.90, priceMax: 1.10, daysMin: 7, daysMax: 10, meal: "media pensión" },
-  { title: "Tarifa corporativa especial",   airline: "American Airlines",     hotel: "NH Collection",        hotelStars: 4, priceMin: 0.70, priceMax: 0.85, daysMin: 2, daysMax: 4  },
-];
-
-function randomBetween(a: number, b: number) { return a + Math.random() * (b - a); }
-
-function simulateResults(profile: Profile, dest: Destination, departureDate: string): InsertResult[] {
-  const budget = Number(profile.maxBudget);
-  const tolerance = profile.tolerancePercent ?? 20;
-  const maxWithTol = budget * (1 + tolerance / 100);
-  const now = new Date();
-  const results: InsertResult[] = [];
-
-  for (let i = 0; i < 3; i++) {
-    const tmpl = SIM_TEMPLATES[i % SIM_TEMPLATES.length]!;
-    const days = Math.round(randomBetween(profile.minDays ?? tmpl.daysMin, profile.maxDays ?? tmpl.daysMax));
-    const price = Math.round(budget * randomBetween(tmpl.priceMin, tmpl.priceMax));
-    const cappedPrice = Math.min(price, Math.round(maxWithTol));
-    const score = price <= budget ? Math.round(randomBetween(75, 98)) : Math.round(randomBetween(55, 74));
-    const origin = profile.originJson as { code?: string | null; label: string };
-
-    results.push({
-      id: uid(),
-      searchProfileId: profile.id,
-      userId: profile.userId,
-      source: "Simulación",
-      apiSource: null,
-      searchType: "vuelo",
-      externalId: `${profile.id}:sim:${tmpl.title}:${dest.label}:${i}`,
-      externalUrl: null,
-      title: `${tmpl.title} — ${dest.label}`,
-      originJson: profile.originJson,
-      destinationJson: dest,
-      region: dest.region,
-      country: dest.country,
-      price: String(cappedPrice),
-      currency: profile.currency,
-      priceOriginal: price > budget ? String(price) : null,
-      days,
-      nights: days - 1,
-      travelersCount: profile.travelersCount ?? 1,
-      airline: tmpl.airline,
-      hotelName: tmpl.hotel,
-      hotelStars: tmpl.hotelStars != null && (profile.hotelMinStars == null || tmpl.hotelStars >= profile.hotelMinStars) ? tmpl.hotelStars : null,
-      mealPlan: tmpl.meal ?? profile.mealPlan ?? null,
-      departureDate: addDays(now.toISOString().split("T")[0]!, Math.round(randomBetween(14, 90))),
-      returnDate: addDays(now.toISOString().split("T")[0]!, Math.round(randomBetween(20, 100))),
-      confidenceScore: score,
-      validationStatus: score >= 75 ? "validated" : "weak_match",
-      status: "new",
-      rawPayloadJson: { simulated: true, profileId: profile.id, runAt: now.toISOString() },
-    } satisfies InsertResult);
-  }
-  return results;
-}
-
 // ── runSearchProfile — main entry point ──────────────────────────────────────
 
 export interface RunResult {
@@ -499,7 +437,6 @@ export interface RunResult {
   resultsFound: number;
   skipped: number;
   errors: string[];
-  mode: "real" | "simulated";
 }
 
 export async function runSearchProfile(profileId: string, userId: number): Promise<RunResult> {
@@ -528,70 +465,65 @@ export async function runSearchProfile(profileId: string, userId: number): Promi
 
   const hasSerpApiKey = !!process.env["SERPAPI_KEY"];
   const hasAmadeusKeys = !!(process.env["AMADEUS_CLIENT_ID"] && process.env["AMADEUS_CLIENT_SECRET"]);
-  const useRealApis = hasSerpApiKey || hasAmadeusKeys;
 
-  if (useRealApis) {
-    for (const dest of destinations.slice(0, 3)) {
-      for (const date of departureDates.slice(0, 1)) {
+  if (!hasSerpApiKey && !hasAmadeusKeys) {
+    throw new Error("No hay APIs de búsqueda configuradas. Configurá SERPAPI_KEY o AMADEUS_CLIENT_ID/SECRET en las variables de entorno.");
+  }
 
-        // SerpAPI — vuelos
-        if ((searchType === "vuelos" || searchType === "ambos") && hasSerpApiKey) {
-          if (await canCallApi("serpapi")) {
-            try {
-              const res = await searchSerpApiFlights(profile, dest, date);
-              allResults.push(...res);
-              await incrementQuota("serpapi");
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              errors.push(`SerpAPI: ${msg}`);
-              logger.warn({ err }, "SerpAPI search failed");
-            }
-          } else {
-            errors.push("SerpAPI: cuota mensual agotada");
+  for (const dest of destinations.slice(0, 3)) {
+    for (const date of departureDates.slice(0, 1)) {
+
+      // SerpAPI — vuelos
+      if ((searchType === "vuelos" || searchType === "ambos") && hasSerpApiKey) {
+        if (await canCallApi("serpapi")) {
+          try {
+            const res = await searchSerpApiFlights(profile, dest, date);
+            allResults.push(...res);
+            await incrementQuota("serpapi");
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            errors.push(`SerpAPI: ${msg}`);
+            logger.warn({ err }, "SerpAPI search failed");
           }
+        } else {
+          errors.push("SerpAPI: cuota mensual agotada");
         }
-
-        // Amadeus — vuelos
-        if ((searchType === "vuelos" || searchType === "ambos") && hasAmadeusKeys) {
-          if (await canCallApi("amadeus")) {
-            try {
-              const res = await searchAmadeusFlights(profile, dest, date);
-              allResults.push(...res);
-              await incrementQuota("amadeus");
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              errors.push(`Amadeus vuelos: ${msg}`);
-              logger.warn({ err }, "Amadeus flights search failed");
-            }
-          } else {
-            errors.push("Amadeus: cuota mensual agotada");
-          }
-        }
-
-        // Amadeus — paquetes
-        if ((searchType === "paquetes" || searchType === "ambos") && hasAmadeusKeys) {
-          if (await canCallApi("amadeus")) {
-            try {
-              const res = await searchAmadeusPackages(profile, dest, date);
-              allResults.push(...res);
-              await incrementQuota("amadeus");
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              errors.push(`Amadeus paquetes: ${msg}`);
-              logger.warn({ err }, "Amadeus packages search failed");
-            }
-          }
-        }
-
-        // Pausa entre destinos
-        await new Promise(r => setTimeout(r, 500));
       }
-    }
-  } else {
-    // Sin API keys → simulación
-    for (const dest of destinations.slice(0, 3)) {
-      const date = departureDates[0]!;
-      allResults.push(...simulateResults(profile, dest, date));
+
+      // Amadeus — vuelos
+      if ((searchType === "vuelos" || searchType === "ambos") && hasAmadeusKeys) {
+        if (await canCallApi("amadeus")) {
+          try {
+            const res = await searchAmadeusFlights(profile, dest, date);
+            allResults.push(...res);
+            await incrementQuota("amadeus");
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            errors.push(`Amadeus vuelos: ${msg}`);
+            logger.warn({ err }, "Amadeus flights search failed");
+          }
+        } else {
+          errors.push("Amadeus: cuota mensual agotada");
+        }
+      }
+
+      // Amadeus — paquetes
+      if ((searchType === "paquetes" || searchType === "ambos") && hasAmadeusKeys) {
+        if (await canCallApi("amadeus")) {
+          try {
+            const res = await searchAmadeusPackages(profile, dest, date);
+            allResults.push(...res);
+            await incrementQuota("amadeus");
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            errors.push(`Amadeus paquetes: ${msg}`);
+            logger.warn({ err }, "Amadeus packages search failed");
+          }
+        }
+      }
+
+      // Pausa entre destinos
+      await new Promise(r => setTimeout(r, 500));
     }
   }
 
@@ -618,7 +550,6 @@ export async function runSearchProfile(profileId: string, userId: number): Promi
         count: toInsert.length,
         skipped: allResults.length - toInsert.length,
         errors,
-        mode: useRealApis ? "real" : "simulated",
         ranAt: now.toISOString(),
       },
       updatedAt: now,
@@ -630,15 +561,22 @@ export async function runSearchProfile(profileId: string, userId: number): Promi
     resultsFound: toInsert.length,
     skipped: allResults.length - toInsert.length,
     errors,
-    mode: useRealApis ? "real" : "simulated",
   };
 }
 
 // ── Scheduler helper — run all due profiles ───────────────────────────────────
 
 export async function runDueProfiles(): Promise<void> {
-  const canSerp = await canCallApi("serpapi");
-  const canAmadeus = await canCallApi("amadeus");
+  const hasSerpApiKey = !!process.env["SERPAPI_KEY"];
+  const hasAmadeusKeys = !!(process.env["AMADEUS_CLIENT_ID"] && process.env["AMADEUS_CLIENT_SECRET"]);
+
+  if (!hasSerpApiKey && !hasAmadeusKeys) {
+    logger.info("[TravelScheduler] Sin API keys configuradas — skip");
+    return;
+  }
+
+  const canSerp = hasSerpApiKey && await canCallApi("serpapi");
+  const canAmadeus = hasAmadeusKeys && await canCallApi("amadeus");
   if (!canSerp && !canAmadeus) {
     logger.info("[TravelScheduler] Cuotas mensuales agotadas — skip");
     return;
@@ -664,7 +602,6 @@ export async function runDueProfiles(): Promise<void> {
 
   for (const profile of profiles) {
     try {
-      // Bypass rate limit for scheduler: temporarily allow if scheduler is calling
       const result = await runSearchProfileForScheduler(profile);
       logger.info({ name: profile.name, found: result.resultsFound }, "[TravelScheduler] Perfil ejecutado");
     } catch (err) {
@@ -684,26 +621,23 @@ async function runSearchProfileForScheduler(profile: typeof travelSearchProfiles
 
   const hasSerpApiKey = !!process.env["SERPAPI_KEY"];
   const hasAmadeusKeys = !!(process.env["AMADEUS_CLIENT_ID"] && process.env["AMADEUS_CLIENT_SECRET"]);
-  const useRealApis = hasSerpApiKey || hasAmadeusKeys;
 
-  if (useRealApis) {
-    for (const dest of destinations.slice(0, 3)) {
-      for (const date of departureDates.slice(0, 1)) {
-        if ((searchType === "vuelos" || searchType === "ambos") && hasSerpApiKey && await canCallApi("serpapi")) {
-          try { allResults.push(...await searchSerpApiFlights(profile, dest, date)); await incrementQuota("serpapi"); } catch (e) { errors.push(String(e)); }
-        }
-        if ((searchType === "vuelos" || searchType === "ambos") && hasAmadeusKeys && await canCallApi("amadeus")) {
-          try { allResults.push(...await searchAmadeusFlights(profile, dest, date)); await incrementQuota("amadeus"); } catch (e) { errors.push(String(e)); }
-        }
-        if ((searchType === "paquetes" || searchType === "ambos") && hasAmadeusKeys && await canCallApi("amadeus")) {
-          try { allResults.push(...await searchAmadeusPackages(profile, dest, date)); await incrementQuota("amadeus"); } catch (e) { errors.push(String(e)); }
-        }
-        await new Promise(r => setTimeout(r, 500));
+  if (!hasSerpApiKey && !hasAmadeusKeys) {
+    return { ok: false, resultsFound: 0, skipped: 0, errors: ["Sin API keys configuradas"] };
+  }
+
+  for (const dest of destinations.slice(0, 3)) {
+    for (const date of departureDates.slice(0, 1)) {
+      if ((searchType === "vuelos" || searchType === "ambos") && hasSerpApiKey && await canCallApi("serpapi")) {
+        try { allResults.push(...await searchSerpApiFlights(profile, dest, date)); await incrementQuota("serpapi"); } catch (e) { errors.push(String(e)); }
       }
-    }
-  } else {
-    for (const dest of destinations.slice(0, 3)) {
-      allResults.push(...simulateResults(profile, dest, departureDates[0]!));
+      if ((searchType === "vuelos" || searchType === "ambos") && hasAmadeusKeys && await canCallApi("amadeus")) {
+        try { allResults.push(...await searchAmadeusFlights(profile, dest, date)); await incrementQuota("amadeus"); } catch (e) { errors.push(String(e)); }
+      }
+      if ((searchType === "paquetes" || searchType === "ambos") && hasAmadeusKeys && await canCallApi("amadeus")) {
+        try { allResults.push(...await searchAmadeusPackages(profile, dest, date)); await incrementQuota("amadeus"); } catch (e) { errors.push(String(e)); }
+      }
+      await new Promise(r => setTimeout(r, 500));
     }
   }
 
@@ -720,10 +654,10 @@ async function runSearchProfileForScheduler(profile: typeof travelSearchProfiles
 
   const now = new Date();
   await db.update(travelSearchProfilesTable).set({
-    lastRunAt: now, lastRunStatus: "ok",
+    lastRunAt: now, lastRunStatus: errors.length === 0 || toInsert.length > 0 ? "ok" : "error",
     lastRunSummaryJson: { count: toInsert.length, skipped: allResults.length - toInsert.length, errors, ranAt: now.toISOString() },
     updatedAt: now,
   }).where(eq(travelSearchProfilesTable.id, profile.id));
 
-  return { ok: true, resultsFound: toInsert.length, skipped: allResults.length - toInsert.length, errors, mode: useRealApis ? "real" : "simulated" };
+  return { ok: true, resultsFound: toInsert.length, skipped: allResults.length - toInsert.length, errors };
 }

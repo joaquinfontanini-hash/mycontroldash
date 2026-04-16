@@ -1145,29 +1145,37 @@ function ResultCard({
         )}
 
         {/* Actions */}
-        <div className="flex gap-2 pt-1 border-t border-border/50">
-          {result.status !== "saved" && (
-            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1" onClick={() => onStatusChange("saved")}>
-              <Bookmark className="h-3 w-3" /> Guardar
-            </Button>
-          )}
-          {result.status !== "seen" && result.status !== "saved" && (
-            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1" onClick={() => onStatusChange("seen")}>
-              <Eye className="h-3 w-3" /> Vista
-            </Button>
-          )}
-          {result.status !== "dismissed" && (
-            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1 text-muted-foreground" onClick={() => onStatusChange("dismissed")}>
-              <XCircle className="h-3 w-3" /> Descartar
-            </Button>
-          )}
-          {result.externalUrl && (
-            <a href={result.externalUrl} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
-                <Globe className="h-3 w-3" /> Ver
-              </Button>
+        <div className="space-y-2 pt-1 border-t border-border/50">
+          {result.externalUrl ? (
+            <a
+              href={result.externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              Ver en Google Flights →
             </a>
+          ) : (
+            <p className="text-xs text-center text-muted-foreground py-1">Link no disponible</p>
           )}
+          <div className="flex gap-2">
+            {result.status !== "saved" && (
+              <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1" onClick={() => onStatusChange("saved")}>
+                <Bookmark className="h-3 w-3" /> Guardar
+              </Button>
+            )}
+            {result.status !== "seen" && result.status !== "saved" && (
+              <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1" onClick={() => onStatusChange("seen")}>
+                <Eye className="h-3 w-3" /> Vista
+              </Button>
+            )}
+            {result.status !== "dismissed" && (
+              <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs flex-1 text-muted-foreground" onClick={() => onStatusChange("dismissed")}>
+                <XCircle className="h-3 w-3" /> Descartar
+              </Button>
+            )}
+          </div>
         </div>
 
         <p className="text-xs text-muted-foreground/50">Encontrado {fmtRelative(result.foundAt)}</p>
