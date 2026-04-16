@@ -1,1 +1,2 @@
 proyecto-dashboard.tar.gz filter=lfs diff=lfs merge=lfs -text
+proyecto-dashboard.zip filter=lfs diff=lfs merge=lfs -text
