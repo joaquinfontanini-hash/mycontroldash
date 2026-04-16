@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser, isSuperAdmin, isAdmin } from "@/hooks/use-current-user";
-import { useListUsers, useUpdateUser, getListUsersQueryKey } from "@workspace/api-client-react";
+
+const USERS_QUERY_KEY = ["/api/users"] as const;
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -147,8 +148,19 @@ export default function AdminPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const { data: me } = useCurrentUser();
-  const { data: users, isLoading: usersLoading, error } = useListUsers();
-  const updateUser = useUpdateUser();
+  const { data: users, isLoading: usersLoading, error } = useQuery<UserRecord[]>({
+    queryKey: USERS_QUERY_KEY,
+    queryFn: () => fetch(`${BASE}/api/users`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+  });
+  const updateUser = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<UserRecord> }) =>
+      fetch(`${BASE}/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      }).then(r => r.json()),
+  });
 
   const [userSearch, setUserSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -205,7 +217,7 @@ export default function AdminPage() {
       if (data.error) { toast({ title: data.error, variant: "destructive" }); return; }
       qc.invalidateQueries({ queryKey: ["registration-requests"] });
       qc.invalidateQueries({ queryKey: ["registration-requests-stats"] });
-      qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
       toast({ title: "Solicitud aprobada", description: "El usuario ya puede ingresar al sistema." });
     },
     onError: () => toast({ title: "Error al aprobar", variant: "destructive" }),
@@ -276,7 +288,7 @@ export default function AdminPage() {
         body: JSON.stringify({ reason }),
       }).then(r => r.json()),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
       qc.invalidateQueries({ queryKey: ["security-logs"] });
       toast({ title: "Usuario bloqueado" });
       setBlockTarget(null);
@@ -289,7 +301,7 @@ export default function AdminPage() {
     mutationFn: (id: number) =>
       fetch(`${BASE}/api/users/${id}/unblock`, { method: "POST" }).then(r => r.json()),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
       qc.invalidateQueries({ queryKey: ["security-logs"] });
       toast({ title: "Usuario desbloqueado" });
     },
@@ -297,7 +309,7 @@ export default function AdminPage() {
   });
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
     qc.invalidateQueries({ queryKey: ["security-logs"] });
   };
 
@@ -849,7 +861,7 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent value="email" className="mt-0">
-          {!isSuperAdmin(currentUser) ? (
+          {!isSuperAdmin(me) ? (
             <div className="flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-50 dark:bg-amber-900/20 p-4 text-sm text-amber-700 dark:text-amber-400">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               Solo el superadmin puede gestionar la configuración del email del sistema.

@@ -1,0 +1,122 @@
+Actuá como desarrollador senior full stack y auditor técnico.
+
+Se rompió el módulo "Admin" de mi dashboard web. En pantalla aparece:
+"Este módulo no pudo cargar. Ocurrió un error inesperado. Podés intentar recargar."
+
+Quiero que hagas un diagnóstico y corrección profesional del módulo Admin, con estas reglas:
+
+OBJETIVO
+- Encontrar la causa exacta del fallo del módulo Admin
+- Corregirlo sin romper el resto del sistema
+- Dejar el módulo robusto, con manejo de errores real
+- Mantener seguridad de acceso por roles
+- Evitar pantallas genéricas sin detalle técnico
+
+TAREAS OBLIGATORIAS
+
+1. AUDITORÍA DEL MÓDULO ADMIN
+Revisar:
+- rutas frontend del módulo admin
+- componentes renderizados en admin
+- hooks useEffect/useMemo/useQuery relacionados
+- validación de sesión
+- validación de roles (admin / superadmin)
+- endpoints backend del admin
+- consultas a base de datos usadas por admin
+- imports rotos
+- variables undefined/null
+- map/filter sobre arrays no validados
+- acceso a propiedades de objetos no definidos
+
+2. DETECTAR CAUSA RAÍZ
+Necesito que identifiques explícitamente cuál es la causa del error:
+- error de frontend
+- error de backend
+- error de permisos
+- error de datos
+- error de importación
+- error de estado inicial
+
+No quiero una suposición vaga. Quiero causa raíz concreta.
+
+3. CORRECCIÓN SEGURA
+Aplicar correcciones con estas prácticas:
+- optional chaining donde corresponda
+- valores por defecto seguros
+- validación de respuesta API antes de renderizar
+- manejo de loading, empty state y error state
+- si el usuario no tiene permisos, mostrar "Acceso denegado" y no romper
+- si falla una API, mostrar mensaje útil y log técnico
+- jamás dejar caer todo el módulo por una sola tarjeta, tabla o widget
+
+4. ERROR BOUNDARY REAL
+Implementar o mejorar un Error Boundary específico para Admin:
+- capturar error
+- mostrar mensaje amigable
+- mostrar botón reintentar
+- registrar error técnico en consola
+- no ocultar el detalle técnico para debugging
+
+5. LOGS Y DEBUG
+Agregar logs claros y temporales en:
+- carga del módulo admin
+- validación de usuario y rol
+- llamada a endpoints admin
+- respuesta de backend
+- render de widgets críticos
+
+6. REVISAR ENDPOINTS ADMIN
+Verificar que todos los endpoints usados por Admin:
+- existan realmente
+- respondan con formato consistente
+- manejen errores con status correctos
+- no devuelvan undefined o estructuras incompletas
+
+Formato esperado ideal:
+{
+  success: true,
+  data: ...
+}
+o
+{
+  success: false,
+  error: "mensaje claro"
+}
+
+7. REVISAR PROTECCIÓN DE ROL
+Quiero una lógica robusta:
+- si no hay usuario autenticado => redirigir a login
+- si hay usuario pero no tiene rol suficiente => mostrar acceso denegado
+- si es admin o superadmin => ingresar sin romper
+- evitar null pointer al revisar user.role
+
+8. REVISAR DASHBOARD ADMIN
+Si el módulo Admin tiene:
+- métricas
+- tabla de usuarios
+- configuraciones
+- logs
+- integraciones
+cada bloque debe poder fallar de forma aislada sin romper toda la vista.
+
+9. ENTREGABLES
+Quiero que me devuelvas:
+A. causa raíz encontrada
+B. archivos modificados
+C. código corregido
+D. explicación breve de por qué se rompía
+E. mejoras preventivas implementadas
+F. checklist final de validación
+
+10. VALIDACIÓN FINAL OBLIGATORIA
+Antes de darlo por resuelto, verificar:
+- módulo Admin carga sin error
+- usuario superadmin entra correctamente
+- usuario sin permisos no rompe y ve acceso denegado
+- no hay errores en consola
+- no hay requests 500 en las llamadas del módulo
+- no se rompió login ni gestión de usuarios
+
+Si encontrás más de una causa, corregí todas.
+No hagas soluciones temporales ni parches frágiles.
+Priorizá estabilidad, seguridad y trazabilidad.

@@ -23,8 +23,10 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error) {
-    console.error("[ErrorBoundary]", error);
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    console.error("[ErrorBoundary] Component crashed:", error?.message ?? String(error));
+    console.error("[ErrorBoundary] Stack:", error?.stack);
+    console.error("[ErrorBoundary] Component tree:", info.componentStack);
   }
 
   reset = () => this.setState({ hasError: false, error: undefined });
