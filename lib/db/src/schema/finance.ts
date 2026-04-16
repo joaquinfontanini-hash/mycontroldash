@@ -122,6 +122,20 @@ export const financeLoansTable = pgTable("finance_loans", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
+// ─── BUDGETS ──────────────────────────────────────────────────────────────
+// Presupuesto mensual por categoría
+
+export const financeBudgetsTable = pgTable("finance_budgets", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  categoryId: integer("category_id").notNull(),
+  month: text("month").notNull(), // YYYY-MM
+  amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("ARS"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
 // ─── TRANSACTIONS ─────────────────────────────────────────────────────────
 
 export const financeTransactionsTable = pgTable("finance_transactions", {
@@ -174,6 +188,10 @@ export type FinanceInstallmentPlan = typeof financeInstallmentPlansTable.$inferS
 export const insertFinanceLoanSchema = createInsertSchema(financeLoansTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFinanceLoan = z.infer<typeof insertFinanceLoanSchema>;
 export type FinanceLoan = typeof financeLoansTable.$inferSelect;
+
+export const insertFinanceBudgetSchema = createInsertSchema(financeBudgetsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFinanceBudget = z.infer<typeof insertFinanceBudgetSchema>;
+export type FinanceBudget = typeof financeBudgetsTable.$inferSelect;
 
 export const insertFinanceTransactionSchema = createInsertSchema(financeTransactionsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFinanceTransaction = z.infer<typeof insertFinanceTransactionSchema>;

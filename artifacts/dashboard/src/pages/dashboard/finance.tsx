@@ -1,11 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   TrendingUp, TrendingDown, Wallet, Plus, Pencil, Trash2, RefreshCw,
   ArrowUpCircle, ArrowDownCircle, Calendar, AlertTriangle,
   Clock, Repeat, ChevronDown, X, Filter, Sparkles, Building2,
   CreditCard, Smartphone, DollarSign, PieChart, Landmark,
-  Pause, Play, CheckCircle2, Info,
+  Pause, Play, CheckCircle2, Info, Zap,
+  Target, BarChart2, Layers, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,27 @@ interface FinanceSummary {
   categoryBreakdown: CategoryBreakdown[];
   alerts: { level: "green" | "yellow" | "red"; message: string }[];
 }
+
+interface BudgetWithSpending {
+  id: number; userId: string; categoryId: number; month: string; amount: number; currency: string;
+  spent: number; remaining: number; pct: number;
+  status: "ok" | "warning" | "critical" | "exceeded";
+  category: { name: string; color: string; icon: string } | null;
+}
+interface BudgetsData { budgets: BudgetWithSpending[]; totalBudgeted: number; totalSpent: number; month: string; }
+interface CalendarEvent { date: string; label: string; amount: number; type: "income" | "expense"; category: string; icon: string; }
+interface ProjectionPoint { date: string; saldo: number; events: CalendarEvent[]; }
+interface ProjectionData {
+  saldoActual: number;
+  projection7d: { saldo: number; risk: "low" | "medium" | "high" };
+  projection15d: { saldo: number; risk: "low" | "medium" | "high" };
+  projectionMonthEnd: { saldo: number; risk: "low" | "medium" | "high" };
+  dailySeries: ProjectionPoint[];
+  calendarEvents: CalendarEvent[];
+  highPressureDays: { date: string; totalExpenses: number }[];
+}
+interface Insight { id: string; icon: string; text: string; level: "info" | "warning" | "red" | "green"; }
+interface InsightsData { insights: Insight[]; }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────
 
@@ -874,6 +896,8 @@ export default function FinancePage() {
   const [recurModal, setRecurModal] = useState<{ open: boolean; rule: FinanceRecurringRule | null }>({ open: false, rule: null });
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; title: string; description?: string; onConfirm: () => void }>({ open: false, title: "", onConfirm: () => {} });
   const [filter, setFilter] = useState({ type: "", categoryId: "", accountId: "", status: "", from: "", to: "" });
+  const [budgetMonth, setBudgetMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [budgetModal, setBudgetModal] = useState<{ open: boolean; budget: BudgetWithSpending | null }>({ open: false, budget: null });
 
   const { data: summary, isLoading: summaryLoading } = useQuery<FinanceSummary>({
     queryKey: ["/api/finance/summary"],
@@ -921,6 +945,22 @@ export default function FinancePage() {
     queryFn: () => fetch(`${BASE}/api/finance/recurring-rules`, { credentials: "include" }).then(r => r.json()),
     enabled: tab === "recurrencias",
   });
+  const { data: budgetsData, isLoading: budgetsLoading } = useQuery<BudgetsData>({
+    queryKey: ["/api/finance/budgets", budgetMonth],
+    queryFn: () => fetch(`${BASE}/api/finance/budgets?month=${budgetMonth}`, { credentials: "include" }).then(r => r.json()),
+    enabled: tab === "presupuestos",
+  });
+  const { data: projectionData, isLoading: projectionLoading } = useQuery<ProjectionData>({
+    queryKey: ["/api/finance/projection"],
+    queryFn: () => fetch(`${BASE}/api/finance/projection`, { credentials: "include" }).then(r => r.json()),
+    enabled: tab === "proyeccion",
+  });
+  const { data: insightsData } = useQuery<InsightsData>({
+    queryKey: ["/api/finance/insights"],
+    queryFn: () => fetch(`${BASE}/api/finance/insights`, { credentials: "include" }).then(r => r.json()),
+    enabled: tab === "dashboard" || tab === "proyeccion",
+    staleTime: 5 * 60 * 1000,
+  });
 
   const categories = categoriesData ?? [];
   const accounts = accountsData ?? [];
@@ -937,6 +977,9 @@ export default function FinancePage() {
     qc.invalidateQueries({ queryKey: ["/api/finance/cards"] });
     qc.invalidateQueries({ queryKey: ["/api/finance/installment-plans"] });
     qc.invalidateQueries({ queryKey: ["/api/finance/loans"] });
+    qc.invalidateQueries({ queryKey: ["/api/finance/budgets"] });
+    qc.invalidateQueries({ queryKey: ["/api/finance/insights"] });
+    qc.invalidateQueries({ queryKey: ["/api/finance/projection"] });
   }
 
   const seedMutation = useMutation({
@@ -1029,6 +1072,8 @@ export default function FinancePage() {
               <TabsTrigger value="tarjetas">Tarjetas</TabsTrigger>
               <TabsTrigger value="prestamos">Préstamos</TabsTrigger>
               <TabsTrigger value="recurrencias">Recurrencias</TabsTrigger>
+              <TabsTrigger value="presupuestos">Presupuestos</TabsTrigger>
+              <TabsTrigger value="proyeccion">Proyección</TabsTrigger>
             </TabsList>
           </div>
 
@@ -1061,6 +1106,21 @@ export default function FinancePage() {
                       {summary.alerts.map((a, i) => (
                         <div key={i} className="flex items-center gap-2.5 text-sm"><AlertDot level={a.level} /><span>{a.message}</span></div>
                       ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Insights */}
+                {insightsData?.insights && insightsData.insights.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-violet-500" /> Insights financieros</CardTitle></CardHeader>
+                    <CardContent className="pb-4 space-y-2">
+                      {insightsData.insights.slice(0, 4).map(ins => (
+                        <InsightRow key={ins.id} insight={ins} />
+                      ))}
+                      {insightsData.insights.length > 4 && (
+                        <Button variant="link" size="sm" className="text-xs px-0 mt-1" onClick={() => setTab("proyeccion")}>Ver todos los insights →</Button>
+                      )}
                     </CardContent>
                   </Card>
                 )}
@@ -1535,6 +1595,162 @@ export default function FinancePage() {
               </div>
             )}
           </TabsContent>
+
+          {/* ── PRESUPUESTOS TAB ──────────────────────────────────────── */}
+          <TabsContent value="presupuestos" className="mt-5 space-y-4">
+            {/* Month selector */}
+            <div className="flex items-center gap-3 justify-between flex-wrap">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                  const [y, m] = budgetMonth.split("-").map(Number);
+                  const d = new Date(y, m - 2, 1); setBudgetMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+                }}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-semibold capitalize">{new Date(budgetMonth + "-15").toLocaleString("es-AR", { month: "long", year: "numeric" })}</span>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                  const [y, m] = budgetMonth.split("-").map(Number);
+                  const d = new Date(y, m, 1); setBudgetMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+                }}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <Button size="sm" className="gap-1.5 text-xs" onClick={() => setBudgetModal({ open: true, budget: null })}>
+                <Plus className="h-3.5 w-3.5" /> Nuevo presupuesto
+              </Button>
+            </div>
+
+            {budgetsLoading ? (
+              <div className="space-y-3">{[...Array(4)].map((_, i) => <Card key={i}><CardContent className="h-20 animate-pulse bg-muted rounded-lg m-3" /></Card>)}</div>
+            ) : !budgetsData?.budgets?.length ? (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 py-16">
+                  <Target className="h-12 w-12 text-muted-foreground/30" />
+                  <p className="text-muted-foreground text-center">No hay presupuestos para este mes.</p>
+                  <p className="text-sm text-muted-foreground text-center">Creá un presupuesto por categoría para controlar tus gastos.</p>
+                  <Button size="sm" onClick={() => setBudgetModal({ open: true, budget: null })} className="mt-2 gap-1.5"><Plus className="h-3.5 w-3.5" /> Crear primer presupuesto</Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Summary card */}
+                <Card className="bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/20 dark:to-indigo-950/20 border-violet-200 dark:border-violet-800">
+                  <CardContent className="py-4 px-5">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Total presupuestado</p>
+                        <p className="text-2xl font-bold text-violet-700 dark:text-violet-400">{fmt(budgetsData.totalBudgeted)}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Gastado</p>
+                        <p className="text-2xl font-bold text-red-500">{fmt(budgetsData.totalSpent)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Disponible</p>
+                        <p className={`text-2xl font-bold ${budgetsData.totalBudgeted - budgetsData.totalSpent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+                          {fmt(budgetsData.totalBudgeted - budgetsData.totalSpent)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="w-full bg-white/60 dark:bg-black/20 rounded-full h-2">
+                        <div className="h-2 rounded-full transition-all bg-violet-500" style={{ width: `${Math.min(100, (budgetsData.totalSpent / budgetsData.totalBudgeted) * 100)}%` }} />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1.5 text-right">{Math.round((budgetsData.totalSpent / budgetsData.totalBudgeted) * 100)}% ejecutado</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Budget cards */}
+                <div className="space-y-3">
+                  {budgetsData.budgets.sort((a, b) => b.pct - a.pct).map(b => (
+                    <BudgetCard key={b.id} budget={b} onEdit={() => setBudgetModal({ open: true, budget: b })} onDelete={async () => {
+                      if (!confirm(`¿Eliminar presupuesto de ${b.category?.name ?? "esta categoría"}?`)) return;
+                      await fetch(`${BASE}/api/finance/budgets/${b.id}`, { method: "DELETE", credentials: "include" });
+                      qc.invalidateQueries({ queryKey: ["/api/finance/budgets"] });
+                      toast({ title: "Presupuesto eliminado" });
+                    }} />
+                  ))}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* ── PROYECCIÓN TAB ────────────────────────────────────────── */}
+          <TabsContent value="proyeccion" className="mt-5 space-y-5">
+            {projectionLoading ? (
+              <div className="space-y-4">{[...Array(3)].map((_, i) => <Card key={i}><CardContent className="h-32 animate-pulse bg-muted rounded-lg m-3" /></Card>)}</div>
+            ) : !projectionData ? null : (
+              <>
+                {/* 3 horizon cards */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "En 7 días", data: projectionData.projection7d, color: "emerald" },
+                    { label: "En 15 días", data: projectionData.projection15d, color: "blue" },
+                    { label: "Fin de mes", data: projectionData.projectionMonthEnd, color: "violet" },
+                  ].map(({ label, data, color }) => {
+                    const riskColor = data.risk === "high" ? "text-red-500" : data.risk === "medium" ? "text-amber-500" : `text-${color}-600 dark:text-${color}-400`;
+                    const riskLabel = data.risk === "high" ? "Riesgo alto" : data.risk === "medium" ? "Moderado" : "Estable";
+                    const riskBg = data.risk === "high" ? "bg-red-100 dark:bg-red-900/30 border-red-200 dark:border-red-800" : data.risk === "medium" ? "bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800" : "bg-emerald-100/50 dark:bg-emerald-950/20 border-transparent";
+                    return (
+                      <Card key={label} className={`${riskBg}`}>
+                        <CardContent className="py-4 px-4 text-center">
+                          <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                          <p className={`text-xl font-bold tabular-nums ${data.saldo < 0 ? "text-red-500" : riskColor}`}>{fmt(data.saldo)}</p>
+                          <p className={`text-xs mt-1 font-medium ${data.risk === "high" ? "text-red-500" : data.risk === "medium" ? "text-amber-500" : "text-emerald-600 dark:text-emerald-400"}`}>{riskLabel}</p>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                {/* Projection chart */}
+                {projectionData.dailySeries.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm font-semibold flex items-center gap-2"><BarChart2 className="h-4 w-4 text-muted-foreground" /> Evolución del saldo (próximos 35 días)</CardTitle></CardHeader>
+                    <CardContent className="pb-4 px-4">
+                      <ProjectionChart series={projectionData.dailySeries} />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* High pressure days */}
+                {projectionData.highPressureDays.length > 0 && (
+                  <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/10">
+                    <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-600 dark:text-amber-400"><Zap className="h-4 w-4" /> Días de mayor presión</CardTitle></CardHeader>
+                    <CardContent className="pb-4 space-y-1">
+                      {projectionData.highPressureDays.map(d => (
+                        <div key={d.date} className="flex items-center justify-between text-sm px-2">
+                          <span className="text-muted-foreground">{d.date}</span>
+                          <span className="font-semibold text-red-500">{fmt(d.totalExpenses)}</span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Insights */}
+                {insightsData?.insights && insightsData.insights.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-violet-500" /> Insights automáticos</CardTitle></CardHeader>
+                    <CardContent className="pb-4 space-y-2">
+                      {insightsData.insights.map(ins => <InsightRow key={ins.id} insight={ins} />)}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Calendar */}
+                {projectionData.calendarEvents.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2 pt-4"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Calendar className="h-4 w-4 text-muted-foreground" /> Calendario financiero</CardTitle></CardHeader>
+                    <CardContent className="pb-4">
+                      <FinancialCalendar events={projectionData.calendarEvents} />
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -1552,6 +1768,7 @@ export default function FinancePage() {
       {installModal.open && <InstallmentPlanModal open={installModal.open} onClose={() => setInstallModal({ open: false, plan: null })} plan={installModal.plan} cards={allCards} categories={categories} onSaved={invalidateAll} />}
       {loanModal.open && <LoanModal open={loanModal.open} onClose={() => setLoanModal({ open: false, loan: null })} loan={loanModal.loan} onSaved={invalidateAll} />}
       {recurModal.open && <RecurringModal open={recurModal.open} onClose={() => setRecurModal({ open: false, rule: null })} rule={recurModal.rule} categories={categories} accounts={accounts} onSaved={invalidateAll} />}
+      {budgetModal.open && <BudgetModal open={budgetModal.open} onClose={() => setBudgetModal({ open: false, budget: null })} budget={budgetModal.budget} categories={categories.filter(c => c.type === "expense")} month={budgetMonth} onSaved={() => { qc.invalidateQueries({ queryKey: ["/api/finance/budgets"] }); }} />}
       <DeleteConfirmDialog open={deleteConfirm.open} title={deleteConfirm.title} description={deleteConfirm.description} onCancel={() => setDeleteConfirm(s => ({ ...s, open: false }))} onConfirm={deleteConfirm.onConfirm} />
     </div>
   );
@@ -1601,5 +1818,241 @@ function RecurringRuleRow({ rule, catMap, acctMap, onEdit, onDelete, onToggle }:
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── BUDGET CARD ───────────────────────────────────────────────────────────
+
+function BudgetCard({ budget: b, onEdit, onDelete }: { budget: BudgetWithSpending; onEdit: () => void; onDelete: () => void }) {
+  const statusColors = {
+    ok: { bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400", label: "En rango" },
+    warning: { bar: "bg-amber-500", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400", label: "Atención" },
+    critical: { bar: "bg-red-400", badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400", label: "Crítico" },
+    exceeded: { bar: "bg-red-600", badge: "bg-red-200 text-red-800 dark:bg-red-900/60 dark:text-red-300", label: "Excedido" },
+  };
+  const s = statusColors[b.status];
+  return (
+    <Card className={`group ${b.status === "exceeded" ? "border-red-300 dark:border-red-800" : b.status === "critical" ? "border-amber-300 dark:border-amber-800" : ""}`}>
+      <CardContent className="px-5 py-4">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: (b.category?.color ?? "#6b7280") + "22" }}>
+              <Target className="h-4 w-4" style={{ color: b.category?.color ?? "#6b7280" }} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-sm truncate">{b.category?.name ?? "Sin categoría"}</p>
+              <p className="text-xs text-muted-foreground">{b.month}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.badge}`}>{s.label}</span>
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onEdit}><Pencil className="h-3 w-3" /></Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={onDelete}><Trash2 className="h-3 w-3" /></Button>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+          <div><p className="text-xs text-muted-foreground">Presupuestado</p><p className="text-sm font-bold">${b.amount.toLocaleString("es-AR")}</p></div>
+          <div><p className="text-xs text-muted-foreground">Gastado</p><p className={`text-sm font-bold ${b.status === "ok" ? "" : "text-red-500"}`}>${b.spent.toLocaleString("es-AR")}</p></div>
+          <div><p className="text-xs text-muted-foreground">Disponible</p><p className={`text-sm font-bold ${b.remaining >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>${Math.abs(b.remaining).toLocaleString("es-AR")}{b.remaining < 0 ? " excedido" : ""}</p></div>
+        </div>
+        <div className="w-full bg-muted rounded-full h-2">
+          <div className={`h-2 rounded-full transition-all ${s.bar}`} style={{ width: `${Math.min(100, b.pct)}%` }} />
+        </div>
+        <p className="text-xs text-muted-foreground mt-1.5 text-right">{Math.round(b.pct)}% ejecutado</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── BUDGET MODAL ──────────────────────────────────────────────────────────
+
+function BudgetModal({ open, onClose, budget, categories, month, onSaved }: {
+  open: boolean; onClose: () => void; budget: BudgetWithSpending | null;
+  categories: FinanceCategory[]; month: string; onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    categoryId: budget?.categoryId ? String(budget.categoryId) : "",
+    amount: budget?.amount ? String(budget.amount) : "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!form.categoryId || !form.amount) { toast({ title: "Seleccioná una categoría y un monto", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const url = budget ? `${BASE}/api/finance/budgets/${budget.id}` : `${BASE}/api/finance/budgets`;
+      const method = budget ? "PUT" : "POST";
+      const body = budget ? { amount: parseFloat(form.amount) } : { categoryId: parseInt(form.categoryId, 10), month, amount: parseFloat(form.amount) };
+      const r = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error();
+      toast({ title: budget ? "Presupuesto actualizado" : "Presupuesto creado" });
+      onSaved(); onClose();
+    } catch { toast({ title: "Error al guardar", variant: "destructive" }); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>{budget ? "Editar presupuesto" : "Nuevo presupuesto"}</DialogTitle></DialogHeader>
+        <div className="space-y-4 py-1">
+          <div>
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Mes</Label>
+            <p className="text-sm font-medium capitalize">{new Date(month + "-15").toLocaleString("es-AR", { month: "long", year: "numeric" })}</p>
+          </div>
+          {!budget && (
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Categoría</Label>
+              <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Seleccioná una categoría" /></SelectTrigger>
+                <SelectContent>{categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
+          {budget && <div><Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Categoría</Label><p className="text-sm font-medium">{budget.category?.name ?? "—"}</p></div>}
+          <div>
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground mb-1.5 block">Monto presupuestado</Label>
+            <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <Input type="number" className="pl-6" placeholder="0" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} autoFocus />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : budget ? "Guardar" : "Crear presupuesto"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── INSIGHT ROW ───────────────────────────────────────────────────────────
+
+function InsightRow({ insight: ins }: { insight: Insight }) {
+  const levelStyles = {
+    green: "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-800 dark:text-emerald-300",
+    warning: "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-300",
+    red: "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/20 dark:border-red-800 dark:text-red-300",
+    info: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/20 dark:border-blue-800 dark:text-blue-300",
+  };
+  const icons: Record<string, ReactNode> = {
+    "trending-up": <TrendingUp className="h-4 w-4 shrink-0" />,
+    "trending-down": <TrendingDown className="h-4 w-4 shrink-0" />,
+    "pie-chart": <PieChart className="h-4 w-4 shrink-0" />,
+    "alert-triangle": <AlertTriangle className="h-4 w-4 shrink-0" />,
+    "zap": <Zap className="h-4 w-4 shrink-0" />,
+    "repeat": <Repeat className="h-4 w-4 shrink-0" />,
+    "calendar": <Calendar className="h-4 w-4 shrink-0" />,
+  };
+  return (
+    <div className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${levelStyles[ins.level]}`}>
+      {icons[ins.icon] ?? <Info className="h-4 w-4 shrink-0" />}
+      <span>{ins.text}</span>
+    </div>
+  );
+}
+
+// ─── PROJECTION CHART (SVG) ────────────────────────────────────────────────
+
+function ProjectionChart({ series }: { series: { date: string; saldo: number }[] }) {
+  if (series.length < 2) return null;
+  const W = 700, H = 160, PAD = { t: 12, b: 32, l: 10, r: 10 };
+  const values = series.map(s => s.saldo);
+  const minVal = Math.min(...values, 0);
+  const maxVal = Math.max(...values, 0);
+  const range = maxVal - minVal || 1;
+  const toX = (i: number) => PAD.l + (i / (series.length - 1)) * (W - PAD.l - PAD.r);
+  const toY = (v: number) => PAD.t + ((maxVal - v) / range) * (H - PAD.t - PAD.b);
+  const zeroY = toY(0);
+
+  const points = series.map((s, i) => `${toX(i)},${toY(s.saldo)}`).join(" ");
+  const areaPoints = `${toX(0)},${zeroY} ${points} ${toX(series.length - 1)},${zeroY}`;
+
+  const tickDates = [0, 7, 15, 30].filter(d => d < series.length);
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" style={{ minWidth: 300 }}>
+        {/* Zero line */}
+        <line x1={PAD.l} y1={zeroY} x2={W - PAD.r} y2={zeroY} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4 2" />
+        {/* Area fill */}
+        <polygon points={areaPoints} fill={minVal < 0 ? "#ef444420" : "#10b98120"} />
+        {/* Line */}
+        <polyline points={points} fill="none" stroke={minVal < 0 ? "#ef4444" : "#10b981"} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {/* Today marker */}
+        <line x1={toX(0)} y1={PAD.t} x2={toX(0)} y2={H - PAD.b} stroke="#8b5cf6" strokeWidth="1.5" strokeDasharray="3 2" />
+        <text x={toX(0) + 3} y={PAD.t + 10} fontSize="9" fill="#8b5cf6">Hoy</text>
+        {/* Tick labels */}
+        {tickDates.map(d => (
+          <g key={d}>
+            <text x={toX(d)} y={H - 6} fontSize="9" fill="#9ca3af" textAnchor="middle">{series[d]?.date?.slice(5) ?? ""}</text>
+          </g>
+        ))}
+        {/* Start and end values */}
+        <text x={PAD.l + 2} y={toY(values[0]) - 4} fontSize="9" fill="#6b7280">${Math.round(values[0] / 1000)}k</text>
+        <text x={W - PAD.r - 2} y={toY(values[values.length - 1]) - 4} fontSize="9" fill="#6b7280" textAnchor="end">${Math.round(values[values.length - 1] / 1000)}k</text>
+      </svg>
+    </div>
+  );
+}
+
+// ─── FINANCIAL CALENDAR ────────────────────────────────────────────────────
+
+function FinancialCalendar({ events }: { events: CalendarEvent[] }) {
+  const catIcon: Record<string, ReactNode> = {
+    "card": <CreditCard className="h-3.5 w-3.5" />,
+    "loan": <Landmark className="h-3.5 w-3.5" />,
+    "installment": <Layers className="h-3.5 w-3.5" />,
+    "recurring": <Repeat className="h-3.5 w-3.5" />,
+  };
+  const catColor: Record<string, string> = {
+    "card": "#f43f5e", "loan": "#0ea5e9", "installment": "#8b5cf6", "recurring": "#10b981",
+  };
+
+  // Group by date
+  const grouped: Record<string, CalendarEvent[]> = {};
+  for (const e of events) {
+    grouped[e.date] = [...(grouped[e.date] ?? []), e];
+  }
+  const dates = Object.keys(grouped).sort();
+
+  if (!dates.length) return <p className="text-sm text-muted-foreground text-center py-4">No hay eventos próximos</p>;
+
+  return (
+    <div className="space-y-3">
+      {dates.map(date => {
+        const dayEvents = grouped[date];
+        const today = new Date().toISOString().slice(0, 10);
+        const daysAway = Math.round((new Date(date + "T12:00:00Z").getTime() - new Date(today + "T12:00:00Z").getTime()) / 86400000);
+        const dayLabel = daysAway === 0 ? "Hoy" : daysAway === 1 ? "Mañana" : `en ${daysAway}d`;
+        const totalExp = dayEvents.filter(e => e.type === "expense").reduce((s, e) => s + e.amount, 0);
+        const urgent = daysAway <= 3 && totalExp > 0;
+        return (
+          <div key={date} className={`rounded-lg border p-3 space-y-2 ${urgent ? "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/10" : "bg-muted/30"}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{date}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${urgent ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" : "bg-muted text-muted-foreground"}`}>{dayLabel}</span>
+              </div>
+              {totalExp > 0 && <span className="text-xs font-semibold text-red-500">-${totalExp.toLocaleString("es-AR")}</span>}
+            </div>
+            <div className="space-y-1">
+              {dayEvents.map((e, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span style={{ color: catColor[e.category] ?? "#6b7280" }}>{catIcon[e.category] ?? <Info className="h-3.5 w-3.5" />}</span>
+                  <span className="flex-1 truncate text-xs">{e.label}</span>
+                  <span className={`text-xs font-semibold tabular-nums ${e.type === "income" ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+                    {e.type === "income" ? "+" : "-"}${e.amount.toLocaleString("es-AR")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

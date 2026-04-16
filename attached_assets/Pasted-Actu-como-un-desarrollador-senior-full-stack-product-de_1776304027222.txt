@@ -1,0 +1,123 @@
+Actuá como un desarrollador senior full-stack + product designer UX.
+
+Quiero que desarrolles la FASE 3 del módulo “Finanzas Personales”, montada sobre FASE 1 y FASE 2.
+
+OBJETIVO DE ESTA FASE
+Transformar el módulo de un registrador financiero a una herramienta de anticipación, sin volverlo complejo.
+
+La prioridad es:
+- presupuestos simples
+- proyección de caja útil
+- alertas entendibles
+- insights accionables
+- cero fricción innecesaria
+
+IMPLEMENTAR:
+
+1) PRESUPUESTOS SIMPLES
+No hacer sistema contable complejo.
+Sí permitir presupuestos mensuales por categorías principales.
+
+Cada presupuesto debe mostrar:
+- monto presupuestado
+- gastado actual
+- disponible restante
+- porcentaje consumido
+- semáforo visual
+
+Alertas:
+- 80% consumido
+- 100% consumido
+- excedido
+
+Las categorías presupuestables deben ser las más útiles:
+- supermercado
+- salidas
+- transporte
+- salud
+- suscripciones
+- hogar
+- hijos
+- mascotas
+- ropa
+- otros
+
+2) PROYECCIÓN FINANCIERA
+Crear pantalla específica de proyección.
+
+Horizontes:
+- próximos 7 días
+- próximos 15 días
+- fin de mes
+
+La proyección debe calcular:
+saldo actual
++ ingresos confirmados
++ ingresos esperados
+- gastos fijos próximos
+- pagos de tarjeta
+- préstamos
+- cuotas
+- recurrencias
+- variables promedio estimadas
+
+Mostrar:
+- saldo proyectado
+- nivel de riesgo
+- días con mayor presión financiera
+- curva o gráfico simple de evolución
+
+3) CALENDARIO FINANCIERO
+Crear una vista tipo calendario o timeline donde se vean:
+- cobros esperados
+- gastos recurrentes
+- vencimientos de tarjeta
+- cuotas
+- préstamos
+- pagos grandes previstos
+
+Debe ser claro y escaneable.
+
+4) INSIGHTS AUTOMÁTICOS
+Agregar panel de insights simples y útiles, por ejemplo:
+- “Tus gastos variables vienen 18% arriba del promedio”
+- “Tus suscripciones representan X del gasto mensual”
+- “La próxima semana tiene alta presión financiera”
+- “Tu categoría que más creció este mes fue X”
+- “Si seguís así, terminás el mes con saldo Y”
+
+Evitar lenguaje técnico.
+Usar lenguaje directo y práctico.
+
+5) DASHBOARD ACTUALIZADO
+Actualizar la portada del módulo con:
+- saldo proyectado
+- categoría más desviada
+- presupuesto más comprometido
+- próximos 3 eventos financieros relevantes
+
+6) ALERTAS MÁS INTELIGENTES
+Agregar alertas de:
+- presupuesto a punto de agotarse
+- saldo proyectado negativo
+- ingreso esperado no cobrado
+- exceso de gasto en una categoría
+- concentración de vencimientos en pocos días
+
+7) ESTRUCTURA DE DATOS
+Agregar e integrar:
+- budgets
+- forecasts
+- financial_calendar_items
+- insights cache opcional
+
+8) UX/UI
+Debe mantenerse:
+- simple
+- moderna
+- rápida
+- clara
+- sin ruido visual
+
+9) RESULTADO FINAL
+Quiero una FASE 3 lista para producción que convierta el módulo en una herramienta de control + anticipación, sin perder facilidad de uso.

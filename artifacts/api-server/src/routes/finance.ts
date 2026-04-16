@@ -10,6 +10,7 @@ import {
   financeCardsTable,
   financeInstallmentPlansTable,
   financeLoansTable,
+  financeBudgetsTable,
 } from "@workspace/db";
 import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
@@ -1005,6 +1006,378 @@ router.post("/finance/seed-demo", requireAuth, async (req: Request, res: Respons
 
     res.json({ ok: true, skipped: false, message: "Datos demo cargados exitosamente" });
   } catch (err) { logger.error({ err }, "finance seed demo"); res.status(500).json({ error: "Error al cargar datos demo" }); }
+});
+
+// ─── PHASE 3: BUDGETS ─────────────────────────────────────────────────────
+
+router.get("/finance/budgets", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const today = todayStr();
+  const month = (req.query.month as string) || today.slice(0, 7);
+  const { start, end } = monthRange(`${month}-01`);
+  try {
+    const [budgets, cats, spendingRows] = await Promise.all([
+      db.select().from(financeBudgetsTable).where(and(
+        eq(financeBudgetsTable.userId, userId),
+        eq(financeBudgetsTable.month, month),
+      )),
+      db.select().from(financeCategoriesTable).where(eq(financeCategoriesTable.userId, userId)),
+      db.select({
+        categoryId: financeTransactionsTable.categoryId,
+        total: sql<string>`coalesce(sum(amount::numeric), 0)`,
+      }).from(financeTransactionsTable).where(and(
+        eq(financeTransactionsTable.userId, userId),
+        eq(financeTransactionsTable.type, "expense"),
+        gte(financeTransactionsTable.date, start),
+        lte(financeTransactionsTable.date, end),
+        sql`${financeTransactionsTable.status} != 'cancelled'`,
+      )).groupBy(financeTransactionsTable.categoryId),
+    ]);
+    const catMap: Record<number, { name: string; color: string; icon: string }> = {};
+    for (const c of cats) catMap[c.id] = { name: c.name, color: c.color, icon: c.icon };
+    const spendMap: Record<number, number> = {};
+    for (const s of spendingRows) { if (s.categoryId != null) spendMap[s.categoryId] = parseFloat(s.total); }
+
+    const enriched = budgets.map(b => {
+      const spent = spendMap[b.categoryId] ?? 0;
+      const budgeted = parseFloat(b.amount);
+      const remaining = budgeted - spent;
+      const pct = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+      const status = pct > 100 ? "exceeded" : pct >= 90 ? "critical" : pct >= 70 ? "warning" : "ok";
+      return { ...b, amount: budgeted, spent, remaining, pct, status, category: catMap[b.categoryId] ?? null };
+    });
+    const totalBudgeted = enriched.reduce((s, b) => s + b.amount, 0);
+    const totalSpent = enriched.reduce((s, b) => s + b.spent, 0);
+    res.json({ budgets: enriched, totalBudgeted, totalSpent, month });
+  } catch (err) { logger.error({ err }, "finance budgets fetch"); res.status(500).json({ error: "Error al cargar presupuestos" }); }
+});
+
+router.post("/finance/budgets", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const { categoryId, month, amount, currency } = req.body ?? {};
+  if (!categoryId || !month || !amount) { res.status(400).json({ error: "categoryId, month y amount son requeridos" }); return; }
+  try {
+    const existing = await db.select().from(financeBudgetsTable).where(and(
+      eq(financeBudgetsTable.userId, userId),
+      eq(financeBudgetsTable.categoryId, parseInt(categoryId, 10)),
+      eq(financeBudgetsTable.month, month),
+    ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(financeBudgetsTable)
+        .set({ amount: String(amount), currency: currency ?? "ARS" })
+        .where(eq(financeBudgetsTable.id, existing[0].id)).returning();
+      res.json(updated); return;
+    }
+    const [budget] = await db.insert(financeBudgetsTable).values({
+      userId, categoryId: parseInt(categoryId, 10), month, amount: String(amount), currency: currency ?? "ARS",
+    }).returning();
+    res.status(201).json(budget);
+  } catch (err) { logger.error({ err }, "finance budget create"); res.status(500).json({ error: "Error al crear presupuesto" }); }
+});
+
+router.put("/finance/budgets/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const [existing] = await db.select().from(financeBudgetsTable).where(eq(financeBudgetsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+    const { amount, currency } = req.body ?? {};
+    const updates: Record<string, unknown> = {};
+    if (amount !== undefined) updates.amount = String(amount);
+    if (currency) updates.currency = currency;
+    const [updated] = await db.update(financeBudgetsTable).set(updates).where(eq(financeBudgetsTable.id, id)).returning();
+    res.json(updated);
+  } catch (err) { logger.error({ err }, "finance budget update"); res.status(500).json({ error: "Error al actualizar presupuesto" }); }
+});
+
+router.delete("/finance/budgets/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const [existing] = await db.select().from(financeBudgetsTable).where(eq(financeBudgetsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+    await db.delete(financeBudgetsTable).where(eq(financeBudgetsTable.id, id));
+    res.json({ ok: true });
+  } catch (err) { logger.error({ err }, "finance budget delete"); res.status(500).json({ error: "Error al eliminar presupuesto" }); }
+});
+
+// ─── PHASE 3: PROJECTION + CALENDAR ───────────────────────────────────────
+
+router.get("/finance/projection", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const today = todayStr();
+  const horizon = 35;
+  const endDate = addDays(today, horizon);
+  try {
+    const [accounts, rules, cards, installments, loans] = await Promise.all([
+      db.select().from(financeAccountsTable).where(eq(financeAccountsTable.userId, userId)),
+      db.select().from(financeRecurringRulesTable).where(and(
+        eq(financeRecurringRulesTable.userId, userId),
+        eq(financeRecurringRulesTable.isActive, true),
+      )),
+      db.select().from(financeCardsTable).where(and(
+        eq(financeCardsTable.userId, userId),
+        eq(financeCardsTable.isActive, true),
+      )),
+      db.select().from(financeInstallmentPlansTable).where(and(
+        eq(financeInstallmentPlansTable.userId, userId),
+        eq(financeInstallmentPlansTable.isActive, true),
+      )),
+      db.select().from(financeLoansTable).where(and(
+        eq(financeLoansTable.userId, userId),
+        eq(financeLoansTable.status, "active"),
+      )),
+    ]);
+
+    const saldoActual = accounts.reduce((s, a) => {
+      const amt = parseFloat(a.amount ?? "0");
+      return s + (a.type === "deuda" ? -Math.abs(amt) : amt);
+    }, 0);
+
+    type CalEvent = { date: string; label: string; amount: number; type: "income" | "expense"; category: string; icon: string };
+    const allEvents: CalEvent[] = [];
+
+    // Recurring rules – up to 2 occurrences per rule in range
+    for (const r of rules) {
+      if (!r.nextDate) continue;
+      let d = r.nextDate;
+      let count = 0;
+      while (d <= endDate && count < 2) {
+        if (d >= today) {
+          allEvents.push({ date: d, label: r.name, amount: parseFloat(r.amount), type: r.type as "income" | "expense", category: "recurring", icon: r.type === "income" ? "arrow-up" : "repeat" });
+        }
+        d = r.frequency === "weekly" ? addDays(d, 7) : r.frequency === "monthly" ? addMonths(d, 1) : addDays(d, 365);
+        count++;
+      }
+    }
+
+    // Cards – due date with cycle spending
+    for (const c of cards) {
+      const dueDate = nextOccurrenceDate(c.dueDay, today);
+      if (dueDate <= endDate) {
+        const closeDateStr = nextOccurrenceDate(c.closeDay, today);
+        const cycleStart = addDays(closeDateStr, -32);
+        const [{ total }] = await db.select({ total: sql<string>`coalesce(sum(amount::numeric), 0)` })
+          .from(financeTransactionsTable).where(and(
+            eq(financeTransactionsTable.userId, userId),
+            eq(financeTransactionsTable.cardId, c.id),
+            eq(financeTransactionsTable.type, "expense"),
+            gte(financeTransactionsTable.date, cycleStart),
+            sql`${financeTransactionsTable.status} != 'cancelled'`,
+          ));
+        const cardSpending = parseFloat(total);
+        if (cardSpending > 0) {
+          allEvents.push({ date: dueDate, label: c.name, amount: cardSpending, type: "expense", category: "card", icon: "credit-card" });
+        }
+      }
+    }
+
+    // Loans
+    for (const l of loans) {
+      if (l.nextDueDate && l.nextDueDate >= today && l.nextDueDate <= endDate) {
+        allEvents.push({ date: l.nextDueDate, label: l.name, amount: parseFloat(l.installmentAmount), type: "expense", category: "loan", icon: "landmark" });
+      }
+    }
+
+    // Installment plans
+    for (const p of installments) {
+      if (p.nextDueDate && p.nextDueDate >= today && p.nextDueDate <= endDate && p.paidInstallments < p.totalInstallments) {
+        allEvents.push({ date: p.nextDueDate, label: p.description, amount: parseFloat(p.installmentAmount), type: "expense", category: "installment", icon: "layers" });
+      }
+    }
+
+    // Build daily running balance
+    const dailySeries: { date: string; saldo: number; events: CalEvent[] }[] = [];
+    let running = saldoActual;
+    for (let i = 0; i <= horizon; i++) {
+      const date = addDays(today, i);
+      const dayEvents = allEvents.filter(e => e.date === date);
+      for (const e of dayEvents) running += e.type === "income" ? e.amount : -e.amount;
+      dailySeries.push({ date, saldo: running, events: dayEvents });
+    }
+
+    const p7 = dailySeries[7];
+    const p15 = dailySeries[15];
+    const [ty, tm] = today.split("-").map(Number);
+    const lastDayOfMonth = new Date(ty, tm, 0).getDate();
+    const monthEndDate = `${today.slice(0, 7)}-${String(lastDayOfMonth).padStart(2, "0")}`;
+    const monthEndIdx = dailySeries.findIndex(s => s.date >= monthEndDate);
+    const pMonth = monthEndIdx >= 0 ? dailySeries[monthEndIdx] : dailySeries[dailySeries.length - 1];
+
+    const riskLevel = (saldo: number) => saldo < 0 ? "high" : saldo < saldoActual * 0.2 ? "medium" : "low";
+
+    const highPressureDays = dailySeries
+      .filter(d => {
+        const exp = d.events.filter(e => e.type === "expense");
+        return exp.length >= 2 || exp.reduce((s, e) => s + e.amount, 0) > Math.abs(saldoActual) * 0.1;
+      })
+      .slice(0, 5)
+      .map(d => ({
+        date: d.date,
+        totalExpenses: d.events.filter(e => e.type === "expense").reduce((s, e) => s + e.amount, 0),
+      }));
+
+    const calendarEvents = [...allEvents].sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json({
+      saldoActual,
+      projection7d: { saldo: p7?.saldo ?? saldoActual, risk: riskLevel(p7?.saldo ?? saldoActual) },
+      projection15d: { saldo: p15?.saldo ?? saldoActual, risk: riskLevel(p15?.saldo ?? saldoActual) },
+      projectionMonthEnd: { saldo: pMonth?.saldo ?? saldoActual, risk: riskLevel(pMonth?.saldo ?? saldoActual) },
+      dailySeries,
+      calendarEvents,
+      highPressureDays,
+    });
+  } catch (err) { logger.error({ err }, "finance projection"); res.status(500).json({ error: "Error al calcular proyección" }); }
+});
+
+// ─── PHASE 3: INSIGHTS ────────────────────────────────────────────────────
+
+router.get("/finance/insights", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const today = todayStr();
+  const thisMonth = today.slice(0, 7);
+  const [ty, tm] = today.split("-").map(Number);
+  const prevMonthYr = tm === 1 ? ty - 1 : ty;
+  const prevMonthMo = tm === 1 ? 12 : tm - 1;
+  const prevMonth = `${prevMonthYr}-${String(prevMonthMo).padStart(2, "0")}`;
+  const { start: thisStart, end: thisEnd } = monthRange(`${thisMonth}-01`);
+  const { start: prevStart, end: prevEnd } = monthRange(`${prevMonth}-01`);
+
+  try {
+    const [thisExpByCat, prevExpByCat, budgets, cats, upcomingNext7, accounts] = await Promise.all([
+      db.select({ categoryId: financeTransactionsTable.categoryId, isFixed: financeTransactionsTable.isFixed, total: sql<string>`coalesce(sum(amount::numeric), 0)` })
+        .from(financeTransactionsTable).where(and(
+          eq(financeTransactionsTable.userId, userId),
+          eq(financeTransactionsTable.type, "expense"),
+          gte(financeTransactionsTable.date, thisStart),
+          lte(financeTransactionsTable.date, thisEnd),
+          sql`${financeTransactionsTable.status} != 'cancelled'`,
+        )).groupBy(financeTransactionsTable.categoryId, financeTransactionsTable.isFixed),
+      db.select({ categoryId: financeTransactionsTable.categoryId, isFixed: financeTransactionsTable.isFixed, total: sql<string>`coalesce(sum(amount::numeric), 0)` })
+        .from(financeTransactionsTable).where(and(
+          eq(financeTransactionsTable.userId, userId),
+          eq(financeTransactionsTable.type, "expense"),
+          gte(financeTransactionsTable.date, prevStart),
+          lte(financeTransactionsTable.date, prevEnd),
+          sql`${financeTransactionsTable.status} != 'cancelled'`,
+        )).groupBy(financeTransactionsTable.categoryId, financeTransactionsTable.isFixed),
+      db.select().from(financeBudgetsTable).where(and(
+        eq(financeBudgetsTable.userId, userId),
+        eq(financeBudgetsTable.month, thisMonth),
+      )),
+      db.select().from(financeCategoriesTable).where(eq(financeCategoriesTable.userId, userId)),
+      db.select().from(financeRecurringRulesTable).where(and(
+        eq(financeRecurringRulesTable.userId, userId),
+        eq(financeRecurringRulesTable.isActive, true),
+        gte(financeRecurringRulesTable.nextDate, today),
+        lte(financeRecurringRulesTable.nextDate, addDays(today, 7)),
+      )),
+      db.select().from(financeAccountsTable).where(eq(financeAccountsTable.userId, userId)),
+    ]);
+
+    const catMap: Record<number, { name: string; color: string; icon: string }> = {};
+    for (const c of cats) catMap[c.id] = { name: c.name, color: c.color, icon: c.icon };
+
+    const thisVarTotal = thisExpByCat.filter(r => !r.isFixed).reduce((s, r) => s + parseFloat(r.total), 0);
+    const prevVarTotal = prevExpByCat.filter(r => !r.isFixed).reduce((s, r) => s + parseFloat(r.total), 0);
+
+    type Insight = { id: string; icon: string; text: string; level: "info" | "warning" | "red" | "green" };
+    const insights: Insight[] = [];
+
+    // 1. Variable expense trend vs last month
+    if (prevVarTotal > 0) {
+      const diff = ((thisVarTotal - prevVarTotal) / prevVarTotal) * 100;
+      if (Math.abs(diff) > 5) {
+        insights.push({
+          id: "variable_trend",
+          icon: diff > 0 ? "trending-up" : "trending-down",
+          text: `Tus gastos variables vienen ${Math.abs(Math.round(diff))}% ${diff > 0 ? "arriba" : "abajo"} del mes anterior.`,
+          level: diff > 20 ? "red" : diff > 10 ? "warning" : "info",
+        });
+      }
+    }
+
+    // 2. Top variable expense category
+    const varByCat: Record<number, number> = {};
+    for (const r of thisExpByCat.filter(r => !r.isFixed)) {
+      if (r.categoryId != null) varByCat[r.categoryId] = (varByCat[r.categoryId] ?? 0) + parseFloat(r.total);
+    }
+    const topCatId = Object.entries(varByCat).sort(([, a], [, b]) => b - a)[0];
+    if (topCatId) {
+      const catName = catMap[Number(topCatId[0])]?.name ?? "Sin categoría";
+      insights.push({
+        id: "top_category",
+        icon: "pie-chart",
+        text: `Tu categoría con mayor gasto variable este mes es ${catName}: $${Math.round(Number(topCatId[1])).toLocaleString("es-AR")}.`,
+        level: "info",
+      });
+    }
+
+    // 3. Budget alerts
+    const thisByCat: Record<number, number> = {};
+    for (const r of thisExpByCat) {
+      if (r.categoryId != null) thisByCat[r.categoryId] = (thisByCat[r.categoryId] ?? 0) + parseFloat(r.total);
+    }
+    for (const b of budgets) {
+      const spent = thisByCat[b.categoryId] ?? 0;
+      const budgeted = parseFloat(b.amount);
+      const pct = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+      const catName = catMap[b.categoryId]?.name ?? "categoría";
+      if (pct > 100) {
+        insights.push({ id: `budget_exceeded_${b.id}`, icon: "alert-triangle", text: `Superaste el presupuesto de ${catName} en $${Math.round(spent - budgeted).toLocaleString("es-AR")} (${Math.round(pct)}% ejecutado).`, level: "red" });
+      } else if (pct >= 80) {
+        insights.push({ id: `budget_warning_${b.id}`, icon: "alert-triangle", text: `El presupuesto de ${catName} está al ${Math.round(pct)}%: te quedan $${Math.round(budgeted - spent).toLocaleString("es-AR")}.`, level: "warning" });
+      }
+    }
+
+    // 4. Upcoming pressure next 7 days
+    const expNext7 = upcomingNext7.filter(r => r.type === "expense");
+    if (expNext7.length >= 2) {
+      const totalAmt = expNext7.reduce((s, r) => s + parseFloat(r.amount), 0);
+      insights.push({ id: "pressure_week", icon: "zap", text: `Los próximos 7 días tenés ${expNext7.length} vencimientos por $${Math.round(totalAmt).toLocaleString("es-AR")}.`, level: "warning" });
+    }
+
+    // 5. Subscriptions % of total variable
+    const subCatId = cats.find(c => c.name === "Suscripciones")?.id;
+    if (subCatId && thisVarTotal > 0) {
+      const subAmt = varByCat[subCatId] ?? 0;
+      const subPct = (subAmt / thisVarTotal) * 100;
+      if (subPct > 3) {
+        insights.push({ id: "subscriptions", icon: "repeat", text: `Tus suscripciones representan el ${Math.round(subPct)}% del gasto variable del mes ($${Math.round(subAmt).toLocaleString("es-AR")}).`, level: "info" });
+      }
+    }
+
+    // 6. Projected month-end balance (simple: saldo + expected income rules - expected expense rules this month)
+    const saldoActual = accounts.reduce((s, a) => {
+      const amt = parseFloat(a.amount ?? "0");
+      return s + (a.type === "deuda" ? -Math.abs(amt) : amt);
+    }, 0);
+    const [ty2, tm2] = today.split("-").map(Number);
+    const lastDayOfMonth = new Date(ty2, tm2, 0).getDate();
+    const monthEndDate = `${today.slice(0, 7)}-${String(lastDayOfMonth).padStart(2, "0")}`;
+    const allRules = await db.select().from(financeRecurringRulesTable).where(and(
+      eq(financeRecurringRulesTable.userId, userId),
+      eq(financeRecurringRulesTable.isActive, true),
+      gte(financeRecurringRulesTable.nextDate, today),
+      lte(financeRecurringRulesTable.nextDate, monthEndDate),
+    ));
+    let projDelta = 0;
+    for (const r of allRules) projDelta += r.type === "income" ? parseFloat(r.amount) : -parseFloat(r.amount);
+    const projectedEnd = saldoActual + projDelta;
+    if (Math.abs(projDelta) > 1000) {
+      insights.push({
+        id: "month_projection",
+        icon: projectedEnd >= 0 ? "calendar" : "alert-triangle",
+        text: `A este ritmo, terminás el mes con aproximadamente $${Math.round(projectedEnd).toLocaleString("es-AR")}.`,
+        level: projectedEnd < 0 ? "red" : projectedEnd < saldoActual * 0.2 ? "warning" : "green",
+      });
+    }
+
+    res.json({ insights });
+  } catch (err) { logger.error({ err }, "finance insights"); res.status(500).json({ error: "Error al calcular insights" }); }
 });
 
 export default router;
