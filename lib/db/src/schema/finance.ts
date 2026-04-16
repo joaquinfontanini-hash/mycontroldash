@@ -193,6 +193,29 @@ export const insertFinanceBudgetSchema = createInsertSchema(financeBudgetsTable)
 export type InsertFinanceBudget = z.infer<typeof insertFinanceBudgetSchema>;
 export type FinanceBudget = typeof financeBudgetsTable.$inferSelect;
 
+// ─── GOALS ────────────────────────────────────────────────────────────────
+// Objetivos financieros del usuario
+
+export const financeGoalsTable = pgTable("finance_goals", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(), // "savings" | "reduce_spending" | "emergency_fund" | "pay_debt"
+  title: text("title").notNull(),
+  targetAmount: numeric("target_amount", { precision: 18, scale: 2 }).notNull(),
+  currentAmount: numeric("current_amount", { precision: 18, scale: 2 }).notNull().default("0"),
+  targetDate: text("target_date"), // YYYY-MM-DD opcional
+  categoryId: integer("category_id"), // para reduce_spending
+  currency: text("currency").notNull().default("ARS"),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const insertFinanceGoalSchema = createInsertSchema(financeGoalsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFinanceGoal = z.infer<typeof insertFinanceGoalSchema>;
+export type FinanceGoal = typeof financeGoalsTable.$inferSelect;
+
 export const insertFinanceTransactionSchema = createInsertSchema(financeTransactionsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFinanceTransaction = z.infer<typeof insertFinanceTransactionSchema>;
 export type FinanceTransaction = typeof financeTransactionsTable.$inferSelect;

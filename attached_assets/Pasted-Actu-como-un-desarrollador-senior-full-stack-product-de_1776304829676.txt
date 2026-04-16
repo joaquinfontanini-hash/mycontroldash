@@ -1,0 +1,84 @@
+Actuá como un desarrollador senior full-stack + product designer UX, con foco en retención y adopción real del usuario.
+
+Quiero que desarrolles la FASE 4 del módulo “Finanzas Personales”, construida sobre las fases anteriores.
+
+OBJETIVO DE ESTA FASE
+Hacer que el usuario no abandone el módulo.
+La lógica principal no es agregar complejidad, sino:
+- reducir carga manual
+- aumentar hábito
+- generar valor semanal
+- automatizar lo repetitivo
+- hacer que el sistema “acompañe” al usuario
+
+IMPLEMENTAR:
+
+1) SUGERENCIAS INTELIGENTES
+El sistema debe detectar patrones y sugerir:
+- “este movimiento parece recurrente”
+- “ya cargaste esto varias veces, ¿querés automatizarlo?”
+- “este gasto podría pertenecer a tal categoría”
+- “esta compra parece una suscripción”
+- “esta carga suele hacerse con esta cuenta”
+
+2) AUTOCOMPLETADO Y MEMORIA DE USO
+En carga rápida:
+- recordar última categoría
+- recordar último medio de pago
+- sugerir importes frecuentes
+- sugerir conceptos frecuentes
+- permitir duplicar el último movimiento en 1 clic
+
+3) REVISIÓN SEMANAL
+Crear una vista o widget de revisión semanal que muestre:
+- qué aumentó
+- qué vencimientos vienen
+- qué ingresos faltan entrar
+- qué categorías están excedidas
+- cuánto te queda libre
+
+Debe sentirse como “resumen ejecutivo personal”.
+
+4) OBJETIVOS FINANCIEROS BÁSICOS
+Agregar objetivos simples:
+- ahorrar X por mes
+- bajar gasto en una categoría
+- juntar fondo de emergencia
+- pagar préstamo o deuda
+
+Mostrar avance y estimación.
+
+5) PERSONALIZACIÓN
+Permitir al usuario:
+- activar/desactivar alertas
+- elegir categorías favoritas
+- elegir qué KPIs ve primero
+- ocultar módulos que no use
+
+6) IMPORTACIÓN / EXPORTACIÓN BÁSICA
+Preparar soporte para:
+- exportar movimientos
+- exportar resumen mensual
+- importación manual futura desde CSV
+No hace falta automatización bancaria en esta fase, pero sí dejar estructura preparada.
+
+7) EXPERIENCIA DE HÁBITO
+Agregar microdetalles de UX:
+- mensajes cortos útiles
+- resúmenes simples
+- feedback positivo cuando el usuario registra o revisa
+- vacíos bien diseñados cuando no hay datos
+- onboarding breve y claro
+
+8) DASHBOARD FINAL DEL MÓDULO
+Consolidar una experiencia completa con:
+- portada útil
+- carga rápida excelente
+- compromisos visibles
+- proyección clara
+- revisión semanal
+- insights
+- objetivos
+
+9) RESULTADO FINAL
+Entregar una versión madura, lista para uso real, enfocada en que el usuario vuelva todas las semanas y mantenga el sistema vivo.

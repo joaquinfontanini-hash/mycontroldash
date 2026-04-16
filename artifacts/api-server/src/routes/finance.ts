@@ -11,6 +11,7 @@ import {
   financeInstallmentPlansTable,
   financeLoansTable,
   financeBudgetsTable,
+  financeGoalsTable,
 } from "@workspace/db";
 import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
@@ -1378,6 +1379,349 @@ router.get("/finance/insights", requireAuth, async (req: Request, res: Response)
 
     res.json({ insights });
   } catch (err) { logger.error({ err }, "finance insights"); res.status(500).json({ error: "Error al calcular insights" }); }
+});
+
+// ─── PHASE 4: GOALS ───────────────────────────────────────────────────────
+
+router.get("/finance/goals", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const today = todayStr();
+  const thisMonth = today.slice(0, 7);
+  const { start, end } = monthRange(`${thisMonth}-01`);
+  try {
+    const [goals, cats, thisMonthSpending] = await Promise.all([
+      db.select().from(financeGoalsTable).where(eq(financeGoalsTable.userId, userId)).orderBy(desc(financeGoalsTable.createdAt)),
+      db.select().from(financeCategoriesTable).where(eq(financeCategoriesTable.userId, userId)),
+      db.select({ categoryId: financeTransactionsTable.categoryId, total: sql<string>`coalesce(sum(amount::numeric), 0)` })
+        .from(financeTransactionsTable).where(and(
+          eq(financeTransactionsTable.userId, userId),
+          eq(financeTransactionsTable.type, "expense"),
+          gte(financeTransactionsTable.date, start),
+          lte(financeTransactionsTable.date, end),
+          sql`${financeTransactionsTable.status} != 'cancelled'`,
+        )).groupBy(financeTransactionsTable.categoryId),
+    ]);
+    const catMap: Record<number, { name: string; color: string; icon: string }> = {};
+    for (const c of cats) catMap[c.id] = { name: c.name, color: c.color, icon: c.icon };
+    const spendMap: Record<number, number> = {};
+    for (const s of thisMonthSpending) { if (s.categoryId != null) spendMap[s.categoryId] = parseFloat(s.total); }
+
+    const enriched = goals.map(g => {
+      const target = parseFloat(g.targetAmount);
+      let current = parseFloat(g.currentAmount);
+      // For reduce_spending: auto-compute from category spending
+      if (g.type === "reduce_spending" && g.categoryId != null) {
+        const spent = spendMap[g.categoryId] ?? 0;
+        current = Math.max(0, target - spent); // how much budget is still saved
+      }
+      const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+      const daysLeft = g.targetDate ? Math.ceil((new Date(g.targetDate + "T12:00:00Z").getTime() - Date.now()) / 86400000) : null;
+      const monthlyNeeded = daysLeft != null && daysLeft > 0 ? ((target - current) / (daysLeft / 30)) : null;
+      return {
+        ...g,
+        targetAmount: target,
+        currentAmount: current,
+        pct,
+        remaining: target - current,
+        daysLeft,
+        monthlyNeeded,
+        category: g.categoryId ? (catMap[g.categoryId] ?? null) : null,
+      };
+    });
+    res.json(enriched);
+  } catch (err) { logger.error({ err }, "finance goals fetch"); res.status(500).json({ error: "Error al cargar objetivos" }); }
+});
+
+router.post("/finance/goals", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const { type, title, targetAmount, targetDate, categoryId, currency, notes } = req.body ?? {};
+  if (!type || !title || !targetAmount) { res.status(400).json({ error: "type, title y targetAmount son requeridos" }); return; }
+  const validTypes = ["savings", "reduce_spending", "emergency_fund", "pay_debt"];
+  if (!validTypes.includes(type)) { res.status(400).json({ error: "type inválido" }); return; }
+  try {
+    const [goal] = await db.insert(financeGoalsTable).values({
+      userId, type, title, targetAmount: String(targetAmount), currentAmount: "0",
+      targetDate: targetDate ?? null, categoryId: categoryId ? parseInt(categoryId, 10) : null,
+      currency: currency ?? "ARS", isActive: true, notes: notes ?? null,
+    }).returning();
+    res.status(201).json(goal);
+  } catch (err) { logger.error({ err }, "finance goal create"); res.status(500).json({ error: "Error al crear objetivo" }); }
+});
+
+router.put("/finance/goals/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const [existing] = await db.select().from(financeGoalsTable).where(eq(financeGoalsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+    const { type, title, targetAmount, currentAmount, targetDate, categoryId, currency, isActive, notes } = req.body ?? {};
+    const updates: Record<string, unknown> = {};
+    if (type) updates.type = type;
+    if (title) updates.title = title;
+    if (targetAmount !== undefined) updates.targetAmount = String(targetAmount);
+    if (currentAmount !== undefined) updates.currentAmount = String(currentAmount);
+    if (targetDate !== undefined) updates.targetDate = targetDate;
+    if (categoryId !== undefined) updates.categoryId = categoryId ? parseInt(categoryId, 10) : null;
+    if (currency) updates.currency = currency;
+    if (isActive !== undefined) updates.isActive = Boolean(isActive);
+    if (notes !== undefined) updates.notes = notes;
+    const [updated] = await db.update(financeGoalsTable).set(updates).where(eq(financeGoalsTable.id, id)).returning();
+    res.json(updated);
+  } catch (err) { logger.error({ err }, "finance goal update"); res.status(500).json({ error: "Error al actualizar objetivo" }); }
+});
+
+router.delete("/finance/goals/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const [existing] = await db.select().from(financeGoalsTable).where(eq(financeGoalsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
+    if (!assertOwnership(req, res, existing.userId)) return;
+    await db.delete(financeGoalsTable).where(eq(financeGoalsTable.id, id));
+    res.json({ ok: true });
+  } catch (err) { logger.error({ err }, "finance goal delete"); res.status(500).json({ error: "Error al eliminar objetivo" }); }
+});
+
+// ─── PHASE 4: SMART SUGGESTIONS ───────────────────────────────────────────
+
+router.get("/finance/suggestions", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const today = todayStr();
+  const since90 = addDays(today, -90);
+  try {
+    const [txRows, cats] = await Promise.all([
+      db.select().from(financeTransactionsTable).where(and(
+        eq(financeTransactionsTable.userId, userId),
+        gte(financeTransactionsTable.date, since90),
+        sql`${financeTransactionsTable.notes} is not null`,
+      )).orderBy(desc(financeTransactionsTable.date)).limit(500),
+      db.select().from(financeCategoriesTable).where(eq(financeCategoriesTable.userId, userId)),
+    ]);
+    const catMap: Record<number, { name: string; color: string; icon: string }> = {};
+    for (const c of cats) catMap[c.id] = { name: c.name, color: c.color, icon: c.icon };
+
+    // Group by normalized notes
+    const groups: Record<string, typeof txRows> = {};
+    for (const tx of txRows) {
+      const key = (tx.notes ?? "").toLowerCase().trim();
+      if (key.length < 3) continue;
+      groups[key] = [...(groups[key] ?? []), tx];
+    }
+
+    type Suggestion = { id: string; type: string; text: string; data: Record<string, unknown> };
+    const suggestions: Suggestion[] = [];
+
+    for (const [notes, txs] of Object.entries(groups)) {
+      if (txs.length < 3) continue;
+      // Check if any have a recurringRuleId
+      const hasRule = txs.some(t => t.recurringRuleId);
+      if (hasRule) continue;
+
+      // Check if they all have the same type & category
+      const sameType = txs.every(t => t.type === txs[0].type);
+      const sameCategory = txs.every(t => t.categoryId === txs[0].categoryId);
+      const avgAmount = txs.reduce((s, t) => s + parseFloat(t.amount), 0) / txs.length;
+      const catName = txs[0].categoryId ? (catMap[txs[0].categoryId]?.name ?? null) : null;
+
+      suggestions.push({
+        id: `recurring_${notes.slice(0, 20)}`,
+        type: "recurring",
+        text: `"${txs[0].notes}" apareció ${txs.length} veces en los últimos 3 meses. ¿Querés automatizarla como recurrencia?`,
+        data: {
+          notes: txs[0].notes,
+          txType: txs[0].type,
+          categoryId: sameCategory ? txs[0].categoryId : null,
+          categoryName: sameCategory ? catName : null,
+          accountId: txs[0].accountId,
+          avgAmount: Math.round(avgAmount),
+          frequency: "monthly",
+        },
+      });
+    }
+
+    // Most used concepts in last 30 days (for autocomplete)
+    const since30 = addDays(today, -30);
+    const recentNotes = txRows
+      .filter(t => t.date >= since30 && t.notes && t.notes.trim().length > 2)
+      .map(t => t.notes as string)
+      .filter((n, i, a) => a.indexOf(n) === i)
+      .slice(0, 20);
+
+    res.json({ suggestions: suggestions.slice(0, 5), recentConcepts: recentNotes });
+  } catch (err) { logger.error({ err }, "finance suggestions"); res.status(500).json({ error: "Error al calcular sugerencias" }); }
+});
+
+// ─── PHASE 4: WEEKLY REVIEW ───────────────────────────────────────────────
+
+router.get("/finance/weekly-review", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const today = todayStr();
+  const weekStart = addDays(today, -6);
+  const prevWeekStart = addDays(today, -13);
+  const prevWeekEnd = addDays(today, -7);
+  try {
+    const [thisWeekTx, prevWeekTx, expectedUnreceived, upcomingRules, accounts, budgets] = await Promise.all([
+      db.select().from(financeTransactionsTable).where(and(
+        eq(financeTransactionsTable.userId, userId),
+        gte(financeTransactionsTable.date, weekStart),
+        lte(financeTransactionsTable.date, today),
+        sql`${financeTransactionsTable.status} != 'cancelled'`,
+      )),
+      db.select().from(financeTransactionsTable).where(and(
+        eq(financeTransactionsTable.userId, userId),
+        gte(financeTransactionsTable.date, prevWeekStart),
+        lte(financeTransactionsTable.date, prevWeekEnd),
+        sql`${financeTransactionsTable.status} != 'cancelled'`,
+      )),
+      db.select().from(financeTransactionsTable).where(and(
+        eq(financeTransactionsTable.userId, userId),
+        eq(financeTransactionsTable.type, "income"),
+        eq(financeTransactionsTable.status, "expected"),
+        lte(financeTransactionsTable.date, today),
+      )).limit(10),
+      db.select().from(financeRecurringRulesTable).where(and(
+        eq(financeRecurringRulesTable.userId, userId),
+        eq(financeRecurringRulesTable.isActive, true),
+        gte(financeRecurringRulesTable.nextDate, today),
+        lte(financeRecurringRulesTable.nextDate, addDays(today, 7)),
+      )),
+      db.select().from(financeAccountsTable).where(eq(financeAccountsTable.userId, userId)),
+      db.select().from(financeBudgetsTable).where(and(
+        eq(financeBudgetsTable.userId, userId),
+        eq(financeBudgetsTable.month, today.slice(0, 7)),
+      )),
+    ]);
+
+    const thisIncome = thisWeekTx.filter(t => t.type === "income").reduce((s, t) => s + parseFloat(t.amount), 0);
+    const thisExpenses = thisWeekTx.filter(t => t.type === "expense").reduce((s, t) => s + parseFloat(t.amount), 0);
+    const prevIncome = prevWeekTx.filter(t => t.type === "income").reduce((s, t) => s + parseFloat(t.amount), 0);
+    const prevExpenses = prevWeekTx.filter(t => t.type === "expense").reduce((s, t) => s + parseFloat(t.amount), 0);
+
+    const saldoLibre = accounts.reduce((s, a) => {
+      const amt = parseFloat(a.amount ?? "0");
+      return s + (a.type === "deuda" ? -Math.abs(amt) : amt);
+    }, 0);
+
+    const upcomingExpenses = upcomingRules.filter(r => r.type === "expense").reduce((s, r) => s + parseFloat(r.amount), 0);
+    const upcomingIncome = upcomingRules.filter(r => r.type === "income").reduce((s, r) => s + parseFloat(r.amount), 0);
+
+    // Get category spending this month for budget comparison
+    const { start: mStart, end: mEnd } = monthRange(`${today.slice(0, 7)}-01`);
+    const monthlyCatSpend = await db.select({ categoryId: financeTransactionsTable.categoryId, total: sql<string>`coalesce(sum(amount::numeric), 0)` })
+      .from(financeTransactionsTable).where(and(
+        eq(financeTransactionsTable.userId, userId),
+        eq(financeTransactionsTable.type, "expense"),
+        gte(financeTransactionsTable.date, mStart),
+        lte(financeTransactionsTable.date, mEnd),
+        sql`${financeTransactionsTable.status} != 'cancelled'`,
+      )).groupBy(financeTransactionsTable.categoryId);
+
+    const spendMap: Record<number, number> = {};
+    for (const s of monthlyCatSpend) { if (s.categoryId != null) spendMap[s.categoryId] = parseFloat(s.total); }
+
+    const overspentBudgets = budgets.filter(b => {
+      const spent = spendMap[b.categoryId] ?? 0;
+      return spent > parseFloat(b.amount);
+    });
+
+    res.json({
+      period: { from: weekStart, to: today },
+      thisWeek: { income: thisIncome, expenses: thisExpenses, txCount: thisWeekTx.length },
+      prevWeek: { income: prevIncome, expenses: prevExpenses },
+      incomeChange: prevIncome > 0 ? ((thisIncome - prevIncome) / prevIncome) * 100 : null,
+      expenseChange: prevExpenses > 0 ? ((thisExpenses - prevExpenses) / prevExpenses) * 100 : null,
+      expectedUnreceived: expectedUnreceived.map(t => ({ id: t.id, notes: t.notes, amount: parseFloat(t.amount), date: t.date })),
+      upcomingVencimientos: upcomingRules.map(r => ({ id: r.id, name: r.name, type: r.type, amount: parseFloat(r.amount), nextDate: r.nextDate })),
+      upcomingExpenses,
+      upcomingIncome,
+      saldoLibre,
+      overspentBudgets: overspentBudgets.map(b => ({ id: b.id, categoryId: b.categoryId, budgeted: parseFloat(b.amount), spent: spendMap[b.categoryId] ?? 0 })),
+    });
+  } catch (err) { logger.error({ err }, "finance weekly review"); res.status(500).json({ error: "Error al calcular revisión semanal" }); }
+});
+
+// ─── PHASE 4: EXPORT ──────────────────────────────────────────────────────
+
+router.get("/finance/export/transactions.csv", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const { from, to } = req.query as Record<string, string>;
+  try {
+    const conditions = [eq(financeTransactionsTable.userId, userId)];
+    if (from) conditions.push(gte(financeTransactionsTable.date, from));
+    if (to) conditions.push(lte(financeTransactionsTable.date, to));
+
+    const [txs, cats, accounts, cards] = await Promise.all([
+      db.select().from(financeTransactionsTable).where(and(...conditions)).orderBy(desc(financeTransactionsTable.date)).limit(5000),
+      db.select().from(financeCategoriesTable).where(eq(financeCategoriesTable.userId, userId)),
+      db.select().from(financeAccountsTable).where(eq(financeAccountsTable.userId, userId)),
+      db.select().from(financeCardsTable).where(eq(financeCardsTable.userId, userId)),
+    ]);
+    const catMap: Record<number, string> = {};
+    for (const c of cats) catMap[c.id] = c.name;
+    const acctMap: Record<number, string> = {};
+    for (const a of accounts) acctMap[a.id] = a.label;
+    const cardMap: Record<number, string> = {};
+    for (const c of cards) cardMap[c.id] = c.name;
+
+    const header = "Fecha,Tipo,Monto,Moneda,Categoría,Cuenta,Tarjeta,Estado,Descripción,Fijo,Recurrente\n";
+    const rows = txs.map(t => [
+      t.date,
+      t.type === "income" ? "Ingreso" : "Gasto",
+      t.amount,
+      t.currency,
+      t.categoryId ? (catMap[t.categoryId] ?? "") : "",
+      t.accountId ? (acctMap[t.accountId] ?? "") : "",
+      t.cardId ? (cardMap[t.cardId] ?? "") : "",
+      t.status,
+      `"${(t.notes ?? "").replace(/"/g, '""')}"`,
+      t.isFixed ? "Si" : "No",
+      t.isRecurring ? "Si" : "No",
+    ].join(",")).join("\n");
+
+    const filename = `movimientos_${from ?? "todo"}_${to ?? todayStr()}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send("\uFEFF" + header + rows); // BOM for Excel compatibility
+  } catch (err) { logger.error({ err }, "finance export csv"); res.status(500).json({ error: "Error al exportar" }); }
+});
+
+router.get("/finance/export/summary.csv", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const today = todayStr();
+  const [ty, tm] = today.split("-").map(Number);
+  try {
+    const rows: string[] = [];
+    rows.push("Mes,Ingresos,Gastos,Balance");
+    // Last 12 months
+    for (let i = 11; i >= 0; i--) {
+      const mo = tm - i;
+      const yr = mo <= 0 ? ty - 1 : ty;
+      const realMo = mo <= 0 ? mo + 12 : mo;
+      const monthStr = `${yr}-${String(realMo).padStart(2, "0")}`;
+      const { start, end } = monthRange(`${monthStr}-01`);
+      const [{ income }] = await db.select({ income: sql<string>`coalesce(sum(case when type='income' then amount::numeric else 0 end), 0)` })
+        .from(financeTransactionsTable).where(and(
+          eq(financeTransactionsTable.userId, userId),
+          gte(financeTransactionsTable.date, start),
+          lte(financeTransactionsTable.date, end),
+          sql`${financeTransactionsTable.status} != 'cancelled'`,
+        ));
+      const [{ expense }] = await db.select({ expense: sql<string>`coalesce(sum(case when type='expense' then amount::numeric else 0 end), 0)` })
+        .from(financeTransactionsTable).where(and(
+          eq(financeTransactionsTable.userId, userId),
+          gte(financeTransactionsTable.date, start),
+          lte(financeTransactionsTable.date, end),
+          sql`${financeTransactionsTable.status} != 'cancelled'`,
+        ));
+      const inc = parseFloat(income);
+      const exp = parseFloat(expense);
+      rows.push(`${monthStr},${Math.round(inc)},${Math.round(exp)},${Math.round(inc - exp)}`);
+    }
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="resumen_mensual_${today}.csv"`);
+    res.send("\uFEFF" + rows.join("\n"));
+  } catch (err) { logger.error({ err }, "finance export summary"); res.status(500).json({ error: "Error al exportar resumen" }); }
 });
 
 export default router;
