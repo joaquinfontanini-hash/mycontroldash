@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   TrendingUp, TrendingDown, Wallet, Plus, Pencil, Trash2, RefreshCw,
@@ -371,10 +371,10 @@ function TransactionModal({ open, onClose, tx, categories, accounts, cards, onSa
   const activeCats = categories.filter(c => c.type === form.type);
   const activeCards = cards.filter(c => c.isActive);
 
-  // Filter recent concepts for autocomplete
-  const storedNotes = (() => { try { return JSON.parse(localStorage.getItem("fin_recentNotes") ?? "[]") as string[]; } catch { return []; } })();
-  const allConcepts = [...new Set([...(recentConcepts ?? []), ...storedNotes])].slice(0, 12);
-  const filteredConcepts = form.notes.length >= 2 ? allConcepts.filter(n => n.toLowerCase().includes(form.notes.toLowerCase()) && n !== form.notes) : allConcepts.slice(0, 8);
+  // Filter recent concepts for autocomplete (storedNotes read once, not on every render)
+  const storedNotes = useMemo(() => { try { return JSON.parse(localStorage.getItem("fin_recentNotes") ?? "[]") as string[]; } catch { return []; } }, []);
+  const allConcepts = useMemo(() => [...new Set([...(recentConcepts ?? []), ...storedNotes])].slice(0, 12), [recentConcepts, storedNotes]);
+  const filteredConcepts = useMemo(() => form.notes.length >= 2 ? allConcepts.filter(n => n.toLowerCase().includes(form.notes.toLowerCase()) && n !== form.notes) : allConcepts.slice(0, 8), [form.notes, allConcepts]);
 
   async function handleSave() {
     if (!form.amount || parseFloat(form.amount) <= 0) { toast({ title: "Ingresá un monto válido", variant: "destructive" }); return; }
@@ -867,12 +867,24 @@ function LoanModal({ open, onClose, loan, onSaved }: { open: boolean; onClose: (
 
 // ─── RECURRING MODAL ───────────────────────────────────────────────────────
 
-function RecurringModal({ open, onClose, rule, categories, accounts, onSaved }: {
+function RecurringModal({ open, onClose, rule, categories, accounts, onSaved, prefill }: {
   open: boolean; onClose: () => void; rule: FinanceRecurringRule | null;
   categories: FinanceCategory[]; accounts: FinanceAccount[]; onSaved: () => void;
+  prefill?: { name?: string; txType?: string; amount?: number; categoryId?: number | null; accountId?: number | null };
 }) {
   const { toast } = useToast();
-  const [form, setForm] = useState({ name: rule?.name ?? "", type: rule?.type ?? "expense", amount: rule?.amount ?? "", categoryId: rule?.categoryId ? String(rule.categoryId) : "", accountId: rule?.accountId ? String(rule.accountId) : "", frequency: rule?.frequency ?? "monthly", dayOfMonth: rule?.dayOfMonth ? String(rule.dayOfMonth) : "", nextDate: rule?.nextDate ?? todayStr(), isActive: rule?.isActive ?? true, notes: rule?.notes ?? "" });
+  const [form, setForm] = useState({
+    name: rule?.name ?? prefill?.name ?? "",
+    type: rule?.type ?? prefill?.txType ?? "expense",
+    amount: rule?.amount ?? (prefill?.amount ? String(prefill.amount) : ""),
+    categoryId: rule?.categoryId ? String(rule.categoryId) : (prefill?.categoryId ? String(prefill.categoryId) : ""),
+    accountId: rule?.accountId ? String(rule.accountId) : (prefill?.accountId ? String(prefill.accountId) : ""),
+    frequency: rule?.frequency ?? "monthly",
+    dayOfMonth: rule?.dayOfMonth ? String(rule.dayOfMonth) : "",
+    nextDate: rule?.nextDate ?? todayStr(),
+    isActive: rule?.isActive ?? true,
+    notes: rule?.notes ?? "",
+  });
   const [saving, setSaving] = useState(false);
   const activeCats = categories.filter(c => c.type === form.type);
   async function handleSave() {
@@ -961,7 +973,7 @@ export default function FinancePage() {
   const [cardModal, setCardModal] = useState<{ open: boolean; card: FinanceCard | null }>({ open: false, card: null });
   const [installModal, setInstallModal] = useState<{ open: boolean; plan: FinanceInstallmentPlan | null }>({ open: false, plan: null });
   const [loanModal, setLoanModal] = useState<{ open: boolean; loan: FinanceLoan | null }>({ open: false, loan: null });
-  const [recurModal, setRecurModal] = useState<{ open: boolean; rule: FinanceRecurringRule | null }>({ open: false, rule: null });
+  const [recurModal, setRecurModal] = useState<{ open: boolean; rule: FinanceRecurringRule | null; prefill?: { name?: string; txType?: string; amount?: number; categoryId?: number | null; accountId?: number | null } }>({ open: false, rule: null });
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; title: string; description?: string; onConfirm: () => void }>({ open: false, title: "", onConfirm: () => {} });
   const [filter, setFilter] = useState({ type: "", categoryId: "", accountId: "", status: "", from: "", to: "" });
   const [budgetMonth, setBudgetMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -1156,14 +1168,14 @@ export default function FinancePage() {
           <div className="overflow-x-auto">
             <TabsList className="flex w-max min-w-full sm:min-w-0">
               <TabsTrigger value="dashboard">Resumen</TabsTrigger>
+              <TabsTrigger value="presupuestos">Presupuestos</TabsTrigger>
+              <TabsTrigger value="objetivos">Objetivos</TabsTrigger>
               <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
               <TabsTrigger value="cuentas">Cuentas</TabsTrigger>
               <TabsTrigger value="tarjetas">Tarjetas</TabsTrigger>
               <TabsTrigger value="prestamos">Préstamos</TabsTrigger>
               <TabsTrigger value="recurrencias">Recurrencias</TabsTrigger>
-              <TabsTrigger value="presupuestos">Presupuestos</TabsTrigger>
               <TabsTrigger value="proyeccion">Proyección</TabsTrigger>
-              <TabsTrigger value="objetivos">Objetivos</TabsTrigger>
             </TabsList>
           </div>
 
@@ -1227,7 +1239,7 @@ export default function FinancePage() {
                             <p className="text-sm">{s.text}</p>
                           </div>
                           <Button variant="outline" size="sm" className="shrink-0 text-xs h-7 border-violet-300 text-violet-700 hover:bg-violet-50"
-                            onClick={() => setRecurModal({ open: true, rule: null })}>
+                            onClick={() => setRecurModal({ open: true, rule: null, prefill: { name: String(s.data.notes ?? ""), txType: String(s.data.txType ?? "expense"), amount: Number(s.data.avgAmount ?? 0), categoryId: s.data.categoryId as number | null, accountId: s.data.accountId as number | null } })}>
                             Automatizar
                           </Button>
                         </div>
@@ -1237,15 +1249,36 @@ export default function FinancePage() {
                 )}
 
                 {/* Weekly review toggle */}
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-muted-foreground">Esta semana</h3>
-                  <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={() => setShowWeeklyReview(v => !v)}>
-                    <BookOpen className="h-3.5 w-3.5" /> {showWeeklyReview ? "Ocultar revisión" : "Ver revisión semanal"}
-                  </Button>
-                </div>
+                {weeklyReview && (
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-sm font-semibold text-muted-foreground">Esta semana</h3>
+                      {!showWeeklyReview && (
+                        <span className="text-xs text-muted-foreground hidden sm:inline">
+                          +{fmt(weeklyReview.thisWeek.income)} ingresos · -{fmt(weeklyReview.thisWeek.expenses)} gastos
+                          {weeklyReview.overspentBudgets.length > 0 && <span className="text-amber-600 ml-1">· {weeklyReview.overspentBudgets.length} presup. excedido{weeklyReview.overspentBudgets.length > 1 ? "s" : ""}</span>}
+                        </span>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="sm" className="text-xs gap-1.5 h-7" onClick={() => setShowWeeklyReview(v => !v)}>
+                      <BookOpen className="h-3.5 w-3.5" /> {showWeeklyReview ? "Ocultar revisión" : "Ver detalle"}
+                    </Button>
+                  </div>
+                )}
                 {showWeeklyReview && weeklyReview && <WeeklyReviewWidget data={weeklyReview} />}
 
-                {/* Goals mini preview */}
+                {/* Goals mini preview — CTA if no goals yet */}
+                {goalsData && goalsData.length === 0 && (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/10 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Trophy className="h-5 w-5 text-amber-500 shrink-0" />
+                      <p className="text-sm text-amber-800 dark:text-amber-300">Todavía no creaste ningún objetivo financiero</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="shrink-0 text-xs h-7 border-amber-400 text-amber-700 hover:bg-amber-50" onClick={() => setTab("objetivos")}>
+                      Crear objetivo →
+                    </Button>
+                  </div>
+                )}
                 {goalsData && goalsData.filter(g => g.isActive).length > 0 && (
                   <Card>
                     <CardHeader className="pb-2 pt-4">
@@ -1401,25 +1434,6 @@ export default function FinancePage() {
               <CardContent className="pt-4 pb-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div className="ml-auto flex items-center gap-2">
-                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
-                      onClick={async () => {
-                        const params = new URLSearchParams();
-                        if (filter.from) params.set("from", filter.from);
-                        if (filter.to) params.set("to", filter.to);
-                        const r = await fetch(`${BASE}/api/finance/export/transactions.csv?${params}`, { credentials: "include" });
-                        if (!r.ok) return;
-                        const blob = await r.blob();
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a"); a.href = url;
-                        a.download = `movimientos_${new Date().toISOString().slice(0,10)}.csv`;
-                        a.click(); URL.revokeObjectURL(url);
-                      }}>
-                      <Download className="h-3.5 w-3.5" /> Exportar CSV
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap mt-2">
                   <Select value={filter.type || "all"} onValueChange={v => setFilter(f => ({ ...f, type: v === "all" ? "" : v }))}>
                     <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
                     <SelectContent><SelectItem value="all">Todos los tipos</SelectItem><SelectItem value="income">Ingresos</SelectItem><SelectItem value="expense">Gastos</SelectItem></SelectContent>
@@ -1439,6 +1453,35 @@ export default function FinancePage() {
                   <Input type="date" className="h-8 w-36 text-xs" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
                   <Input type="date" className="h-8 w-36 text-xs" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} />
                   {hasFilters && <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => setFilter({ type: "", categoryId: "", accountId: "", status: "", from: "", to: "" })}><X className="h-3 w-3" /> Limpiar</Button>}
+                  <div className="ml-auto flex items-center gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
+                      onClick={async () => {
+                        const params = new URLSearchParams();
+                        if (filter.from) params.set("from", filter.from);
+                        if (filter.to) params.set("to", filter.to);
+                        const r = await fetch(`${BASE}/api/finance/export/transactions.csv?${params}`, { credentials: "include" });
+                        if (!r.ok) return;
+                        const blob = await r.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url;
+                        a.download = `movimientos_${new Date().toISOString().slice(0,10)}.csv`;
+                        a.click(); URL.revokeObjectURL(url);
+                      }}>
+                      <Download className="h-3.5 w-3.5" /> Exportar movimientos
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
+                      onClick={async () => {
+                        const r = await fetch(`${BASE}/api/finance/export/summary.csv`, { credentials: "include" });
+                        if (!r.ok) return;
+                        const blob = await r.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url;
+                        a.download = `resumen_mensual_${new Date().toISOString().slice(0,10)}.csv`;
+                        a.click(); URL.revokeObjectURL(url);
+                      }}>
+                      <Download className="h-3.5 w-3.5" /> Resumen mensual
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1933,23 +1976,9 @@ export default function FinancePage() {
                 <h2 className="text-lg font-bold flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" /> Objetivos financieros</h2>
                 <p className="text-xs text-muted-foreground">Metas de ahorro, reducción de gastos y pago de deudas</p>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8"
-                  onClick={async () => {
-                    const r = await fetch(`${BASE}/api/finance/export/summary.csv`, { credentials: "include" });
-                    if (!r.ok) return;
-                    const blob = await r.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a"); a.href = url;
-                    a.download = `resumen_mensual_${new Date().toISOString().slice(0,10)}.csv`;
-                    a.click(); URL.revokeObjectURL(url);
-                  }}>
-                  <Download className="h-3.5 w-3.5" /> Exportar resumen
-                </Button>
-                <Button size="sm" className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setGoalModal({ open: true, goal: null })}>
-                  <Plus className="h-4 w-4" /> Nuevo objetivo
-                </Button>
-              </div>
+              <Button size="sm" className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setGoalModal({ open: true, goal: null })}>
+                <Plus className="h-4 w-4" /> Nuevo objetivo
+              </Button>
             </div>
 
             {goalsLoading ? (
@@ -2042,7 +2071,7 @@ export default function FinancePage() {
       {cardModal.open && <CardModal open={cardModal.open} onClose={() => setCardModal({ open: false, card: null })} card={cardModal.card} onSaved={invalidateAll} />}
       {installModal.open && <InstallmentPlanModal open={installModal.open} onClose={() => setInstallModal({ open: false, plan: null })} plan={installModal.plan} cards={allCards} categories={categories} onSaved={invalidateAll} />}
       {loanModal.open && <LoanModal open={loanModal.open} onClose={() => setLoanModal({ open: false, loan: null })} loan={loanModal.loan} onSaved={invalidateAll} />}
-      {recurModal.open && <RecurringModal open={recurModal.open} onClose={() => setRecurModal({ open: false, rule: null })} rule={recurModal.rule} categories={categories} accounts={accounts} onSaved={invalidateAll} />}
+      {recurModal.open && <RecurringModal open={recurModal.open} onClose={() => setRecurModal({ open: false, rule: null })} rule={recurModal.rule} categories={categories} accounts={accounts} onSaved={invalidateAll} prefill={recurModal.prefill} />}
       {budgetModal.open && <BudgetModal open={budgetModal.open} onClose={() => setBudgetModal({ open: false, budget: null })} budget={budgetModal.budget} categories={categories.filter(c => c.type === "expense")} month={budgetMonth} onSaved={() => { qc.invalidateQueries({ queryKey: ["/api/finance/budgets"] }); }} />}
       {goalModal.open && <GoalModal open={goalModal.open} onClose={() => setGoalModal({ open: false, goal: null })} goal={goalModal.goal} categories={categories} onSaved={() => { toast({ title: goalModal.goal ? "Objetivo actualizado ✓" : "¡Objetivo creado! Empezá a seguir tu progreso." }); qc.invalidateQueries({ queryKey: ["/api/finance/goals"] }); }} />}
       <DeleteConfirmDialog open={deleteConfirm.open} title={deleteConfirm.title} description={deleteConfirm.description} onCancel={() => setDeleteConfirm(s => ({ ...s, open: false }))} onConfirm={deleteConfirm.onConfirm} />
@@ -2219,12 +2248,21 @@ function GoalCard({ goal: g, onEdit, onDelete, onUpdateProgress }: {
 }) {
   const meta = GOAL_META[g.type] ?? GOAL_META.savings;
   const Icon = meta.icon;
-  const pct = Math.min(100, g.pct);
-  const barColor = pct >= 100 ? "bg-emerald-500" : pct >= 70 ? "bg-blue-500" : pct >= 40 ? "bg-amber-500" : "bg-red-400";
-  const isComplete = pct >= 100;
+
+  // For reduce_spending: display as "spent vs limit" (inverted from stored pct)
+  const isReduceSpending = g.type === "reduce_spending";
+  const spent = isReduceSpending ? Math.max(0, g.targetAmount - g.currentAmount) : 0;
+  const displayPct = isReduceSpending
+    ? Math.min(100, (spent / (g.targetAmount || 1)) * 100)
+    : Math.min(100, g.pct);
+  const barColor = isReduceSpending
+    ? (displayPct >= 90 ? "bg-red-500" : displayPct >= 70 ? "bg-amber-500" : "bg-emerald-500")
+    : (displayPct >= 100 ? "bg-emerald-500" : displayPct >= 70 ? "bg-blue-500" : displayPct >= 40 ? "bg-amber-500" : "bg-red-400");
+  const isComplete = isReduceSpending ? displayPct < 100 && g.currentAmount > 0 : g.pct >= 100;
+  const isOverBudget = isReduceSpending && g.currentAmount <= 0 && spent > 0;
 
   return (
-    <Card className={`group ${isComplete ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/30 dark:bg-emerald-950/10" : ""}`}>
+    <Card className={`group ${isOverBudget ? "border-red-300 dark:border-red-700" : isComplete && !isReduceSpending ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/30 dark:bg-emerald-950/10" : ""}`}>
       <CardContent className="px-5 py-4">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -2234,7 +2272,8 @@ function GoalCard({ goal: g, onEdit, onDelete, onUpdateProgress }: {
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-semibold text-sm truncate">{g.title}</p>
-                {isComplete && <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 font-medium">¡Logrado!</span>}
+                {isOverBudget && <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 font-medium">Excedido</span>}
+                {!isReduceSpending && g.pct >= 100 && <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 font-medium">¡Logrado!</span>}
               </div>
               <p className="text-xs text-muted-foreground">{meta.label}{g.category ? ` · ${g.category.name}` : ""}</p>
             </div>
@@ -2246,38 +2285,59 @@ function GoalCard({ goal: g, onEdit, onDelete, onUpdateProgress }: {
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-3 text-center">
-          <div>
-            <p className="text-xs text-muted-foreground">Objetivo</p>
-            <p className="text-sm font-bold tabular-nums">{fmt(g.targetAmount)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">{g.type === "reduce_spending" ? "Ahorrado" : "Acumulado"}</p>
-            <p className={`text-sm font-bold tabular-nums ${isComplete ? "text-emerald-600 dark:text-emerald-400" : ""}`}>{fmt(g.currentAmount)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Restante</p>
-            <p className="text-sm font-bold tabular-nums text-muted-foreground">{g.remaining > 0 ? fmt(g.remaining) : "—"}</p>
-          </div>
+          {isReduceSpending ? (
+            <>
+              <div>
+                <p className="text-xs text-muted-foreground">Límite</p>
+                <p className="text-sm font-bold tabular-nums">{fmt(g.targetAmount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Gastado</p>
+                <p className={`text-sm font-bold tabular-nums ${isOverBudget ? "text-red-600 dark:text-red-400" : ""}`}>{fmt(spent)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Disponible</p>
+                <p className={`text-sm font-bold tabular-nums ${g.currentAmount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>{fmt(Math.max(0, g.currentAmount))}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs text-muted-foreground">Objetivo</p>
+                <p className="text-sm font-bold tabular-nums">{fmt(g.targetAmount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Acumulado</p>
+                <p className={`text-sm font-bold tabular-nums ${g.pct >= 100 ? "text-emerald-600 dark:text-emerald-400" : ""}`}>{fmt(g.currentAmount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Restante</p>
+                <p className="text-sm font-bold tabular-nums text-muted-foreground">{g.remaining > 0 ? fmt(g.remaining) : "—"}</p>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="w-full bg-muted rounded-full h-2 mb-1.5">
-          <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+          <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${displayPct}%` }} />
         </div>
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{Math.round(pct)}% completado</span>
+          <span>{isReduceSpending ? `${Math.round(displayPct)}% del límite usado` : `${Math.round(g.pct)}% completado`}</span>
           <div className="flex items-center gap-3">
             {g.daysLeft != null && g.daysLeft > 0 && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {g.daysLeft}d restantes</span>}
-            {g.monthlyNeeded != null && g.monthlyNeeded > 0 && !isComplete && <span className="text-amber-500">{fmt(g.monthlyNeeded)}/mes</span>}
+            {!isReduceSpending && g.monthlyNeeded != null && g.monthlyNeeded > 0 && g.pct < 100 && <span className="text-amber-500">{fmt(g.monthlyNeeded)}/mes</span>}
           </div>
         </div>
 
         {/* Quick progress update for non-reduce_spending goals */}
         {g.type !== "reduce_spending" && !isComplete && (
           <div className="mt-3 flex items-center gap-2 pt-2 border-t border-dashed">
-            <span className="text-xs text-muted-foreground">Actualizar avance:</span>
+            <span className="text-xs text-muted-foreground shrink-0">Nuevo total:</span>
             <input type="number" min="0" placeholder={String(Math.round(g.currentAmount))} className="flex-1 h-7 text-xs px-2 rounded border bg-background text-right tabular-nums"
+              onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
               onBlur={e => { const val = parseFloat(e.target.value); if (!isNaN(val) && val !== g.currentAmount) { onUpdateProgress(val); e.target.value = ""; } }} />
+            <span className="text-xs text-muted-foreground shrink-0">↵</span>
           </div>
         )}
 
@@ -2321,7 +2381,6 @@ function GoalModal({ open, onClose, goal, categories, onSaved }: {
       };
       const r = await fetch(url, { method: goal ? "PUT" : "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error();
-      toast({ title: goal ? "Objetivo actualizado" : "Objetivo creado" });
       onSaved(); onClose();
     } catch { toast({ title: "Error al guardar", variant: "destructive" }); }
     finally { setSaving(false); }

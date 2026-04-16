@@ -1,5 +1,5 @@
 import { Router, type IRouter, Request, Response } from "express";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, isNull } from "drizzle-orm";
 import {
   db,
   financeAccountsTable,
@@ -1439,8 +1439,10 @@ router.post("/finance/goals", requireAuth, async (req: Request, res: Response): 
   const validTypes = ["savings", "reduce_spending", "emergency_fund", "pay_debt"];
   if (!validTypes.includes(type)) { res.status(400).json({ error: "type inválido" }); return; }
   try {
+    const { currentAmount: rawCurrent } = req.body ?? {};
     const [goal] = await db.insert(financeGoalsTable).values({
-      userId, type, title, targetAmount: String(targetAmount), currentAmount: "0",
+      userId, type, title, targetAmount: String(targetAmount),
+      currentAmount: String(parseFloat(rawCurrent ?? "0") || 0),
       targetDate: targetDate ?? null, categoryId: categoryId ? parseInt(categoryId, 10) : null,
       currency: currency ?? "ARS", isActive: true, notes: notes ?? null,
     }).returning();
@@ -1489,66 +1491,67 @@ router.get("/finance/suggestions", requireAuth, async (req: Request, res: Respon
   const userId = getCurrentUserId(req);
   const today = todayStr();
   const since90 = addDays(today, -90);
+  const since30 = addDays(today, -30);
   try {
-    const [txRows, cats] = await Promise.all([
-      db.select().from(financeTransactionsTable).where(and(
+    // SQL-based grouping — no in-memory processing of 500 rows
+    const [grouped, recentNotesRows, cats] = await Promise.all([
+      db.select({
+        normalizedNotes: sql<string>`lower(trim(notes))`,
+        originalNotes: sql<string>`max(notes)`,
+        txType: financeTransactionsTable.type,
+        cnt: sql<number>`count(*)::int`,
+        avgAmount: sql<string>`round(avg(amount::numeric))`,
+        categoryId: sql<number | null>`max(category_id)`,
+        accountId: sql<number | null>`max(account_id)`,
+      }).from(financeTransactionsTable).where(and(
         eq(financeTransactionsTable.userId, userId),
         gte(financeTransactionsTable.date, since90),
         sql`${financeTransactionsTable.notes} is not null`,
-      )).orderBy(desc(financeTransactionsTable.date)).limit(500),
+        isNull(financeTransactionsTable.recurringRuleId),
+        sql`${financeTransactionsTable.status} != 'cancelled'`,
+        sql`length(trim(notes)) >= 3`,
+      )).groupBy(sql`lower(trim(notes))`, financeTransactionsTable.type)
+        .having(sql`count(*) >= 3`)
+        .orderBy(sql`count(*) desc`)
+        .limit(10),
+      db.select({ notes: financeTransactionsTable.notes })
+        .from(financeTransactionsTable).where(and(
+          eq(financeTransactionsTable.userId, userId),
+          gte(financeTransactionsTable.date, since30),
+          sql`${financeTransactionsTable.notes} is not null`,
+          sql`length(trim(notes)) >= 2`,
+        )).orderBy(desc(financeTransactionsTable.date)).limit(100),
       db.select().from(financeCategoriesTable).where(eq(financeCategoriesTable.userId, userId)),
     ]);
+
     const catMap: Record<number, { name: string; color: string; icon: string }> = {};
     for (const c of cats) catMap[c.id] = { name: c.name, color: c.color, icon: c.icon };
 
-    // Group by normalized notes
-    const groups: Record<string, typeof txRows> = {};
-    for (const tx of txRows) {
-      const key = (tx.notes ?? "").toLowerCase().trim();
-      if (key.length < 3) continue;
-      groups[key] = [...(groups[key] ?? []), tx];
-    }
-
     type Suggestion = { id: string; type: string; text: string; data: Record<string, unknown> };
-    const suggestions: Suggestion[] = [];
+    const suggestions: Suggestion[] = grouped.map(g => ({
+      id: `recurring_${g.normalizedNotes.slice(0, 20)}`,
+      type: "recurring",
+      text: `"${g.originalNotes}" apareció ${g.cnt} veces en los últimos 3 meses. ¿Querés automatizarla como recurrencia?`,
+      data: {
+        notes: g.originalNotes,
+        txType: g.txType,
+        categoryId: g.categoryId,
+        categoryName: g.categoryId ? (catMap[g.categoryId]?.name ?? null) : null,
+        accountId: g.accountId,
+        avgAmount: parseFloat(g.avgAmount),
+        frequency: "monthly",
+      },
+    }));
 
-    for (const [notes, txs] of Object.entries(groups)) {
-      if (txs.length < 3) continue;
-      // Check if any have a recurringRuleId
-      const hasRule = txs.some(t => t.recurringRuleId);
-      if (hasRule) continue;
-
-      // Check if they all have the same type & category
-      const sameType = txs.every(t => t.type === txs[0].type);
-      const sameCategory = txs.every(t => t.categoryId === txs[0].categoryId);
-      const avgAmount = txs.reduce((s, t) => s + parseFloat(t.amount), 0) / txs.length;
-      const catName = txs[0].categoryId ? (catMap[txs[0].categoryId]?.name ?? null) : null;
-
-      suggestions.push({
-        id: `recurring_${notes.slice(0, 20)}`,
-        type: "recurring",
-        text: `"${txs[0].notes}" apareció ${txs.length} veces en los últimos 3 meses. ¿Querés automatizarla como recurrencia?`,
-        data: {
-          notes: txs[0].notes,
-          txType: txs[0].type,
-          categoryId: sameCategory ? txs[0].categoryId : null,
-          categoryName: sameCategory ? catName : null,
-          accountId: txs[0].accountId,
-          avgAmount: Math.round(avgAmount),
-          frequency: "monthly",
-        },
-      });
+    const seenNotes = new Set<string>();
+    const recentConcepts: string[] = [];
+    for (const r of recentNotesRows) {
+      const n = (r.notes ?? "").trim();
+      if (n && !seenNotes.has(n)) { seenNotes.add(n); recentConcepts.push(n); }
+      if (recentConcepts.length >= 20) break;
     }
 
-    // Most used concepts in last 30 days (for autocomplete)
-    const since30 = addDays(today, -30);
-    const recentNotes = txRows
-      .filter(t => t.date >= since30 && t.notes && t.notes.trim().length > 2)
-      .map(t => t.notes as string)
-      .filter((n, i, a) => a.indexOf(n) === i)
-      .slice(0, 20);
-
-    res.json({ suggestions: suggestions.slice(0, 5), recentConcepts: recentNotes });
+    res.json({ suggestions, recentConcepts });
   } catch (err) { logger.error({ err }, "finance suggestions"); res.status(500).json({ error: "Error al calcular sugerencias" }); }
 });
 
@@ -1560,8 +1563,9 @@ router.get("/finance/weekly-review", requireAuth, async (req: Request, res: Resp
   const weekStart = addDays(today, -6);
   const prevWeekStart = addDays(today, -13);
   const prevWeekEnd = addDays(today, -7);
+  const { start: mStart, end: mEnd } = monthRange(`${today.slice(0, 7)}-01`);
   try {
-    const [thisWeekTx, prevWeekTx, expectedUnreceived, upcomingRules, accounts, budgets] = await Promise.all([
+    const [thisWeekTx, prevWeekTx, expectedUnreceived, upcomingRules, accounts, budgets, monthlyCatSpend] = await Promise.all([
       db.select().from(financeTransactionsTable).where(and(
         eq(financeTransactionsTable.userId, userId),
         gte(financeTransactionsTable.date, weekStart),
@@ -1591,6 +1595,14 @@ router.get("/finance/weekly-review", requireAuth, async (req: Request, res: Resp
         eq(financeBudgetsTable.userId, userId),
         eq(financeBudgetsTable.month, today.slice(0, 7)),
       )),
+      db.select({ categoryId: financeTransactionsTable.categoryId, total: sql<string>`coalesce(sum(amount::numeric), 0)` })
+        .from(financeTransactionsTable).where(and(
+          eq(financeTransactionsTable.userId, userId),
+          eq(financeTransactionsTable.type, "expense"),
+          gte(financeTransactionsTable.date, mStart),
+          lte(financeTransactionsTable.date, mEnd),
+          sql`${financeTransactionsTable.status} != 'cancelled'`,
+        )).groupBy(financeTransactionsTable.categoryId),
     ]);
 
     const thisIncome = thisWeekTx.filter(t => t.type === "income").reduce((s, t) => s + parseFloat(t.amount), 0);
@@ -1605,17 +1617,6 @@ router.get("/finance/weekly-review", requireAuth, async (req: Request, res: Resp
 
     const upcomingExpenses = upcomingRules.filter(r => r.type === "expense").reduce((s, r) => s + parseFloat(r.amount), 0);
     const upcomingIncome = upcomingRules.filter(r => r.type === "income").reduce((s, r) => s + parseFloat(r.amount), 0);
-
-    // Get category spending this month for budget comparison
-    const { start: mStart, end: mEnd } = monthRange(`${today.slice(0, 7)}-01`);
-    const monthlyCatSpend = await db.select({ categoryId: financeTransactionsTable.categoryId, total: sql<string>`coalesce(sum(amount::numeric), 0)` })
-      .from(financeTransactionsTable).where(and(
-        eq(financeTransactionsTable.userId, userId),
-        eq(financeTransactionsTable.type, "expense"),
-        gte(financeTransactionsTable.date, mStart),
-        lte(financeTransactionsTable.date, mEnd),
-        sql`${financeTransactionsTable.status} != 'cancelled'`,
-      )).groupBy(financeTransactionsTable.categoryId);
 
     const spendMap: Record<number, number> = {};
     for (const s of monthlyCatSpend) { if (s.categoryId != null) spendMap[s.categoryId] = parseFloat(s.total); }
@@ -1690,37 +1691,38 @@ router.get("/finance/export/summary.csv", requireAuth, async (req: Request, res:
   const userId = getCurrentUserId(req);
   const today = todayStr();
   const [ty, tm] = today.split("-").map(Number);
+  // Compute range: 12 months back
+  const mo12 = tm - 11;
+  const yr12 = mo12 <= 0 ? ty - 1 : ty;
+  const realMo12 = mo12 <= 0 ? mo12 + 12 : mo12;
+  const since = `${yr12}-${String(realMo12).padStart(2, "0")}-01`;
   try {
-    const rows: string[] = [];
-    rows.push("Mes,Ingresos,Gastos,Balance");
-    // Last 12 months
+    // Single query grouped by month — no N+1
+    const monthData = await db.select({
+      month: sql<string>`to_char(date::date, 'YYYY-MM')`,
+      income: sql<string>`coalesce(sum(case when type='income' then amount::numeric else 0 end), 0)`,
+      expense: sql<string>`coalesce(sum(case when type='expense' then amount::numeric else 0 end), 0)`,
+    }).from(financeTransactionsTable).where(and(
+      eq(financeTransactionsTable.userId, userId),
+      gte(financeTransactionsTable.date, since),
+      sql`${financeTransactionsTable.status} != 'cancelled'`,
+    )).groupBy(sql`to_char(date::date, 'YYYY-MM')`).orderBy(sql`to_char(date::date, 'YYYY-MM')`);
+
+    const dataMap: Record<string, { income: number; expense: number }> = {};
+    for (const d of monthData) dataMap[d.month] = { income: parseFloat(d.income), expense: parseFloat(d.expense) };
+
+    const csvRows: string[] = ["Mes,Ingresos,Gastos,Balance"];
     for (let i = 11; i >= 0; i--) {
       const mo = tm - i;
       const yr = mo <= 0 ? ty - 1 : ty;
       const realMo = mo <= 0 ? mo + 12 : mo;
       const monthStr = `${yr}-${String(realMo).padStart(2, "0")}`;
-      const { start, end } = monthRange(`${monthStr}-01`);
-      const [{ income }] = await db.select({ income: sql<string>`coalesce(sum(case when type='income' then amount::numeric else 0 end), 0)` })
-        .from(financeTransactionsTable).where(and(
-          eq(financeTransactionsTable.userId, userId),
-          gte(financeTransactionsTable.date, start),
-          lte(financeTransactionsTable.date, end),
-          sql`${financeTransactionsTable.status} != 'cancelled'`,
-        ));
-      const [{ expense }] = await db.select({ expense: sql<string>`coalesce(sum(case when type='expense' then amount::numeric else 0 end), 0)` })
-        .from(financeTransactionsTable).where(and(
-          eq(financeTransactionsTable.userId, userId),
-          gte(financeTransactionsTable.date, start),
-          lte(financeTransactionsTable.date, end),
-          sql`${financeTransactionsTable.status} != 'cancelled'`,
-        ));
-      const inc = parseFloat(income);
-      const exp = parseFloat(expense);
-      rows.push(`${monthStr},${Math.round(inc)},${Math.round(exp)},${Math.round(inc - exp)}`);
+      const d = dataMap[monthStr] ?? { income: 0, expense: 0 };
+      csvRows.push(`${monthStr},${Math.round(d.income)},${Math.round(d.expense)},${Math.round(d.income - d.expense)}`);
     }
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="resumen_mensual_${today}.csv"`);
-    res.send("\uFEFF" + rows.join("\n"));
+    res.send("\uFEFF" + csvRows.join("\n"));
   } catch (err) { logger.error({ err }, "finance export summary"); res.status(500).json({ error: "Error al exportar resumen" }); }
 });
 
