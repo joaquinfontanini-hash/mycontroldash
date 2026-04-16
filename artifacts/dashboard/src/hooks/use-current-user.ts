@@ -80,7 +80,7 @@ export function useCurrentUser() {
       if (isUnauthenticatedError(error)) return false;
       return failureCount < 2;
     },
-    retryDelay: 3000,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 8000),
   });
 }
 
