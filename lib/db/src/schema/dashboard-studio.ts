@@ -18,6 +18,7 @@ export const dashboardsTable = pgTable("dashboards", {
   status: text("status").notNull().default("draft"), // 'draft' | 'active' | 'archived'
   isFavorite: boolean("is_favorite").notNull().default(false),
   isSystem: boolean("is_system").notNull().default(false),
+  refreshIntervalSeconds: integer("refresh_interval_seconds"),
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
