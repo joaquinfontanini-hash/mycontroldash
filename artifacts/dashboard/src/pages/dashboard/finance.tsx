@@ -2,9 +2,9 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   TrendingUp, TrendingDown, Wallet, Plus, Pencil, Trash2, RefreshCw,
-  ArrowUpCircle, ArrowDownCircle, Calendar, AlertTriangle, CheckCircle,
+  ArrowUpCircle, ArrowDownCircle, Calendar, AlertTriangle,
   Clock, Repeat, ChevronDown, X, Filter, Sparkles, Building2,
-  CreditCard, Smartphone, Info, DollarSign,
+  CreditCard, Smartphone, DollarSign, PieChart,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,30 +39,33 @@ interface FinanceRecurringRule {
   categoryId: number | null; accountId: number | null; frequency: string;
   dayOfMonth: number | null; nextDate: string | null; isActive: boolean; notes: string | null;
 }
+interface CategoryBreakdown { categoryId: number | null; name: string; color: string; total: number; }
 interface FinanceSummary {
   ingresosMes: number; gastosMes: number; saldoEstimadoFinMes: number; saldoDisponible: number;
-  activos: number; deudas: number;
+  activos: number; deudas: number; hasData: boolean;
   accounts: FinanceAccount[];
   upcomingRecurrences: { id: number; name: string; type: string; amount: number; frequency: string; nextDate: string | null; category: { name: string; color: string } | null }[];
   recentTransactions: FinanceTransaction[];
+  categoryBreakdown: CategoryBreakdown[];
   alerts: { level: "green" | "yellow" | "red"; message: string }[];
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────
 
+// FIX: removed \u200B (zero-width space) that broke copy-paste of amounts
 function fmt(n: number) {
-  return "$\u200B" + Math.abs(n).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return "$" + Math.abs(n).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 function fmtSigned(n: number) { return (n >= 0 ? "+" : "-") + fmt(n); }
 
-const ACCOUNT_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  caja:            { label: "Efectivo",          icon: Wallet,       color: "text-emerald-600 dark:text-emerald-400" },
-  banco:           { label: "Banco",             icon: Building2,    color: "text-blue-600 dark:text-blue-400" },
-  billetera_virtual: { label: "Billetera Virtual", icon: Smartphone,  color: "text-violet-600 dark:text-violet-400" },
-  tarjeta:         { label: "Tarjeta",           icon: CreditCard,   color: "text-amber-600 dark:text-amber-400" },
-  cripto:          { label: "Cripto",            icon: DollarSign,   color: "text-orange-600 dark:text-orange-400" },
-  inversiones:     { label: "Inversiones",       icon: TrendingUp,   color: "text-indigo-600 dark:text-indigo-400" },
-  deuda:           { label: "Deuda",             icon: AlertTriangle,color: "text-red-600 dark:text-red-400" },
+const ACCOUNT_META: Record<string, { label: string; icon: React.ElementType; color: string; bgColor: string }> = {
+  caja:              { label: "Efectivo",          icon: Wallet,        color: "text-emerald-600 dark:text-emerald-400", bgColor: "bg-emerald-100 dark:bg-emerald-900/30" },
+  banco:             { label: "Banco",             icon: Building2,     color: "text-blue-600 dark:text-blue-400",       bgColor: "bg-blue-100 dark:bg-blue-900/30" },
+  billetera_virtual: { label: "Billetera Virtual", icon: Smartphone,    color: "text-violet-600 dark:text-violet-400",   bgColor: "bg-violet-100 dark:bg-violet-900/30" },
+  tarjeta:           { label: "Tarjeta",           icon: CreditCard,    color: "text-amber-600 dark:text-amber-400",     bgColor: "bg-amber-100 dark:bg-amber-900/30" },
+  cripto:            { label: "Cripto",            icon: DollarSign,    color: "text-orange-600 dark:text-orange-400",   bgColor: "bg-orange-100 dark:bg-orange-900/30" },
+  inversiones:       { label: "Inversiones",       icon: TrendingUp,    color: "text-indigo-600 dark:text-indigo-400",   bgColor: "bg-indigo-100 dark:bg-indigo-900/30" },
+  deuda:             { label: "Deuda",             icon: AlertTriangle, color: "text-red-600 dark:text-red-400",         bgColor: "bg-red-100 dark:bg-red-900/30" },
 };
 
 const FREQ_LABEL: Record<string, string> = { weekly: "Semanal", monthly: "Mensual", annual: "Anual" };
@@ -84,9 +87,11 @@ function AlertDot({ level }: { level: "green" | "yellow" | "red" }) {
 }
 
 // ─── SUMMARY CARD ─────────────────────────────────────────────────────────
+// FIX: removed broken CSS rgba(var()) syntax; using explicit bgColor instead
+// FIX: removed unused `trend` prop
 
-function SummaryCard({ label, value, sub, accent, icon: Icon, trend }: {
-  label: string; value: string; sub?: string; accent: string; icon: React.ElementType; trend?: "up" | "down" | null;
+function SummaryCard({ label, value, sub, accent, bgColor, icon: Icon }: {
+  label: string; value: string; sub?: string; accent: string; bgColor: string; icon: React.ElementType;
 }) {
   return (
     <Card className="relative overflow-hidden">
@@ -97,15 +102,100 @@ function SummaryCard({ label, value, sub, accent, icon: Icon, trend }: {
             <p className={`text-2xl font-bold mt-1 tabular-nums ${accent}`}>{value}</p>
             {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
           </div>
-          <div className={`rounded-xl p-2.5 shrink-0 ${accent.replace("text-", "bg-").replace("dark:text-", "dark:bg-").replace(/-([\d]+)/, "-100").replace("dark:bg-", "dark:bg-")}`} style={{ background: "rgba(var(--accent-rgb, 99 102 241)/0.1)" }}>
+          <div className={`rounded-xl p-2.5 shrink-0 ${bgColor}`}>
             <Icon className={`h-5 w-5 ${accent}`} />
           </div>
         </div>
-        {trend && (
-          <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-            {trend === "up" ? <TrendingUp className="h-3 w-3 text-emerald-500" /> : <TrendingDown className="h-3 w-3 text-red-500" />}
-          </div>
-        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── DELETE CONFIRM DIALOG ─────────────────────────────────────────────────
+// FIX: replaces native confirm() dialog with proper in-app dialog
+
+function DeleteConfirmDialog({ open, onCancel, onConfirm, title, description }: {
+  open: boolean; onCancel: () => void; onConfirm: () => void;
+  title: string; description?: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onCancel(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Trash2 className="h-4 w-4 text-destructive" />
+            {title}
+          </DialogTitle>
+        </DialogHeader>
+        {description && <p className="text-sm text-muted-foreground px-1">{description}</p>}
+        <DialogFooter className="gap-2 pt-2">
+          <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
+          <Button variant="destructive" onClick={onConfirm}>Eliminar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── CATEGORY BREAKDOWN BAR ────────────────────────────────────────────────
+
+function CategoryBreakdownSection({ breakdown, total }: { breakdown: CategoryBreakdown[]; total: number }) {
+  if (!breakdown.length) return null;
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-4">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <PieChart className="h-4 w-4 text-muted-foreground" /> Gastos por categoría — este mes
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pb-4 space-y-2.5">
+        {breakdown.map(item => {
+          const pct = total > 0 ? (item.total / total) * 100 : 0;
+          return (
+            <div key={item.categoryId ?? "sin"}>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-medium" style={{ color: item.color }}>{item.name}</span>
+                <span className="tabular-nums text-muted-foreground">{fmt(item.total)} <span className="opacity-60">({Math.round(pct)}%)</span></span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, background: item.color }} />
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── ONBOARDING EMPTY STATE ────────────────────────────────────────────────
+
+function OnboardingCard({ onLoadDemo, onNewAccount, onNewTx, loading }: {
+  onLoadDemo: () => void; onNewAccount: () => void; onNewTx: () => void; loading: boolean;
+}) {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="py-12 px-8 text-center">
+        <div className="h-16 w-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
+          <Wallet className="h-8 w-8 text-violet-600 dark:text-violet-400" />
+        </div>
+        <h3 className="text-lg font-bold mb-1">Empezá a registrar tus finanzas</h3>
+        <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
+          Llevá el control de tus ingresos, gastos y cuentas en un solo lugar. Podés empezar cargando datos de ejemplo o crear tu primer movimiento.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button onClick={onNewAccount} variant="outline" className="gap-1.5">
+            <Building2 className="h-4 w-4" /> Crear cuenta
+          </Button>
+          <Button onClick={onNewTx} className="gap-1.5 bg-violet-600 hover:bg-violet-700">
+            <Plus className="h-4 w-4" /> Primer movimiento
+          </Button>
+          <Button onClick={onLoadDemo} variant="ghost" disabled={loading} className="gap-1.5 text-muted-foreground text-xs">
+            <Sparkles className="h-3.5 w-3.5" />
+            {loading ? "Cargando..." : "Cargar datos de ejemplo"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -165,7 +255,9 @@ function TransactionModal({
   const activeCats = form.type === "income" ? incomeCategories : expenseCategories;
 
   async function handleSave() {
-    if (!form.amount || parseFloat(form.amount) <= 0) { toast({ title: "Ingresá un monto válido", variant: "destructive" }); return; }
+    if (!form.amount || parseFloat(form.amount) <= 0) {
+      toast({ title: "Ingresá un monto válido", variant: "destructive" }); return;
+    }
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
@@ -191,7 +283,11 @@ function TransactionModal({
           dayOfMonth: form.recurDay ? parseInt(form.recurDay, 10) : null,
           nextDate: form.recurNextDate || null,
         };
-        await fetch(`${BASE}/api/finance/recurring-rules`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ruleBody) });
+        await fetch(`${BASE}/api/finance/recurring-rules`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ruleBody),
+        });
       }
 
       toast({ title: tx ? "Movimiento actualizado" : "Movimiento registrado" });
@@ -352,7 +448,10 @@ function AccountModal({ open, onClose, acct, onSaved }: {
   open: boolean; onClose: () => void; acct: FinanceAccount | null; onSaved: () => void;
 }) {
   const { toast } = useToast();
-  const [form, setForm] = useState({ type: acct?.type ?? "banco", label: acct?.label ?? "", amount: acct?.amount ?? "0", currency: acct?.currency ?? "ARS", notes: acct?.notes ?? "" });
+  const [form, setForm] = useState({
+    type: acct?.type ?? "banco", label: acct?.label ?? "",
+    amount: acct?.amount ?? "0", currency: acct?.currency ?? "ARS", notes: acct?.notes ?? "",
+  });
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
@@ -360,7 +459,10 @@ function AccountModal({ open, onClose, acct, onSaved }: {
     setSaving(true);
     try {
       const url = acct ? `${BASE}/api/finance/accounts/${acct.id}` : `${BASE}/api/finance/accounts`;
-      const r = await fetch(url, { method: acct ? "PUT" : "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const r = await fetch(url, {
+        method: acct ? "PUT" : "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+      });
       if (!r.ok) throw new Error();
       toast({ title: acct ? "Cuenta actualizada" : "Cuenta creada" });
       onSaved(); onClose();
@@ -437,12 +539,21 @@ function RecurringModal({ open, onClose, rule, categories, accounts, onSaved }: 
   const activeCats = categories.filter(c => c.type === form.type);
 
   async function handleSave() {
-    if (!form.name || !form.amount) { toast({ title: "Nombre y monto son obligatorios", variant: "destructive" }); return; }
+    if (!form.name || !form.amount) {
+      toast({ title: "Nombre y monto son obligatorios", variant: "destructive" }); return;
+    }
     setSaving(true);
     try {
-      const body = { ...form, amount: parseFloat(form.amount), categoryId: form.categoryId || null, accountId: form.accountId || null, dayOfMonth: form.dayOfMonth ? parseInt(form.dayOfMonth, 10) : null };
+      const body = {
+        ...form, amount: parseFloat(form.amount),
+        categoryId: form.categoryId || null, accountId: form.accountId || null,
+        dayOfMonth: form.dayOfMonth ? parseInt(form.dayOfMonth, 10) : null,
+      };
       const url = rule ? `${BASE}/api/finance/recurring-rules/${rule.id}` : `${BASE}/api/finance/recurring-rules`;
-      const r = await fetch(url, { method: rule ? "PUT" : "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(url, {
+        method: rule ? "PUT" : "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
       if (!r.ok) throw new Error();
       toast({ title: rule ? "Regla actualizada" : "Regla creada" });
       onSaved(); onClose();
@@ -538,7 +649,11 @@ export default function FinancePage() {
   const [acctModal, setAcctModal] = useState<{ open: boolean; acct: FinanceAccount | null }>({ open: false, acct: null });
   const [recurModal, setRecurModal] = useState<{ open: boolean; rule: FinanceRecurringRule | null }>({ open: false, rule: null });
 
-  // Filters for movimientos tab
+  // FIX: delete confirmation state (replaces native confirm() dialogs)
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean; title: string; description?: string; onConfirm: () => void;
+  }>({ open: false, title: "", onConfirm: () => {} });
+
   const [filter, setFilter] = useState({ type: "", categoryId: "", accountId: "", status: "", from: "", to: "" });
 
   const { data: summary, isLoading: summaryLoading } = useQuery<FinanceSummary>({
@@ -600,35 +715,49 @@ export default function FinancePage() {
     onError: () => toast({ title: "Error al cargar demo", variant: "destructive" }),
   });
 
+  // FIX: replaced confirm() with proper dialog
+  function confirmDelete(title: string, description: string, action: () => Promise<void>) {
+    setDeleteConfirm({
+      open: true, title, description,
+      onConfirm: async () => {
+        setDeleteConfirm(s => ({ ...s, open: false }));
+        await action();
+      },
+    });
+  }
+
   async function deleteTx(id: number) {
-    if (!confirm("¿Eliminar este movimiento?")) return;
-    const r = await fetch(`${BASE}/api/finance/transactions/${id}`, { method: "DELETE", credentials: "include" });
-    if (r.ok) { toast({ title: "Eliminado" }); invalidateAll(); }
-    else toast({ title: "Error al eliminar", variant: "destructive" });
+    confirmDelete("¿Eliminar movimiento?", "Esta acción no se puede deshacer y puede actualizar el saldo de la cuenta asociada.", async () => {
+      const r = await fetch(`${BASE}/api/finance/transactions/${id}`, { method: "DELETE", credentials: "include" });
+      if (r.ok) { toast({ title: "Movimiento eliminado" }); invalidateAll(); }
+      else toast({ title: "Error al eliminar", variant: "destructive" });
+    });
   }
 
   async function deleteAccount(id: number) {
-    if (!confirm("¿Eliminar esta cuenta?")) return;
-    const r = await fetch(`${BASE}/api/finance/accounts/${id}`, { method: "DELETE", credentials: "include" });
-    if (r.ok) { toast({ title: "Cuenta eliminada" }); invalidateAll(); }
-    else toast({ title: "Error al eliminar", variant: "destructive" });
+    confirmDelete("¿Eliminar cuenta?", "Se eliminará la cuenta. Los movimientos asociados no se borrarán.", async () => {
+      const r = await fetch(`${BASE}/api/finance/accounts/${id}`, { method: "DELETE", credentials: "include" });
+      if (r.ok) { toast({ title: "Cuenta eliminada" }); invalidateAll(); }
+      else toast({ title: "Error al eliminar", variant: "destructive" });
+    });
   }
 
   async function deleteRule(id: number) {
-    if (!confirm("¿Eliminar esta regla?")) return;
-    const r = await fetch(`${BASE}/api/finance/recurring-rules/${id}`, { method: "DELETE", credentials: "include" });
-    if (r.ok) { toast({ title: "Regla eliminada" }); invalidateAll(); }
-    else toast({ title: "Error al eliminar", variant: "destructive" });
+    confirmDelete("¿Eliminar recurrencia?", "Se eliminará la regla. Los movimientos ya registrados no se verán afectados.", async () => {
+      const r = await fetch(`${BASE}/api/finance/recurring-rules/${id}`, { method: "DELETE", credentials: "include" });
+      if (r.ok) { toast({ title: "Regla eliminada" }); invalidateAll(); }
+      else toast({ title: "Error al eliminar", variant: "destructive" });
+    });
   }
 
   const hasFilters = Object.values(filter).some(Boolean);
-  const totalPages = txData ? Math.ceil(txData.total / 200) : 0;
+  const hasData = summary?.hasData ?? false;
 
   return (
     <div className="relative min-h-screen">
       <div className="mx-auto max-w-5xl px-4 py-6 space-y-6 pb-24">
 
-        {/* Header */}
+        {/* Header — FIX: "Cargar demo" moved to empty state onboarding */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -636,16 +765,9 @@ export default function FinancePage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">Tu situación financiera en tiempo real</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}
-              className="text-xs gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" />
-              {seedMutation.isPending ? "Cargando..." : "Cargar demo"}
-            </Button>
-            <Button variant="outline" size="sm" onClick={invalidateAll} className="text-xs gap-1.5">
-              <RefreshCw className="h-3.5 w-3.5" /> Actualizar
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={invalidateAll} className="text-xs gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+          </Button>
         </div>
 
         <Tabs value={tab} onValueChange={setTab}>
@@ -660,38 +782,63 @@ export default function FinancePage() {
           <TabsContent value="dashboard" className="mt-5 space-y-5">
             {summaryLoading ? (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {[...Array(6)].map((_, i) => <Card key={i}><CardContent className="h-24 animate-pulse bg-muted rounded-lg" /></Card>)}
+                {[...Array(6)].map((_, i) => <Card key={i}><CardContent className="h-28 animate-pulse bg-muted rounded-lg m-2" /></Card>)}
               </div>
-            ) : summary ? (
+            ) : !summary ? null : !hasData ? (
+              /* FIX: onboarding empty state with demo loader */
+              <OnboardingCard
+                onLoadDemo={() => seedMutation.mutate()}
+                onNewAccount={() => { setTab("cuentas"); setAcctModal({ open: true, acct: null }); }}
+                onNewTx={() => setTxModal({ open: true, tx: null })}
+                loading={seedMutation.isPending}
+              />
+            ) : (
               <>
-                {/* Summary Cards */}
+                {/* Summary Cards — FIX: uses bgColor instead of broken CSS var */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <SummaryCard label="Saldo disponible" value={fmt(summary.saldoDisponible)}
-                    sub="Activos menos deudas" accent="text-violet-600 dark:text-violet-400" icon={Wallet} />
+                    sub="Activos menos deudas"
+                    accent="text-violet-600 dark:text-violet-400"
+                    bgColor="bg-violet-100 dark:bg-violet-900/30"
+                    icon={Wallet} />
                   <SummaryCard label="Ingresos del mes" value={fmt(summary.ingresosMes)}
-                    sub="Confirmados" accent="text-emerald-600 dark:text-emerald-400" icon={TrendingUp} />
+                    sub="Confirmados"
+                    accent="text-emerald-600 dark:text-emerald-400"
+                    bgColor="bg-emerald-100 dark:bg-emerald-900/30"
+                    icon={TrendingUp} />
                   <SummaryCard label="Gastos del mes" value={fmt(summary.gastosMes)}
-                    sub="Confirmados" accent="text-red-500 dark:text-red-400" icon={TrendingDown} />
+                    sub="Confirmados"
+                    accent="text-red-500 dark:text-red-400"
+                    bgColor="bg-red-100 dark:bg-red-900/30"
+                    icon={TrendingDown} />
+                  {/* FIX: clearer label and sub-label for estimated balance */}
                   <SummaryCard
-                    label="Fin de mes estimado"
+                    label="Balance neto del mes"
                     value={fmt(summary.saldoEstimadoFinMes)}
-                    sub={summary.saldoEstimadoFinMes >= 0 ? "Saldo positivo" : "Déficit proyectado"}
+                    sub={summary.saldoEstimadoFinMes >= 0 ? "Ingresos − Gastos (proyectado)" : "Déficit proyectado"}
                     accent={summary.saldoEstimadoFinMes >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}
+                    bgColor={summary.saldoEstimadoFinMes >= 0 ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"}
                     icon={Calendar}
                   />
                   <SummaryCard label="Próx. recurrencias" value={String(summary.upcomingRecurrences.length)}
-                    sub="En 30 días" accent="text-amber-600 dark:text-amber-400" icon={Repeat} />
+                    sub="En 30 días"
+                    accent="text-amber-600 dark:text-amber-400"
+                    bgColor="bg-amber-100 dark:bg-amber-900/30"
+                    icon={Repeat} />
                   <SummaryCard label="Alertas activas" value={String(summary.alerts.length)}
                     sub={summary.alerts.length === 0 ? "Todo en orden" : "Ver detalle abajo"}
                     accent={summary.alerts.some(a => a.level === "red") ? "text-red-500 dark:text-red-400" : summary.alerts.some(a => a.level === "yellow") ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}
+                    bgColor={summary.alerts.some(a => a.level === "red") ? "bg-red-100 dark:bg-red-900/30" : "bg-emerald-100 dark:bg-emerald-900/30"}
                     icon={AlertTriangle} />
                 </div>
 
-                {/* Alerts */}
+                {/* Alerts — FIX: only shown when there are real alerts */}
                 {summary.alerts.length > 0 && (
                   <Card>
                     <CardHeader className="pb-2 pt-4">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" /> Alertas</CardTitle>
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-500" /> Alertas
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2 pb-4">
                       {summary.alerts.map((a, i) => (
@@ -718,7 +865,7 @@ export default function FinancePage() {
                       ) : (
                         <div className="space-y-1">
                           {summary.recentTransactions.map(tx => (
-                            <div key={tx.id} className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 transition-colors group">
+                            <div key={tx.id} className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 transition-colors">
                               <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0"
                                 style={{ background: (tx.category?.color ?? "#6b7280") + "22" }}>
                                 {tx.type === "income"
@@ -727,7 +874,7 @@ export default function FinancePage() {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium truncate">{tx.notes || tx.category?.name || (tx.type === "income" ? "Ingreso" : "Gasto")}</p>
-                                <p className="text-xs text-muted-foreground">{tx.date} · {tx.category?.name}</p>
+                                <p className="text-xs text-muted-foreground">{tx.date}{tx.category?.name ? ` · ${tx.category.name}` : ""}</p>
                               </div>
                               <span className={`text-sm font-bold tabular-nums shrink-0 ${tx.type === "income" ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
                                 {tx.type === "income" ? "+" : "-"}{fmt(tx.amount)}
@@ -751,7 +898,7 @@ export default function FinancePage() {
                     </CardHeader>
                     <CardContent className="pb-3">
                       {summary.upcomingRecurrences.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-4 text-center">No hay recurrencias próximas</p>
+                        <p className="text-sm text-muted-foreground py-4 text-center">No hay recurrencias en los próximos 30 días</p>
                       ) : (
                         <div className="space-y-1">
                           {summary.upcomingRecurrences.map(r => (
@@ -776,6 +923,14 @@ export default function FinancePage() {
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* FIX: new category spending breakdown */}
+                {summary.categoryBreakdown.length > 0 && (
+                  <CategoryBreakdownSection
+                    breakdown={summary.categoryBreakdown}
+                    total={summary.gastosMes}
+                  />
+                )}
 
                 {/* Accounts mini */}
                 {summary.accounts.length > 0 && (
@@ -810,12 +965,11 @@ export default function FinancePage() {
                   </Card>
                 )}
               </>
-            ) : null}
+            )}
           </TabsContent>
 
           {/* ── MOVIMIENTOS TAB ── */}
           <TabsContent value="movimientos" className="mt-5 space-y-4">
-            {/* Filters */}
             <Card>
               <CardContent className="pt-4 pb-3">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -849,8 +1003,8 @@ export default function FinancePage() {
                       {Object.entries(STATUS_META).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Input type="date" className="h-8 w-36 text-xs" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} placeholder="Desde" />
-                  <Input type="date" className="h-8 w-36 text-xs" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} placeholder="Hasta" />
+                  <Input type="date" className="h-8 w-36 text-xs" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
+                  <Input type="date" className="h-8 w-36 text-xs" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} />
                   {hasFilters && (
                     <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => setFilter({ type: "", categoryId: "", accountId: "", status: "", from: "", to: "" })}>
                       <X className="h-3 w-3" /> Limpiar
@@ -981,7 +1135,7 @@ export default function FinancePage() {
                       <CardContent className="pt-5 pb-4 px-5">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2.5">
-                            <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-muted">
+                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${meta.bgColor}`}>
                               <Icon className={`h-5 w-5 ${meta.color}`} />
                             </div>
                             <div>
@@ -1076,7 +1230,7 @@ export default function FinancePage() {
       </div>
 
       {/* Floating Action Button */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+      <div className="fixed bottom-6 right-6 z-50">
         <Button
           size="lg"
           className="h-14 w-14 rounded-full shadow-2xl bg-violet-600 hover:bg-violet-700 text-white p-0"
@@ -1114,6 +1268,15 @@ export default function FinancePage() {
           onSaved={invalidateAll}
         />
       )}
+
+      {/* FIX: delete confirmation dialog (replaces native confirm()) */}
+      <DeleteConfirmDialog
+        open={deleteConfirm.open}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+        onCancel={() => setDeleteConfirm(s => ({ ...s, open: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+      />
     </div>
   );
 }

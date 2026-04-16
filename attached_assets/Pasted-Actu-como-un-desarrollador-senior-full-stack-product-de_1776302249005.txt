@@ -1,0 +1,137 @@
+Actuá como un desarrollador senior full-stack + product designer UX.
+
+Quiero que desarrolles la FASE 2 del módulo “Finanzas Personales” ya construido en FASE 1.
+
+OBJETIVO DE ESTA FASE
+Agregar control real de compromisos financieros, para que el usuario no solo vea lo que gastó, sino también lo que ya tiene comprometido hacia adelante.
+
+No rompas la simplicidad lograda.
+Todo debe integrarse a la base existente.
+Debe sentirse como evolución natural del módulo.
+
+IMPLEMENTAR EN ESTA FASE:
+
+1) GASTOS AVANZADOS
+Expandir la lógica de gastos para clasificarlos en:
+- fijos
+- variables permanentes
+- variables ocasionales
+
+Esto debe verse claro en UI y filtros.
+
+2) TARJETAS
+Crear submódulo específico de tarjetas.
+
+Cada tarjeta debe permitir:
+- nombre
+- banco/emisor
+- fecha de cierre
+- fecha de vencimiento
+- límite opcional
+- color o identificador visual
+
+Debe permitir:
+- cargar consumos con tarjeta
+- marcar compras en cuotas
+- ver resumen estimado
+- ver próximo vencimiento
+- ver pago mínimo y pago total manual o calculado
+- vincular movimientos a una tarjeta específica
+
+En el dashboard principal mostrar:
+- próximo vencimiento de tarjeta
+- total estimado a pagar
+- alertas de cierre/vencimiento
+
+3) CUOTAS
+Crear lógica de cuotas.
+
+Cada compra en cuotas debe permitir:
+- monto total
+- cantidad de cuotas
+- valor por cuota
+- cuotas pagadas
+- cuotas restantes
+- próxima cuota
+
+Debe reflejarse:
+- en proyección futura
+- en vencimientos
+- en vista de detalle de tarjeta o gasto
+
+4) PRÉSTAMOS
+Crear submódulo de préstamos.
+
+Campos:
+- nombre del préstamo
+- acreedor
+- monto total
+- cantidad de cuotas
+- monto de cuota
+- fecha de inicio
+- próxima cuota
+- estado
+- saldo pendiente
+
+Mostrar:
+- total adeudado
+- próximas cuotas
+- calendario de pagos
+- presión financiera de próximos 30 días
+
+5) COMPROMISOS DEL MES
+Agregar una nueva tarjeta resumen y/o panel:
+- total comprometido del mes
+- cuánto ya está asignado antes de gastar libremente
+- diferencia entre saldo total y saldo libre
+
+Esto es obligatorio.
+
+Mostrar siempre claramente:
+- saldo total
+- saldo comprometido
+- saldo libre
+
+6) ALERTAS
+Agregar alertas para:
+- vencimiento próximo
+- cierre de tarjeta
+- cuota por vencer
+- préstamo por vencer
+- gasto fijo próximo
+- saldo libre en riesgo
+
+7) RECURRENCIAS MEJORADAS
+Permitir editar y gestionar recurrencias desde una pantalla específica.
+
+Acciones:
+- pausar
+- reactivar
+- editar
+- eliminar
+- ver próxima ejecución
+
+8) DASHBOARD ACTUALIZADO
+Actualizar el dashboard de FASE 1 con:
+- próximos vencimientos de tarjeta
+- próximos pagos de préstamo
+- resumen comprometido
+- semáforo de presión financiera
+
+9) TABLAS / MODELOS
+Agregar e integrar entidades:
+- cards
+- installment_plans
+- loans
+- alerts
+
+10) UX/UI
+Mantener la misma línea visual ya creada.
+No hacer una experiencia compleja.
+El usuario debe entender en segundos:
+- qué debe
+- qué vence
+- cuánto le queda libre
+
+11) RESULTADO FINAL
+Quiero una FASE 2 totalmente integrada, usable, visualmente clara y lista para producción, con foco en control de compromisos y prevención de desorden financiero.
