@@ -2,6 +2,7 @@ import { execSync } from "child_process";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { reclassifyAllNews } from "./services/news.service.js";
+import { seedTravelLocationsIfNeeded } from "./services/travelSeedService.js";
 
 const rawPort = process.env["PORT"];
 
@@ -59,6 +60,11 @@ const server = app.listen(port, (err) => {
     // Los artículos ya clasificados por el motor v3 se omiten.
     reclassifyAllNews(false).catch(err => {
       logger.error({ err }, "News reclassification failed");
+    });
+
+    // Auto-seed travel locations catalog if table is outdated (< full catalog length).
+    seedTravelLocationsIfNeeded().catch(err => {
+      logger.error({ err }, "Auto-seed travel locations failed");
     });
   });
 });

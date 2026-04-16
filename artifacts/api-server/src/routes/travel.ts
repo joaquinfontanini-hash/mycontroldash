@@ -341,78 +341,114 @@ router.get("/travel/locations-catalog", requireAuth, async (_req: Request, res: 
   res.json(rows);
 });
 
+// ── Travel locations catalog ───────────────────────────────────────────────────
+
+export const TRAVEL_LOCATIONS = [
+  // ── Argentina ──────────────────────────────────────────────────────────────
+  { label: "Neuquén (NQN)", normalizedName: "neuquen", code: "NQN", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["neuquén", "nqn", "chapelco"] },
+  { label: "Buenos Aires — Ezeiza (EZE)", normalizedName: "buenos aires ezeiza", code: "EZE", country: "Argentina", region: "Argentina", type: "airport", aliases: ["eze", "ezeiza", "buenos aires", "bue"] },
+  { label: "Buenos Aires — Aeroparque (AEP)", normalizedName: "buenos aires aeroparque", code: "AEP", country: "Argentina", region: "Argentina", type: "airport", aliases: ["aep", "aeroparque", "jorge newbery", "buenos aires"] },
+  { label: "Mendoza (MDZ)", normalizedName: "mendoza", code: "MDZ", country: "Argentina", region: "Cuyo", type: "airport", aliases: ["mendoza", "mdz"] },
+  { label: "Córdoba (COR)", normalizedName: "cordoba", code: "COR", country: "Argentina", region: "Centro", type: "airport", aliases: ["córdoba", "cordoba", "cor"] },
+  { label: "Bariloche (BRC)", normalizedName: "bariloche", code: "BRC", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["bariloche", "brc", "san carlos de bariloche"] },
+  { label: "Rosario (ROS)", normalizedName: "rosario", code: "ROS", country: "Argentina", region: "Centro", type: "airport", aliases: ["rosario", "ros"] },
+  { label: "Puerto Iguazú (IGR)", normalizedName: "puerto iguazu", code: "IGR", country: "Argentina", region: "Litoral", type: "airport", aliases: ["iguazú", "iguazu", "igr", "cataratas"] },
+  { label: "Ushuaia (USH)", normalizedName: "ushuaia", code: "USH", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["ushuaia", "ush", "tierra del fuego"] },
+  { label: "Mar del Plata (MDQ)", normalizedName: "mar del plata", code: "MDQ", country: "Argentina", region: "Buenos Aires", type: "airport", aliases: ["mar del plata", "mdq", "mardelplata"] },
+  { label: "Salta (SLA)", normalizedName: "salta", code: "SLA", country: "Argentina", region: "Norte", type: "airport", aliases: ["salta", "sla"] },
+  { label: "Jujuy (JUJ)", normalizedName: "jujuy", code: "JUJ", country: "Argentina", region: "Norte", type: "airport", aliases: ["jujuy", "juj", "san salvador de jujuy"] },
+  { label: "Tucumán (TUC)", normalizedName: "tucuman", code: "TUC", country: "Argentina", region: "Norte", type: "airport", aliases: ["tucumán", "tucuman", "tuc"] },
+  { label: "Chapelco — San Martín de los Andes (CPC)", normalizedName: "chapelco san martin de los andes", code: "CPC", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["san martin de los andes", "chapelco", "cpc"] },
+  { label: "Trelew (REL)", normalizedName: "trelew", code: "REL", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["trelew", "rel"] },
+  { label: "Puerto Madryn (PMY)", normalizedName: "puerto madryn", code: "PMY", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["puerto madryn", "pmy"] },
+  { label: "Comodoro Rivadavia (CRD)", normalizedName: "comodoro rivadavia", code: "CRD", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["comodoro rivadavia", "comodoro", "crd", "rivadavia"] },
+  { label: "Santa Rosa (RSA)", normalizedName: "santa rosa", code: "RSA", country: "Argentina", region: "Pampa", type: "airport", aliases: ["santa rosa", "rsa", "la pampa"] },
+  { label: "Corrientes (CNQ)", normalizedName: "corrientes", code: "CNQ", country: "Argentina", region: "Litoral", type: "airport", aliases: ["corrientes", "cnq"] },
+  { label: "Posadas (PSS)", normalizedName: "posadas", code: "PSS", country: "Argentina", region: "Litoral", type: "airport", aliases: ["posadas", "pss"] },
+  { label: "Río Gallegos (RGL)", normalizedName: "rio gallegos", code: "RGL", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["rio gallegos", "rgl"] },
+  { label: "Villa Mercedes (VME)", normalizedName: "villa mercedes", code: "VME", country: "Argentina", region: "Cuyo", type: "airport", aliases: ["villa mercedes", "vme", "san luis"] },
+  { label: "Resistencia (RES)", normalizedName: "resistencia", code: "RES", country: "Argentina", region: "Litoral", type: "airport", aliases: ["resistencia", "res", "chaco"] },
+  // ── Sudamérica — capitales ─────────────────────────────────────────────────
+  { label: "Santiago de Chile (SCL)", normalizedName: "santiago chile", code: "SCL", country: "Chile", region: "Sudamérica", type: "airport", aliases: ["santiago", "chile", "scl"] },
+  { label: "Montevideo (MVD)", normalizedName: "montevideo", code: "MVD", country: "Uruguay", region: "Sudamérica", type: "airport", aliases: ["montevideo", "uruguay", "mvd"] },
+  { label: "Punta del Este (PDP)", normalizedName: "punta del este", code: "PDP", country: "Uruguay", region: "Sudamérica", type: "airport", aliases: ["punta del este", "pdp"] },
+  { label: "São Paulo (GRU)", normalizedName: "sao paulo", code: "GRU", country: "Brasil", region: "Sudamérica", type: "airport", aliases: ["san pablo", "sao paulo", "brasil", "brazil", "gru", "guarulhos"] },
+  { label: "Río de Janeiro (GIG)", normalizedName: "rio de janeiro", code: "GIG", country: "Brasil", region: "Sudamérica", type: "airport", aliases: ["rio de janeiro", "rio", "gig", "galeao"] },
+  { label: "Brasilia (BSB)", normalizedName: "brasilia", code: "BSB", country: "Brasil", region: "Sudamérica", type: "airport", aliases: ["brasilia", "bsb"] },
+  { label: "Bogotá (BOG)", normalizedName: "bogota", code: "BOG", country: "Colombia", region: "Sudamérica", type: "airport", aliases: ["bogotá", "bogota", "colombia", "bog", "el dorado"] },
+  { label: "Medellín (MDE)", normalizedName: "medellin", code: "MDE", country: "Colombia", region: "Sudamérica", type: "airport", aliases: ["medellin", "medellín", "mde"] },
+  { label: "Lima (LIM)", normalizedName: "lima", code: "LIM", country: "Perú", region: "Sudamérica", type: "airport", aliases: ["lima", "peru", "perú", "lim"] },
+  { label: "Quito (UIO)", normalizedName: "quito", code: "UIO", country: "Ecuador", region: "Sudamérica", type: "airport", aliases: ["quito", "ecuador", "uio"] },
+  { label: "Guayaquil (GYE)", normalizedName: "guayaquil", code: "GYE", country: "Ecuador", region: "Sudamérica", type: "airport", aliases: ["guayaquil", "gye"] },
+  { label: "Caracas (CCS)", normalizedName: "caracas", code: "CCS", country: "Venezuela", region: "Sudamérica", type: "airport", aliases: ["caracas", "venezuela", "ccs"] },
+  { label: "La Paz (LPB)", normalizedName: "la paz", code: "LPB", country: "Bolivia", region: "Sudamérica", type: "airport", aliases: ["la paz", "bolivia", "lpb"] },
+  { label: "Asunción (ASU)", normalizedName: "asuncion", code: "ASU", country: "Paraguay", region: "Sudamérica", type: "airport", aliases: ["asunción", "asuncion", "paraguay", "asu"] },
+  // ── Centroamérica y Caribe ─────────────────────────────────────────────────
+  { label: "La Habana (HAV)", normalizedName: "la habana", code: "HAV", country: "Cuba", region: "Caribe", type: "airport", aliases: ["habana", "cuba", "hav", "varadero"] },
+  { label: "Cancún (CUN)", normalizedName: "cancun", code: "CUN", country: "México", region: "Caribe", type: "airport", aliases: ["cancún", "cancun", "riviera maya", "cun"] },
+  { label: "Punta Cana (PUJ)", normalizedName: "punta cana", code: "PUJ", country: "Rep. Dominicana", region: "Caribe", type: "airport", aliases: ["punta cana", "dominicana", "republica dominicana", "puj"] },
+  { label: "Santo Domingo (SDQ)", normalizedName: "santo domingo", code: "SDQ", country: "Rep. Dominicana", region: "Caribe", type: "airport", aliases: ["santo domingo", "sdq"] },
+  { label: "Ciudad de Panamá (PTY)", normalizedName: "ciudad de panama", code: "PTY", country: "Panamá", region: "Centroamérica", type: "airport", aliases: ["panama", "panamá", "pty", "tocumen"] },
+  { label: "San José de Costa Rica (SJO)", normalizedName: "san jose costa rica", code: "SJO", country: "Costa Rica", region: "Centroamérica", type: "airport", aliases: ["san jose", "costa rica", "sjo"] },
+  // ── Norteamérica ───────────────────────────────────────────────────────────
+  { label: "Ciudad de México (MEX)", normalizedName: "ciudad de mexico", code: "MEX", country: "México", region: "Norteamérica", type: "airport", aliases: ["ciudad de mexico", "cdmx", "mexico", "mex"] },
+  { label: "Guadalajara (GDL)", normalizedName: "guadalajara", code: "GDL", country: "México", region: "Norteamérica", type: "airport", aliases: ["guadalajara", "gdl"] },
+  { label: "Miami (MIA)", normalizedName: "miami", code: "MIA", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["miami", "florida", "eeuu", "usa", "mia"] },
+  { label: "Nueva York — JFK (JFK)", normalizedName: "nueva york jfk", code: "JFK", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["nueva york", "new york", "jfk", "kennedy", "eeuu"] },
+  { label: "Nueva York — Newark (EWR)", normalizedName: "nueva york newark", code: "EWR", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["newark", "ewr", "new york"] },
+  { label: "Los Ángeles (LAX)", normalizedName: "los angeles", code: "LAX", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["los angeles", "los ángeles", "lax", "california"] },
+  { label: "Chicago (ORD)", normalizedName: "chicago", code: "ORD", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["chicago", "ohare", "ord"] },
+  { label: "Orlando (MCO)", normalizedName: "orlando", code: "MCO", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["orlando", "disney", "mco"] },
+  { label: "Toronto (YYZ)", normalizedName: "toronto", code: "YYZ", country: "Canadá", region: "Norteamérica", type: "airport", aliases: ["toronto", "canada", "yyz", "pearson"] },
+  { label: "Ottawa (YOW)", normalizedName: "ottawa", code: "YOW", country: "Canadá", region: "Norteamérica", type: "airport", aliases: ["ottawa", "yow"] },
+  // ── Europa — capitales ─────────────────────────────────────────────────────
+  { label: "Madrid (MAD)", normalizedName: "madrid", code: "MAD", country: "España", region: "Europa", type: "airport", aliases: ["madrid", "españa", "espana", "mad", "barajas"] },
+  { label: "Barcelona (BCN)", normalizedName: "barcelona", code: "BCN", country: "España", region: "Europa", type: "airport", aliases: ["barcelona", "bcn", "el prat"] },
+  { label: "París — CDG (CDG)", normalizedName: "paris cdg", code: "CDG", country: "Francia", region: "Europa", type: "airport", aliases: ["paris", "parís", "france", "francia", "cdg", "charles de gaulle"] },
+  { label: "Roma — Fiumicino (FCO)", normalizedName: "roma fiumicino", code: "FCO", country: "Italia", region: "Europa", type: "airport", aliases: ["roma", "rome", "italia", "fco", "fiumicino"] },
+  { label: "Milán (MXP)", normalizedName: "milan", code: "MXP", country: "Italia", region: "Europa", type: "airport", aliases: ["milan", "milán", "mxp", "malpensa"] },
+  { label: "Londres — Heathrow (LHR)", normalizedName: "londres heathrow", code: "LHR", country: "Reino Unido", region: "Europa", type: "airport", aliases: ["london", "londres", "uk", "reino unido", "lhr", "heathrow"] },
+  { label: "Berlín (BER)", normalizedName: "berlin", code: "BER", country: "Alemania", region: "Europa", type: "airport", aliases: ["berlin", "berlín", "ber", "brandenburgo"] },
+  { label: "Frankfurt (FRA)", normalizedName: "frankfurt", code: "FRA", country: "Alemania", region: "Europa", type: "airport", aliases: ["frankfurt", "alemania", "germany", "fra"] },
+  { label: "Ámsterdam (AMS)", normalizedName: "amsterdam", code: "AMS", country: "Países Bajos", region: "Europa", type: "airport", aliases: ["amsterdam", "holanda", "ams", "schiphol"] },
+  { label: "Lisboa (LIS)", normalizedName: "lisboa", code: "LIS", country: "Portugal", region: "Europa", type: "airport", aliases: ["lisboa", "lisbon", "portugal", "lis"] },
+  { label: "Zúrich (ZRH)", normalizedName: "zurich", code: "ZRH", country: "Suiza", region: "Europa", type: "airport", aliases: ["zurich", "zúrich", "suiza", "zrh"] },
+  { label: "Viena (VIE)", normalizedName: "viena", code: "VIE", country: "Austria", region: "Europa", type: "airport", aliases: ["viena", "vienna", "austria", "vie"] },
+  { label: "Atenas (ATH)", normalizedName: "atenas", code: "ATH", country: "Grecia", region: "Europa", type: "airport", aliases: ["atenas", "athens", "grecia", "ath"] },
+  { label: "Bruselas (BRU)", normalizedName: "bruselas", code: "BRU", country: "Bélgica", region: "Europa", type: "airport", aliases: ["bruselas", "brussels", "belgica", "bru"] },
+  { label: "Estocolmo (ARN)", normalizedName: "estocolmo", code: "ARN", country: "Suecia", region: "Europa", type: "airport", aliases: ["estocolmo", "stockholm", "suecia", "arn"] },
+  { label: "Oslo (OSL)", normalizedName: "oslo", code: "OSL", country: "Noruega", region: "Europa", type: "airport", aliases: ["oslo", "noruega", "osl"] },
+  { label: "Copenhague (CPH)", normalizedName: "copenhague", code: "CPH", country: "Dinamarca", region: "Europa", type: "airport", aliases: ["copenhague", "copenhagen", "dinamarca", "cph"] },
+  { label: "Helsinki (HEL)", normalizedName: "helsinki", code: "HEL", country: "Finlandia", region: "Europa", type: "airport", aliases: ["helsinki", "finlandia", "hel"] },
+  { label: "Varsovia (WAW)", normalizedName: "varsovia", code: "WAW", country: "Polonia", region: "Europa", type: "airport", aliases: ["varsovia", "warsaw", "polonia", "waw"] },
+  { label: "Praga (PRG)", normalizedName: "praga", code: "PRG", country: "Rep. Checa", region: "Europa", type: "airport", aliases: ["praga", "prague", "prg"] },
+  { label: "Budapest (BUD)", normalizedName: "budapest", code: "BUD", country: "Hungría", region: "Europa", type: "airport", aliases: ["budapest", "hungria", "bud"] },
+  { label: "Bucarest (OTP)", normalizedName: "bucarest", code: "OTP", country: "Rumanía", region: "Europa", type: "airport", aliases: ["bucarest", "bucharest", "rumania", "otp"] },
+  { label: "Dublín (DUB)", normalizedName: "dublin", code: "DUB", country: "Irlanda", region: "Europa", type: "airport", aliases: ["dublin", "dublín", "irlanda", "dub"] },
+  // ── Asia y Oriente Medio ───────────────────────────────────────────────────
+  { label: "Dubái (DXB)", normalizedName: "dubai", code: "DXB", country: "Emiratos Árabes", region: "Asia", type: "airport", aliases: ["dubai", "dxb", "emiratos"] },
+  { label: "Tokio — Narita (NRT)", normalizedName: "tokio narita", code: "NRT", country: "Japón", region: "Asia", type: "airport", aliases: ["tokio", "tokyo", "japon", "japón", "nrt", "narita"] },
+  { label: "Bangkok (BKK)", normalizedName: "bangkok", code: "BKK", country: "Tailandia", region: "Asia", type: "airport", aliases: ["bangkok", "tailandia", "bkk"] },
+  { label: "Singapur (SIN)", normalizedName: "singapur", code: "SIN", country: "Singapur", region: "Asia", type: "airport", aliases: ["singapur", "singapore", "sin", "changi"] },
+  // ── Oceanía y África ───────────────────────────────────────────────────────
+  { label: "Sídney (SYD)", normalizedName: "sidney", code: "SYD", country: "Australia", region: "Oceanía", type: "airport", aliases: ["sidney", "sydney", "australia", "syd"] },
+  { label: "Ciudad del Cabo (CPT)", normalizedName: "ciudad del cabo", code: "CPT", country: "Sudáfrica", region: "África", type: "airport", aliases: ["ciudad del cabo", "cape town", "sudafrica", "cpt"] },
+  { label: "Johannesburgo (JNB)", normalizedName: "johannesburgo", code: "JNB", country: "Sudáfrica", region: "África", type: "airport", aliases: ["johannesburgo", "johannesburg", "sudafrica", "jnb"] },
+];
+
 // ── POST /travel/seed-locations — seed catalog (admin only) ──────────────────
 
 router.post("/travel/seed-locations", requireAdmin, async (_req: Request, res: Response): Promise<void> => {
-  const existing = await db.select().from(travelLocationsTable).limit(1);
-  if (existing.length > 0) {
-    res.json({ ok: true, message: "Locations already seeded", count: 0 });
-    return;
+  try {
+    await db.delete(travelLocationsTable);
+    const inserted = await db.insert(travelLocationsTable)
+      .values(TRAVEL_LOCATIONS.map(l => ({ id: uid(), ...l })))
+      .returning();
+    res.json({ ok: true, count: inserted.length, message: `${inserted.length} ubicaciones cargadas correctamente` });
+  } catch (err) {
+    logger.error({ err }, "Error seeding travel locations");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Error al cargar ubicaciones" });
   }
-
-  const locations = [
-    // ── Argentina ─────────────────────────────────────────────────────────────
-    { label: "Neuquén (NQN)", normalizedName: "neuquen", code: "NQN", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["neuquén", "nqn"] },
-    { label: "Buenos Aires — Ezeiza (EZE)", normalizedName: "buenos aires ezeiza", code: "EZE", country: "Argentina", region: "Argentina", type: "airport", aliases: ["eze", "ezeiza", "buenos aires", "bue"] },
-    { label: "Buenos Aires — Aeroparque (AEP)", normalizedName: "buenos aires aeroparque", code: "AEP", country: "Argentina", region: "Argentina", type: "airport", aliases: ["aep", "aeroparque", "buenos aires"] },
-    { label: "Mendoza (MDZ)", normalizedName: "mendoza", code: "MDZ", country: "Argentina", region: "Cuyo", type: "airport", aliases: ["mendoza", "mdz"] },
-    { label: "Córdoba (COR)", normalizedName: "cordoba", code: "COR", country: "Argentina", region: "Centro", type: "airport", aliases: ["córdoba", "cordoba", "cor"] },
-    { label: "Bariloche (BRC)", normalizedName: "bariloche", code: "BRC", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["bariloche", "brc", "san carlos de bariloche"] },
-    { label: "Rosario (ROS)", normalizedName: "rosario", code: "ROS", country: "Argentina", region: "Centro", type: "airport", aliases: ["rosario", "ros"] },
-    { label: "Iguazú (IGR)", normalizedName: "iguazu", code: "IGR", country: "Argentina", region: "Litoral", type: "airport", aliases: ["iguazú", "iguazu", "puerto iguazu", "igr"] },
-    { label: "Ushuaia (USH)", normalizedName: "ushuaia", code: "USH", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["ushuaia", "ush", "tierra del fuego"] },
-    { label: "Mar del Plata (MDQ)", normalizedName: "mar del plata", code: "MDQ", country: "Argentina", region: "Buenos Aires", type: "airport", aliases: ["mar del plata", "mdp", "mdq"] },
-    { label: "Salta (SLA)", normalizedName: "salta", code: "SLA", country: "Argentina", region: "Norte", type: "airport", aliases: ["salta", "sla"] },
-    { label: "Jujuy (JUJ)", normalizedName: "jujuy", code: "JUJ", country: "Argentina", region: "Norte", type: "airport", aliases: ["jujuy", "juj", "san salvador de jujuy"] },
-    { label: "Tucumán (TUC)", normalizedName: "tucuman", code: "TUC", country: "Argentina", region: "Norte", type: "airport", aliases: ["tucumán", "tucuman", "tuc"] },
-    { label: "San Martín de los Andes (CPC)", normalizedName: "san martin de los andes", code: "CPC", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["san martin de los andes", "chapelco", "cpc"] },
-    { label: "Puerto Madryn (PMY)", normalizedName: "puerto madryn", code: "PMY", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["puerto madryn", "pmy"] },
-    { label: "Comodoro Rivadavia (CRD)", normalizedName: "comodoro rivadavia", code: "CRD", country: "Argentina", region: "Patagonia", type: "airport", aliases: ["comodoro rivadavia", "comodoro", "crd"] },
-    { label: "Santa Rosa (RSA)", normalizedName: "santa rosa", code: "RSA", country: "Argentina", region: "Pampa", type: "airport", aliases: ["santa rosa", "rsa", "la pampa"] },
-    { label: "Posadas (PSS)", normalizedName: "posadas", code: "PSS", country: "Argentina", region: "Litoral", type: "airport", aliases: ["posadas", "pss"] },
-    { label: "Resistencia (RES)", normalizedName: "resistencia", code: "RES", country: "Argentina", region: "Litoral", type: "airport", aliases: ["resistencia", "res", "chaco"] },
-    // ── Sudamérica ────────────────────────────────────────────────────────────
-    { label: "Santiago de Chile (SCL)", normalizedName: "santiago de chile", code: "SCL", country: "Chile", region: "Sudamérica", type: "airport", aliases: ["santiago", "chile", "scl"] },
-    { label: "Lima (LIM)", normalizedName: "lima", code: "LIM", country: "Perú", region: "Sudamérica", type: "airport", aliases: ["lima", "peru", "perú", "lim"] },
-    { label: "Bogotá (BOG)", normalizedName: "bogota", code: "BOG", country: "Colombia", region: "Sudamérica", type: "airport", aliases: ["bogotá", "bogota", "colombia", "bog"] },
-    { label: "São Paulo (GRU)", normalizedName: "sao paulo", code: "GRU", country: "Brasil", region: "Sudamérica", type: "airport", aliases: ["san pablo", "sao paulo", "brasil", "brazil", "gru"] },
-    { label: "Río de Janeiro (GIG)", normalizedName: "rio de janeiro", code: "GIG", country: "Brasil", region: "Sudamérica", type: "airport", aliases: ["rio de janeiro", "rio", "gig"] },
-    { label: "Montevideo (MVD)", normalizedName: "montevideo", code: "MVD", country: "Uruguay", region: "Sudamérica", type: "airport", aliases: ["montevideo", "uruguay", "mvd"] },
-    { label: "Punta del Este (PDP)", normalizedName: "punta del este", code: "PDP", country: "Uruguay", region: "Sudamérica", type: "airport", aliases: ["punta del este", "pdp"] },
-    { label: "Asunción (ASU)", normalizedName: "asuncion", code: "ASU", country: "Paraguay", region: "Sudamérica", type: "airport", aliases: ["asunción", "asuncion", "paraguay", "asu"] },
-    // ── Caribe ────────────────────────────────────────────────────────────────
-    { label: "Cancún (CUN)", normalizedName: "cancun", code: "CUN", country: "México", region: "Caribe", type: "airport", aliases: ["cancún", "cancun", "mexico", "méxico", "riviera maya", "cun"] },
-    { label: "Punta Cana (PUJ)", normalizedName: "punta cana", code: "PUJ", country: "Rep. Dominicana", region: "Caribe", type: "airport", aliases: ["punta cana", "dominicana", "republica dominicana", "puj"] },
-    { label: "Varadero (VRA)", normalizedName: "varadero", code: "VRA", country: "Cuba", region: "Caribe", type: "airport", aliases: ["varadero", "cuba", "vra"] },
-    { label: "Ciudad de Panamá (PTY)", normalizedName: "ciudad de panama", code: "PTY", country: "Panamá", region: "Caribe", type: "airport", aliases: ["panama", "panamá", "pty"] },
-    // ── Norteamérica ──────────────────────────────────────────────────────────
-    { label: "Miami (MIA)", normalizedName: "miami", code: "MIA", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["miami", "florida", "eeuu", "usa", "mia"] },
-    { label: "Nueva York — JFK (JFK)", normalizedName: "nueva york jfk", code: "JFK", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["nueva york", "new york", "jfk", "eeuu"] },
-    { label: "Los Ángeles (LAX)", normalizedName: "los angeles", code: "LAX", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["los angeles", "los ángeles", "lax", "eeuu"] },
-    { label: "Orlando (MCO)", normalizedName: "orlando", code: "MCO", country: "Estados Unidos", region: "Norteamérica", type: "airport", aliases: ["orlando", "disney", "mco"] },
-    { label: "Ciudad de México (MEX)", normalizedName: "ciudad de mexico", code: "MEX", country: "México", region: "Norteamérica", type: "airport", aliases: ["ciudad de mexico", "cdmx", "mexico", "mex"] },
-    // ── Europa ────────────────────────────────────────────────────────────────
-    { label: "Madrid (MAD)", normalizedName: "madrid", code: "MAD", country: "España", region: "Europa", type: "airport", aliases: ["madrid", "españa", "espana", "mad"] },
-    { label: "Barcelona (BCN)", normalizedName: "barcelona", code: "BCN", country: "España", region: "Europa", type: "airport", aliases: ["barcelona", "bcn", "cataluña"] },
-    { label: "París (CDG)", normalizedName: "paris", code: "CDG", country: "Francia", region: "Europa", type: "airport", aliases: ["paris", "parís", "france", "francia", "cdg"] },
-    { label: "Roma (FCO)", normalizedName: "roma", code: "FCO", country: "Italia", region: "Europa", type: "airport", aliases: ["roma", "rome", "italia", "fco"] },
-    { label: "Londres (LHR)", normalizedName: "londres", code: "LHR", country: "Reino Unido", region: "Europa", type: "airport", aliases: ["london", "londres", "uk", "reino unido", "lhr"] },
-    { label: "Milán (MXP)", normalizedName: "milan", code: "MXP", country: "Italia", region: "Europa", type: "airport", aliases: ["milan", "milán", "mxp"] },
-    { label: "Lisboa (LIS)", normalizedName: "lisboa", code: "LIS", country: "Portugal", region: "Europa", type: "airport", aliases: ["lisboa", "lisbon", "portugal", "lis"] },
-    { label: "Amsterdam (AMS)", normalizedName: "amsterdam", code: "AMS", country: "Países Bajos", region: "Europa", type: "airport", aliases: ["amsterdam", "holanda", "ams"] },
-    { label: "Frankfurt (FRA)", normalizedName: "frankfurt", code: "FRA", country: "Alemania", region: "Europa", type: "airport", aliases: ["frankfurt", "alemania", "germany", "fra"] },
-    // ── Asia & Otros ──────────────────────────────────────────────────────────
-    { label: "Tokio (NRT)", normalizedName: "tokio", code: "NRT", country: "Japón", region: "Asia", type: "airport", aliases: ["tokio", "tokyo", "japon", "japón", "nrt"] },
-    { label: "Dubai (DXB)", normalizedName: "dubai", code: "DXB", country: "Emiratos Árabes", region: "Asia", type: "airport", aliases: ["dubai", "dxb", "emiratos"] },
-    { label: "Bangkok (BKK)", normalizedName: "bangkok", code: "BKK", country: "Tailandia", region: "Asia", type: "airport", aliases: ["bangkok", "tailandia", "bkk"] },
-    { label: "Johannesburgo (JNB)", normalizedName: "johannesburgo", code: "JNB", country: "Sudáfrica", region: "África", type: "airport", aliases: ["johannesburgo", "sudafrica", "jnb"] },
-  ];
-
-  const inserted = await db.insert(travelLocationsTable)
-    .values(locations.map(l => ({ id: uid(), ...l })))
-    .returning();
-
-  res.json({ ok: true, count: inserted.length });
 });
 
 // ── GET /travel/api-quotas ────────────────────────────────────────────────────
