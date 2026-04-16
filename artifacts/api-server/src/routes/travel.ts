@@ -243,7 +243,6 @@ router.delete("/travel/search-profiles/:id", requireAuth, async (req: Request, r
 // ── POST /travel/search-profiles/:id/run ─────────────────────────────────────
 
 router.post("/travel/search-profiles/:id/run", requireAuth, async (req: Request, res: Response): Promise<void> => {
-  console.log("SERPAPI_KEY presente:", !!process.env["SERPAPI_KEY"]);
   const { id } = req.params as { id: string };
   const userId = getCurrentUserIdNum(req);
   try {
