@@ -12,7 +12,7 @@ export const dashboardsTable = pgTable("dashboards", {
   category: text("category"),
   icon: text("icon"),
   color: text("color"),
-  sourceType: text("source_type").notNull().default("manual"), // 'prompt' | 'template' | 'wizard' | 'manual'
+  sourceType: text("source_type").notNull().default("manual"), // 'prompt' | 'template' | 'wizard' | 'manual' | 'duplicate'
   templateKey: text("template_key"),
   promptText: text("prompt_text"),
   status: text("status").notNull().default("draft"), // 'draft' | 'active' | 'archived'

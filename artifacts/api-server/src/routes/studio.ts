@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, or, ne, sql } from "drizzle-orm";
+import { eq, and, desc, or, ne, sql, gte, lte } from "drizzle-orm";
+import { createHash } from "crypto";
 import {
   db,
   dashboardsTable,
@@ -293,6 +294,12 @@ router.patch("/studio/dashboards/:id", studioAuth, async (req, res): Promise<voi
     if (!dash) { res.status(404).json({ error: "Dashboard no encontrado" }); return; }
 
     const { name, description, icon, color, category, status, isFavorite, refreshIntervalSeconds } = req.body;
+
+    // D3: Validate status enum
+    if (status !== undefined && !["draft", "active", "archived"].includes(status)) {
+      res.status(400).json({ error: "status inválido: debe ser draft, active o archived" }); return;
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date(), version: dash.version + 1 };
     if (name                   !== undefined) updates.name                   = name;
     if (description            !== undefined) updates.description            = description;
@@ -366,6 +373,7 @@ router.post("/studio/dashboards/:id/duplicate", studioAuth, async (req, res): Pr
           configJson: w.configJson,
           orderIndex: w.orderIndex,
           visible: w.visible,
+          refreshIntervalSeconds: w.refreshIntervalSeconds ?? null,
         }))
       ).returning({ id: dashboardWidgetsTable.id });
 
@@ -1074,12 +1082,17 @@ router.post("/studio/widgets/:widgetId/refresh-snapshot", studioAuth, async (req
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 min TTL
 
+    // E2: Compute dataSignature — sha256 of (dataSourceKey + configJson)
+    const sigInput = JSON.stringify({ k: widget.dataSourceKey, c: widget.configJson });
+    const dataSignature = createHash("sha256").update(sigInput).digest("hex").slice(0, 16);
+
     await db.update(dashboardWidgetsTable).set({
       lastDataSnapshotJson: freshData,
       lastDataSnapshotAt: now,
       snapshotExpiresAt: expiresAt,
       snapshotStatus,
       snapshotVersion: widget.snapshotVersion + 1,
+      dataSignature,
     }).where(eq(dashboardWidgetsTable.id, widgetId));
 
     await auditLog("studio_snapshot_refreshed", `Snapshot refrescado para widget #${widgetId}`, userId);
@@ -1101,6 +1114,12 @@ router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<
     const access = await getDashboardAccess(id, userId, (req as any).dbUser);
     if (!access) { res.status(403).json({ error: "Sin acceso" }); return; }
 
+    // T003: Parse global filter params from query string
+    let globalFilters: Record<string, unknown> = {};
+    if (req.query.filters) {
+      try { globalFilters = JSON.parse(req.query.filters as string); } catch {}
+    }
+
     const widgets = await db.select().from(dashboardWidgetsTable)
       .where(and(eq(dashboardWidgetsTable.dashboardId, id), eq(dashboardWidgetsTable.visible, true)));
 
@@ -1108,8 +1127,10 @@ router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<
 
     await Promise.all(
       widgets.map(async (w) => {
-        // Serve from snapshot if fresh
+        // Serve from snapshot only if no global filters active (filters bypass cache for accuracy)
+        const hasActiveFilters = Object.keys(globalFilters).length > 0;
         const snapshotFresh =
+          !hasActiveFilters &&
           w.lastDataSnapshotJson !== null &&
           w.snapshotExpiresAt !== null &&
           new Date(w.snapshotExpiresAt) > new Date() &&
@@ -1128,19 +1149,24 @@ router.get("/studio/dashboards/:id/data", studioAuth, async (req, res): Promise<
             results[w.id] = { data: null, fromSnapshot: false };
             return;
           }
-          const data = await resolveDataSource(w.dataSourceKey, userId, (w.configJson as Record<string, unknown>) ?? {});
+          // Merge widget configJson with global filters
+          const params = { ...(w.configJson as Record<string, unknown>) ?? {}, ...globalFilters };
+          const data = await resolveDataSource(w.dataSourceKey, userId, params);
           results[w.id] = { data, fromSnapshot: false };
 
           // Async update snapshot for eligible sources
           const meta = DATA_SOURCE_CATALOG.find(d => d.key === w.dataSourceKey);
           if (meta?.supportsSnapshot && data !== null) {
             const now = new Date();
+            const sigInput = JSON.stringify({ k: w.dataSourceKey, c: w.configJson });
+            const dataSignature = createHash("sha256").update(sigInput).digest("hex").slice(0, 16);
             db.update(dashboardWidgetsTable).set({
               lastDataSnapshotJson: data,
               lastDataSnapshotAt: now,
               snapshotExpiresAt: new Date(now.getTime() + 5 * 60 * 1000),
               snapshotStatus: "fresh",
               snapshotVersion: w.snapshotVersion + 1,
+              dataSignature,
             }).where(eq(dashboardWidgetsTable.id, w.id)).catch(() => {});
           }
         } else {

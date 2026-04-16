@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Pencil, Share2, RefreshCw, Monitor, Smartphone, Star } from "lucide-react";
 import { BASE } from "@/lib/base-url";
 import { WidgetRenderer } from "./components/WidgetRenderer";
+import { DashboardFiltersBar, type FilterValues } from "./components/DashboardFiltersBar";
 import type { DashboardFull, DashboardWidget, WidgetData, Breakpoint, LayoutItem } from "./types";
 
 async function apiFetch(path: string, opts: RequestInit = {}) {
@@ -41,6 +42,8 @@ export function DashboardViewer({ dashId, onBack, onEdit, onShare }: DashboardVi
   const { toast } = useToast();
   const qc = useQueryClient();
   const [activeBreakpoint, setActiveBreakpoint] = useState<Breakpoint>(detectBreakpoint);
+  // T003: active filter values — drive data refetch when changed
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
 
   const { data: dash, isLoading } = useQuery<DashboardFull>({
     queryKey: ["studio-dashboard", dashId],
@@ -52,9 +55,14 @@ export function DashboardViewer({ dashId, onBack, onEdit, onShare }: DashboardVi
     ? Math.max(dash.refreshIntervalSeconds, 30) * 1000
     : 60000;
 
+  // Build filter query param — only if there are active filters
+  const filtersParam = Object.keys(filterValues).length > 0
+    ? `?filters=${encodeURIComponent(JSON.stringify(filterValues))}`
+    : "";
+
   const { data: widgetDataRaw = {}, refetch: refetchData, isFetching } = useQuery<Record<number, WidgetData>>({
-    queryKey: ["studio-dashboard-data", dashId],
-    queryFn: () => apiFetch(`api/studio/dashboards/${dashId}/data`),
+    queryKey: ["studio-dashboard-data", dashId, filterValues],
+    queryFn: () => apiFetch(`api/studio/dashboards/${dashId}/data${filtersParam}`),
     enabled: !!dash,
     refetchInterval: refreshIntervalMs,
   });
@@ -225,6 +233,14 @@ export function DashboardViewer({ dashId, onBack, onEdit, onShare }: DashboardVi
           <span className="text-xs text-muted-foreground">• Este dashboard está en borrador</span>
         )}
       </div>
+
+      {/* T003: Global filters bar — rendered only when filters are defined for this dashboard */}
+      {(dash.filters ?? []).length > 0 && (
+        <DashboardFiltersBar
+          filters={dash.filters}
+          onChange={setFilterValues}
+        />
+      )}
 
       {/* Widgets grid */}
       {orderedWidgets.length === 0 ? (

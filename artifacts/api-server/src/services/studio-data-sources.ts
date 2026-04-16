@@ -88,11 +88,14 @@ export async function resolveDataSource(
       case "dueDates.upcoming": {
         const today = new Date();
         const in30 = new Date(today.getTime() + 30 * 86400000);
+        // Support global dateFrom/dateTo filters
+        const dateFrom = (params.dateFrom as string) ?? today.toISOString().slice(0, 10);
+        const dateTo   = (params.dateTo   as string) ?? in30.toISOString().slice(0, 10);
         return await db.select().from(dueDatesTable)
           .where(and(
             eq(dueDatesTable.userId, userIdStr),
-            gte(dueDatesTable.dueDate, today.toISOString().slice(0, 10)),
-            lte(dueDatesTable.dueDate, in30.toISOString().slice(0, 10)),
+            gte(dueDatesTable.dueDate, dateFrom),
+            lte(dueDatesTable.dueDate, dateTo),
             ne(dueDatesTable.status, "done"),
           ))
           .orderBy(dueDatesTable.dueDate)
@@ -138,17 +141,18 @@ export async function resolveDataSource(
       }
 
       case "finance.summary": {
-        // Current month income vs expenses
+        // Current month income vs expenses (or filtered date range)
         const now = new Date();
-        const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        const dateFrom = (params.dateFrom as string) ?? defaultFrom;
+        const summaryWhere = params.dateTo
+          ? and(eq(financeTransactionsTable.userId, userIdStr), gte(financeTransactionsTable.date, dateFrom), lte(financeTransactionsTable.date, params.dateTo as string))
+          : and(eq(financeTransactionsTable.userId, userIdStr), gte(financeTransactionsTable.date, dateFrom));
         const rows = await db.select({
           amount: financeTransactionsTable.amount,
           type: financeTransactionsTable.type,
         }).from(financeTransactionsTable)
-          .where(and(
-            eq(financeTransactionsTable.userId, userIdStr),
-            gte(financeTransactionsTable.date, firstOfMonth),
-          ));
+          .where(summaryWhere);
 
         const ingresos = rows
           .filter(r => r.type === "income" || r.type === "ingreso")
@@ -162,8 +166,15 @@ export async function resolveDataSource(
       }
 
       case "finance.transactions.recent": {
+        const txWhere = params.dateFrom || params.dateTo
+          ? and(
+              eq(financeTransactionsTable.userId, userIdStr),
+              params.dateFrom ? gte(financeTransactionsTable.date, params.dateFrom as string) : undefined,
+              params.dateTo   ? lte(financeTransactionsTable.date, params.dateTo   as string) : undefined,
+            )
+          : eq(financeTransactionsTable.userId, userIdStr);
         return await db.select().from(financeTransactionsTable)
-          .where(eq(financeTransactionsTable.userId, userIdStr))
+          .where(txWhere)
           .orderBy(desc(financeTransactionsTable.date))
           .limit((params.limit as number) ?? 10);
       }

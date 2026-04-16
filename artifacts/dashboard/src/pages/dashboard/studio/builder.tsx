@@ -164,10 +164,16 @@ function WidgetConfigPanel({
   widget,
   onUpdate,
   onClose,
+  currentWidth = 1,
+  onWidthChange,
+  breakpoint = "desktop",
 }: {
   widget: DashboardWidget;
   onUpdate: (updates: Partial<DashboardWidget>) => void;
   onClose: () => void;
+  currentWidth?: number;
+  onWidthChange?: (w: 1 | 2 | 3) => void;
+  breakpoint?: Breakpoint;
 }) {
   const [title, setTitle] = useState(widget.title);
   const [subtitle, setSubtitle] = useState(widget.subtitle ?? "");
@@ -267,6 +273,29 @@ function WidgetConfigPanel({
           </div>
         )}
 
+        {/* Width selector — only relevant on desktop (mobile auto-stacks to 1 col) */}
+        {breakpoint !== "mobile" && onWidthChange && (
+          <div className="space-y-1">
+            <Label className="text-xs">Ancho en desktop</Label>
+            <Select
+              value={String(currentWidth)}
+              onValueChange={v => onWidthChange(Number(v) as 1 | 2 | 3)}
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 columna (angosto)</SelectItem>
+                <SelectItem value="2">2 columnas (mediano)</SelectItem>
+                <SelectItem value="3">Ancho completo</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Se guarda al presionar "Guardar"
+            </p>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <Switch
             id="widget-visible"
@@ -306,6 +335,8 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
   const [dashRefreshInterval, setDashRefreshInterval] = useState<number | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [paletteCategory, setPaletteCategory] = useState<string>("datos");
+  // T002: per-breakpoint column-width map (widgetId → 1|2|3)
+  const [layoutWidthsByBreakpoint, setLayoutWidthsByBreakpoint] = useState<Record<string, Record<number, number>>>({});
 
   // Load dashboard
   const { data: dash, isLoading } = useQuery<DashboardFull>({
@@ -321,6 +352,16 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
       setDashStatus(dash.status);
       setDashRefreshInterval(dash.refreshIntervalSeconds ?? null);
       setHasUnsavedChanges(false);
+      // T002: Initialize layout widths from persisted layouts
+      const widthsByBp: Record<string, Record<number, number>> = {};
+      for (const layout of dash.layouts ?? []) {
+        const bp = layout.breakpoint;
+        widthsByBp[bp] = {};
+        for (const item of layout.layoutJson ?? []) {
+          widthsByBp[bp][item.widgetId] = item.w ?? 1;
+        }
+      }
+      setLayoutWidthsByBreakpoint(widthsByBp);
     }
   }, [dash]);
 
@@ -420,15 +461,26 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
     },
   });
 
+  // T002: Handler for widget width change
+  const handleWidgetWidthChange = useCallback((widgetId: number, w: 1 | 2 | 3) => {
+    setLayoutWidthsByBreakpoint(prev => ({
+      ...prev,
+      [activeBreakpoint]: { ...(prev[activeBreakpoint] ?? {}), [widgetId]: w },
+    }));
+    setHasUnsavedChanges(true);
+  }, [activeBreakpoint]);
+
   // Save layout + reorder mutation
   const saveMutation = useMutation({
     mutationFn: async () => {
       // D2: Atomic batch save — single request, backend wraps in a transaction
+      const currentWidths = layoutWidthsByBreakpoint[activeBreakpoint] ?? {};
       const layout: LayoutItem[] = widgets.map((w, i) => ({
         widgetId: w.id,
         x: activeBreakpoint === "mobile" ? 0 : (i % 3),
         y: activeBreakpoint === "mobile" ? i : Math.floor(i / 3),
-        w: activeBreakpoint === "mobile" ? 1 : 1,
+        // T002: use saved width for desktop, always 1 for mobile
+        w: activeBreakpoint === "mobile" ? 1 : (currentWidths[w.id] ?? 1),
         h: 1,
       }));
 
@@ -663,6 +715,9 @@ export function DashboardBuilder({ dashId, onBack, onPreview }: DashboardBuilder
                   widget={selectedWidget}
                   onUpdate={handleWidgetUpdate}
                   onClose={() => setSelectedWidgetId(null)}
+                  currentWidth={(layoutWidthsByBreakpoint[activeBreakpoint] ?? {})[selectedWidget.id] ?? 1}
+                  onWidthChange={(w) => handleWidgetWidthChange(selectedWidget.id, w)}
+                  breakpoint={activeBreakpoint}
                 />
               ) : (
                 <DashboardPropertiesPanel

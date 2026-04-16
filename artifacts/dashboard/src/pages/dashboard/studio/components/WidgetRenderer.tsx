@@ -11,7 +11,8 @@ import {
   Activity, AlertCircle, LayoutGrid, DollarSign, CloudSun, RefreshCw,
 } from "lucide-react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip as RechartTooltip,
+  BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, Tooltip as RechartTooltip,
   ResponsiveContainer, PieChart as RPieChart, Pie, Cell, Legend,
 } from "recharts";
 import { BASE } from "@/lib/base-url";
@@ -99,7 +100,7 @@ export function WidgetRenderer({
       return <SmartSummaryContent data={smartData} />;
     }
 
-    if (isEmpty) return <EmptyState icon={WIDGET_ICONS[widget.type] ?? <BarChart2 className="h-8 w-8 opacity-30" />} />;
+    if (isEmpty) return <EmptyState icon={WIDGET_ICONS[widget.type] ?? <BarChart2 className="h-8 w-8 opacity-30" />} message="Sin datos disponibles" />;
 
     switch (widget.type) {
       case "kpi_cards": {
@@ -172,6 +173,14 @@ export function WidgetRenderer({
       case "news_feed":
       case "ranking": {
         const items = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+        if (items.length === 0) {
+          return (
+            <EmptyState
+              icon={WIDGET_ICONS[widget.type]}
+              message={widget.type === "news_feed" ? "Sin novedades disponibles" : "Sin elementos en el ranking"}
+            />
+          );
+        }
         return (
           <div className="space-y-2">
             {items.slice(0, 6).map((item, i) => (
@@ -207,6 +216,9 @@ export function WidgetRenderer({
 
       case "recent_transactions": {
         const items = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+        if (items.length === 0) {
+          return <EmptyState icon={WIDGET_ICONS["recent_transactions"]} message="Sin transacciones recientes" />;
+        }
         return (
           <div className="space-y-2">
             {items.slice(0, 6).map((item, i) => (
@@ -267,8 +279,7 @@ export function WidgetRenderer({
 
       case "bar_chart": {
         const items = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
-        if (items.length === 0) return <EmptyState icon={WIDGET_ICONS["bar_chart"]} />;
-        // Build chart data: group by month or use raw items
+        if (items.length === 0) return <EmptyState icon={WIDGET_ICONS["bar_chart"]} message="Sin datos para el gráfico" />;
         const chartData = items.slice(0, 10).map(item => ({
           name: String(item.date ?? item.month ?? item.label ?? item.name ?? ""),
           ingreso: Number(item.ingreso ?? (item.type === "income" || item.type === "ingreso" ? item.amount : 0) ?? 0),
@@ -287,6 +298,31 @@ export function WidgetRenderer({
         );
       }
 
+      case "line_chart": {
+        const items = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+        if (items.length === 0) return <EmptyState icon={WIDGET_ICONS["line_chart"]} message="Sin datos para el gráfico" />;
+        const chartData = items.slice(0, 12).map(item => ({
+          name: String(item.date ?? item.month ?? item.label ?? item.name ?? ""),
+          value: Number(item.amount ?? item.value ?? item.total ?? 0),
+        }));
+        return (
+          <ResponsiveContainer width="100%" height={120}>
+            <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} />
+              <RechartTooltip contentStyle={{ fontSize: 11 }} />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#6366f1"
+                strokeWidth={2}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        );
+      }
+
       case "expense_categories": {
         const items = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
         // Aggregate by category
@@ -296,7 +332,7 @@ export function WidgetRenderer({
           categoryMap[cat] = (categoryMap[cat] ?? 0) + Math.abs(Number(item.amount ?? 0));
         }
         const pieData = Object.entries(categoryMap).map(([name, value]) => ({ name, value })).slice(0, 6);
-        if (pieData.length === 0) return <EmptyState icon={WIDGET_ICONS["expense_categories"]} />;
+        if (pieData.length === 0) return <EmptyState icon={WIDGET_ICONS["expense_categories"]} message="Sin gastos para categorizar" />;
         return (
           <ResponsiveContainer width="100%" height={130}>
             <RPieChart>
@@ -404,11 +440,11 @@ export function WidgetRenderer({
   );
 }
 
-function EmptyState({ icon }: { icon?: React.ReactNode }) {
+function EmptyState({ icon, message = "Sin datos" }: { icon?: React.ReactNode; message?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
       <span className="opacity-30 [&>svg]:h-8 [&>svg]:w-8">{icon ?? <BarChart2 className="h-8 w-8" />}</span>
-      <p className="text-xs mt-2">Sin datos</p>
+      <p className="text-xs mt-2">{message}</p>
     </div>
   );
 }
