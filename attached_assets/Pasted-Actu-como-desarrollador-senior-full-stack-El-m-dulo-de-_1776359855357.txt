@@ -1,0 +1,140 @@
+Actuá como desarrollador senior full stack.
+
+El módulo de Viajes está incompleto y no es usable.
+Hay varios problemas detectados, pero quiero que los resuelvas en orden de impacto real.
+
+Objetivo
+
+Hacer que el módulo sea usable de verdad, no solo visual.
+
+🔴 PRIORIDAD 1 — Crear interfaz de carga de ofertas (CRÍTICO)
+
+El módulo hoy es solo lectura y no tiene datos.
+
+Implementar:
+
+Pantalla o modal “Nueva oferta”
+
+Debe permitir cargar:
+
+tipo de viaje: nacional / internacional / corporativo
+origen
+destino
+fechas
+cantidad de personas
+precio
+moneda
+proveedor
+link
+descripción opcional
+región
+Funcionalidad
+guardar en base de datos
+editar oferta
+eliminar oferta
+listar ofertas cargadas
+UI
+botón visible: “Agregar oferta”
+tabla/listado de ofertas existentes
+Obligatorio
+
+Después de esto, el módulo debe poder mostrar al menos 3 ofertas reales cargadas manualmente.
+
+🔴 PRIORIDAD 2 — Corregir inconsistencia de travelType (CRÍTICO)
+
+Hoy hay mismatch entre backend y frontend.
+
+Corregir para que ambos usen exactamente estos valores:
+
+nacional
+internacional
+corporativo
+Tareas
+actualizar schema
+migrar datos existentes si aplica
+actualizar frontend
+asegurar que filtros funcionen correctamente
+🟠 PRIORIDAD 3 — Conectar filtros correctamente
+
+Asegurar que:
+
+filtros de tipo funcionan
+filtros de región funcionan
+filtros realmente impactan los resultados
+
+No quiero filtros visuales sin efecto.
+
+🟡 PRIORIDAD 4 — Filtrado en base de datos
+
+Reemplazar filtrado en memoria por queries SQL:
+
+Incorrecto:
+
+items.filter(...)
+
+Correcto:
+
+usar WHERE en la query
+🟡 PRIORIDAD 5 — Seguridad endpoint
+
+Restringir /travel/score-all solo a admins.
+
+🧪 VERIFICACIÓN FINAL OBLIGATORIA
+
+Al terminar, mostrar:
+
+Captura o evidencia de:
+botón “Agregar oferta”
+formulario funcionando
+Confirmar que se pueden:
+crear ofertas
+editar
+eliminar
+Mostrar al menos 3 ofertas cargadas:
+una nacional
+una internacional
+una corporativa
+Probar filtros:
+cambiar tipo y ver resultados cambiar
+Confirmar que ya no aparece “Sin ofertas”
+🚫 REGLA IMPORTANTE
+
+No quiero:
+
+mocks
+datos hardcodeados invisibles
+UI sin persistencia
+
+Quiero datos reales guardados y visibles.
+
+🧠 Mi recomendación extra (muy importante)
+
+No intentes todavía:
+
+scraping
+APIs externas
+validación de links
+
+Primero:
+👉 hacé que el módulo funcione con carga manual
+
+Después recién:
+👉 lo volvemos inteligente
+
+🔥 Resumen directo
+
+Te lo digo sin vueltas:
+
+👉 Hoy el módulo está así:
+
+UI ✔️
+backend parcial ✔️
+datos ❌
+lógica real ❌
+
+👉 Para arreglarlo:
+
+primero carga manual
+después consistencia de tipos
+después filtros reales
+después optimización
