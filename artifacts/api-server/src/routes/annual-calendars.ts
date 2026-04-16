@@ -7,6 +7,7 @@ import {
 import { logger } from "../lib/logger.js";
 import { getAuth } from "@clerk/express";
 import { requireModule } from "../middleware/require-auth.js";
+import { normalizeTaxCode } from "../lib/tax-normalizer.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -136,8 +137,15 @@ router.post("/annual-calendars/:id/rules", async (req, res): Promise<void> => {
     if (isNaN(calendarId)) { res.status(400).json({ error: "ID inválido" }); return; }
     const { taxType, month, cuitTermination, dueDay, notes, isManualOverride } = req.body;
     if (!taxType || !month || !dueDay) { res.status(400).json({ error: "taxType, month y dueDay son requeridos" }); return; }
+
+    // Normalize taxType at storage time to avoid matching failures later
+    const normalizedTaxType = normalizeTaxCode(taxType);
+    if (normalizedTaxType !== taxType) {
+      logger.info({ original: taxType, normalized: normalizedTaxType }, "annual-calendars: taxType normalized on rule creation");
+    }
+
     const [rule] = await db.insert(annualDueCalendarRulesTable).values({
-      calendarId, taxType, month: parseInt(month),
+      calendarId, taxType: normalizedTaxType, month: parseInt(month),
       cuitTermination: cuitTermination ?? "any",
       dueDay: parseInt(dueDay), notes,
       isManualOverride: !!isManualOverride,
@@ -146,6 +154,137 @@ router.post("/annual-calendars/:id/rules", async (req, res): Promise<void> => {
   } catch (err) {
     logger.error({ err }, "Calendar rule create error");
     res.status(500).json({ error: "Error al crear regla" });
+  }
+});
+
+/** Bulk insert rules for a calendar (normalizes taxType on each) */
+router.post("/annual-calendars/:id/rules/bulk", async (req, res): Promise<void> => {
+  try {
+    const calendarId = parseInt(req.params.id);
+    if (isNaN(calendarId)) { res.status(400).json({ error: "ID inválido" }); return; }
+    const { rules } = req.body;
+    if (!Array.isArray(rules) || rules.length === 0) {
+      res.status(400).json({ error: "Se requiere un array de reglas no vacío" }); return;
+    }
+
+    const inserted = [];
+    for (const r of rules) {
+      if (!r.taxType || !r.month || !r.dueDay) continue;
+      const normalizedTaxType = normalizeTaxCode(r.taxType);
+      const [rule] = await db.insert(annualDueCalendarRulesTable).values({
+        calendarId,
+        taxType: normalizedTaxType,
+        month: parseInt(r.month),
+        cuitTermination: r.cuitTermination ?? "any",
+        dueDay: parseInt(r.dueDay),
+        notes: r.notes ?? null,
+        isManualOverride: !!r.isManualOverride,
+      }).returning();
+      inserted.push(rule);
+    }
+
+    logger.info({ calendarId, count: inserted.length }, "annual-calendars: bulk rules inserted");
+    res.status(201).json({ inserted: inserted.length, rules: inserted });
+  } catch (err) {
+    logger.error({ err }, "Calendar bulk rules create error");
+    res.status(500).json({ error: "Error al crear reglas en bloque" });
+  }
+});
+
+/** GET /api/annual-calendars/:id/rules — list all rules for a calendar */
+router.get("/annual-calendars/:id/rules", async (req, res): Promise<void> => {
+  try {
+    const calendarId = parseInt(req.params.id);
+    if (isNaN(calendarId)) { res.status(400).json({ error: "ID inválido" }); return; }
+    const rules = await db
+      .select()
+      .from(annualDueCalendarRulesTable)
+      .where(eq(annualDueCalendarRulesTable.calendarId, calendarId));
+    res.json(rules);
+  } catch (err) {
+    logger.error({ err }, "Calendar rules list error");
+    res.status(500).json({ error: "Error al cargar reglas" });
+  }
+});
+
+/** Diagnostic: show available taxTypes in active calendar vs a client's taxTypes */
+router.get("/annual-calendars/diagnostic/tax-match", async (req, res): Promise<void> => {
+  try {
+    const { calendarId, clientTaxTypes } = req.query;
+
+    // Get calendar
+    let cal;
+    if (calendarId) {
+      [cal] = await db.select().from(annualDueCalendarsTable)
+        .where(eq(annualDueCalendarsTable.id, parseInt(String(calendarId))));
+    } else {
+      [cal] = await db.select().from(annualDueCalendarsTable)
+        .where(eq(annualDueCalendarsTable.status, "active"));
+    }
+
+    if (!cal) { res.json({ ok: false, error: "No hay calendario activo" }); return; }
+
+    const rules = await db.select().from(annualDueCalendarRulesTable)
+      .where(eq(annualDueCalendarRulesTable.calendarId, cal.id));
+
+    const calendarTaxTypes = [...new Set(rules.map(r => r.taxType))];
+    const calendarNormalized = calendarTaxTypes.map(t => ({ raw: t, normalized: normalizeTaxCode(t) }));
+
+    const clientTypes = clientTaxTypes
+      ? String(clientTaxTypes).split(",").map(s => s.trim()).filter(Boolean)
+      : [];
+
+    const matchResults = clientTypes.map(ct => ({
+      clientTaxType: ct,
+      normalized: normalizeTaxCode(ct),
+      matched: calendarNormalized.some(c => c.normalized === normalizeTaxCode(ct)),
+      matchedRaw: calendarNormalized.filter(c => c.normalized === normalizeTaxCode(ct)).map(c => c.raw),
+    }));
+
+    res.json({
+      ok: true,
+      calendar: { id: cal.id, name: cal.name, year: cal.year, status: cal.status },
+      calendarTaxTypes: calendarNormalized,
+      rulesCount: rules.length,
+      clientMatchResults: matchResults,
+    });
+  } catch (err) {
+    logger.error({ err }, "Tax match diagnostic error");
+    res.status(500).json({ error: "Error en diagnóstico" });
+  }
+});
+
+/** Re-normalize all taxType values in existing rules for a calendar */
+router.post("/annual-calendars/:id/rules/normalize", async (req, res): Promise<void> => {
+  try {
+    const calendarId = parseInt(req.params.id);
+    if (isNaN(calendarId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const rules = await db
+      .select()
+      .from(annualDueCalendarRulesTable)
+      .where(eq(annualDueCalendarRulesTable.calendarId, calendarId));
+
+    let fixed = 0;
+    const changes: Array<{ id: number; original: string; normalized: string }> = [];
+
+    for (const rule of rules) {
+      const normalized = normalizeTaxCode(rule.taxType);
+      if (normalized !== rule.taxType) {
+        await db
+          .update(annualDueCalendarRulesTable)
+          .set({ taxType: normalized })
+          .where(eq(annualDueCalendarRulesTable.id, rule.id));
+        changes.push({ id: rule.id, original: rule.taxType, normalized });
+        fixed++;
+      }
+    }
+
+    logger.info({ calendarId, fixed, changes }, "annual-calendars: re-normalized taxTypes");
+    res.json({ ok: true, checked: rules.length, fixed, changes });
+  } catch (err) {
+    logger.error({ err }, "Calendar rules normalize error");
+    res.status(500).json({ error: "Error al re-normalizar reglas" });
   }
 });
 

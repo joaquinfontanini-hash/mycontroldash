@@ -1,0 +1,168 @@
+PROMPT DE DEBUGGING — BUG EN CRUCE DE IMPUESTOS CLIENTE vs CALENDARIO
+
+No rehagas el sistema.
+No rediseñes la arquitectura.
+No generes módulos nuevos innecesarios.
+
+El sistema ya tiene:
+
+módulo de calendario/configuración
+módulo de clientes
+módulo de vencimientos
+
+El flujo ya existe:
+
+cargo calendario
+cargo cliente
+asigno impuestos al cliente
+el sistema debería calcular vencimientos
+Bug actual
+
+El cálculo de vencimientos falla porque no está encontrando correctamente en el calendario los impuestos asignados al cliente.
+
+Ejemplo real del error:
+
+cliente tiene impuesto: ganancias
+calendario PDF tiene nombres como: GANANCIAS SOCIEDADES DDJJ, GCIAS. SOCIEDADES, etc.
+resultado: “impuesto no encontrado en calendario”
+
+También apareció error tipo:
+
+Calendario sin año
+Lo que quiero que hagas
+1. Auditar el flujo actual
+
+Revisá el código existente y explicá:
+
+cómo se parsea hoy el PDF
+cómo se guardan hoy los impuestos del calendario
+cómo se guardan hoy los impuestos del cliente
+cómo se hace hoy el match entre ambos
+en qué punto exacto falla
+si el problema está en frontend, backend, base de datos, parser o normalización
+
+No propongas rehacer todo.
+Primero encontrá el punto real de falla.
+
+2. Corregir sobre lo existente
+
+Hacé solo las correcciones necesarias para que funcione el cruce entre:
+
+calendario cargado
+cliente cargado
+impuestos asignados al cliente
+vencimientos calculados
+
+No dupliques lógica.
+No hagas un segundo motor paralelo.
+Arreglá el que ya está.
+
+3. Revisar especialmente estas causas
+
+Controlá si hoy está pasando alguna de estas:
+
+comparación directa de strings
+falta de normalización
+falta de homologación de impuestos
+impuesto del cliente guardado como texto libre
+impuesto del calendario parseado con nombre distinto
+calendario sin año persistido
+calendario cargado pero no disponible al momento de calcular
+error de lookup por terminación CUIT
+error de persistencia en DB
+4. Implementar fix mínimo pero sólido
+
+Necesito que agregues o corrijas:
+
+A. Normalización de nombres
+
+Antes de comparar impuestos:
+
+pasar a mayúsculas
+quitar acentos
+quitar puntos
+limpiar espacios
+B. Homologación / matching robusto
+
+No usar:
+
+cliente.impuesto === calendario.impuesto
+
+Hacer un match robusto entre:
+
+nombre del impuesto del cliente
+nombre detectado en calendario
+aliases u homologaciones
+
+Ejemplos esperados:
+
+ganancias → GANANCIAS SOCIEDADES DDJJ
+iva → IVA DDJJ
+
+Pero evitando falsos positivos.
+
+C. Validación de año
+
+Si el calendario no tiene año:
+
+bloquear cálculo
+mostrar error claro
+no seguir
+D. Logs útiles
+
+Cuando falle, mostrar:
+
+impuesto del cliente
+impuestos disponibles en calendario
+calendario/año usado
+terminación CUIT
+motivo exacto
+5. Probar flujo completo
+
+Después del fix, validar de punta a punta:
+
+subir calendario
+guardar calendario
+crear cliente
+asignar impuesto
+calcular vencimiento
+comprobar que devuelve fecha real
+Casos de prueba obligatorios
+Caso 1
+
+Cliente con impuesto ganancias
+
+debe encontrar equivalente en calendario
+debe calcular fecha
+Caso 2
+
+Cliente con impuesto iva
+
+debe encontrar equivalente en calendario
+debe calcular fecha
+Caso 3
+
+Impuesto sin homologación
+
+debe dar error controlado
+con log útil
+Caso 4
+
+Calendario sin año
+
+debe bloquear cálculo
+error claro
+Entregable esperado
+
+Quiero que devuelvas:
+
+diagnóstico exacto del bug
+archivo(s) o función(es) donde fallaba
+fix implementado
+evidencia de prueba exitosa
+explicación breve de por qué ahora sí funciona
+Prioridad absoluta
+
+No quiero mejoras cosméticas.
+No quiero refactor por deporte.
+Quiero que funcione el cruce real entre impuesto del cliente e impuesto del calendario y que el módulo de vencimientos devuelva resultados correctos.

@@ -24,6 +24,11 @@ import {
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import {
+  normalizeTaxCode,
+  taxCodesMatch,
+  taxLabel as normalizerTaxLabel,
+} from "../lib/tax-normalizer.js";
 
 // ── CUIT helpers ──────────────────────────────────────────────────────────────
 
@@ -136,23 +141,10 @@ export function monthName(month: number): string {
   return MONTH_NAMES[month - 1] ?? `Mes ${month}`;
 }
 
-// ── Tax labels ────────────────────────────────────────────────────────────────
-
-const TAX_LABELS: Record<string, string> = {
-  iva: "IVA DDJJ",
-  ganancias: "Ganancias",
-  monotributo: "Monotributo",
-  autonomos: "Autónomos",
-  iibb_neuquen: "IIBB Neuquén",
-  iibb_rio_negro: "IIBB Río Negro",
-  cargas_sociales: "Cargas Sociales",
-  empleada_domestica: "Empleada Doméstica",
-  facturacion: "Facturación",
-  sindicato: "Sindicato",
-};
+// ── Tax labels (delegate to normalizer) ───────────────────────────────────────
 
 export function taxLabel(taxType: string): string {
-  return TAX_LABELS[taxType] ?? taxType;
+  return normalizerTaxLabel(taxType);
 }
 
 function taxCategory(taxType: string): string {
@@ -271,6 +263,15 @@ export async function generateDueDatesForClient(
     return result;
   }
 
+  // Validate calendar year
+  if (!calendar.year || calendar.year < 2000 || calendar.year > 2100) {
+    const msg = `Calendario "${calendar.name}" tiene año inválido (${calendar.year}). Corregí el año antes de calcular vencimientos.`;
+    result.errors.push(msg);
+    logger.error({ calendarId: calendar.id, year: calendar.year }, "AFIP engine: calendar has invalid year");
+    await auditLog("generate_failed", msg, String(clientId));
+    return result;
+  }
+
   // Load tax assignments
   const taxAssignments = await db
     .select()
@@ -306,14 +307,27 @@ export async function generateDueDatesForClient(
     existingDueDates.map(d => `${d.calendarRuleId}-${d.dueDate}`)
   );
 
+  // Pre-compute unique taxTypes in calendar for diagnostics
+  const calendarTaxTypes = [...new Set(rules.map(r => r.taxType))];
+
   for (const assignment of taxAssignments) {
+    // ── Matching robusto: normaliza ambos lados ────────────────────────────
     const matchingRules = rules.filter(r =>
-      r.taxType === assignment.taxType &&
+      taxCodesMatch(r.taxType, assignment.taxType) &&
       cuitTerminationMatches(r.cuitTermination, cuitLastDigit)
     );
 
     if (matchingRules.length === 0) {
-      const reason = `Impuesto ${assignment.taxType} no encontrado en calendario ${calendar.name} para terminación ${cuitLastDigit}`;
+      // Build diagnostic: show what the calendar has vs what we're looking for
+      const clientTaxNorm = normalizeTaxCode(assignment.taxType);
+      const calendarTaxNorms = calendarTaxTypes.map(t => `"${t}" → ${normalizeTaxCode(t)}`).join(", ");
+
+      const reason = [
+        `Impuesto "${assignment.taxType}" (normalizado: "${clientTaxNorm}") no encontrado en calendario "${calendar.name}" (año ${calendar.year})`,
+        `Terminación CUIT: ${cuitLastDigit}`,
+        `Impuestos disponibles en calendario: [${calendarTaxNorms || "ninguno"}]`,
+      ].join(" | ");
+
       result.errors.push(reason);
       result.details.push({
         tax: assignment.taxType,
@@ -324,6 +338,19 @@ export async function generateDueDatesForClient(
         status: "error",
         reason,
       });
+
+      logger.warn({
+        clientId,
+        clientName: client.name,
+        taxType: assignment.taxType,
+        taxTypeNormalized: clientTaxNorm,
+        calendarId: calendar.id,
+        calendarName: calendar.name,
+        calendarYear: calendar.year,
+        cuitLastDigit,
+        availableTaxTypes: calendarTaxTypes,
+      }, "AFIP engine: no matching rules found for tax");
+
       continue;
     }
 
