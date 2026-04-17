@@ -97,9 +97,11 @@ const QUICK_FILTERS = [
 
 const DATE_RANGES = [
   { key: "all", label: "Todo" },
+  { key: "2d", label: "Últimos 2 días" },
   { key: "7d", label: "Últimos 7 días" },
   { key: "30d", label: "Últimos 30 días" },
   { key: "90d", label: "Últimos 90 días" },
+  { key: "custom", label: "Personalizado..." },
 ];
 
 export default function FiscalPage() {
@@ -108,6 +110,7 @@ export default function FiscalPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [dateRange, setDateRange] = useState("all");
+  const [customDays, setCustomDays] = useState(14);
   const [showFilters, setShowFilters] = useState(false);
   const [activeSources, setActiveSources] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -173,7 +176,11 @@ export default function FiscalPage() {
     }
 
     if (dateRange !== "all") {
-      const days = dateRange === "7d" ? 7 : dateRange === "30d" ? 30 : 90;
+      const days = dateRange === "2d" ? 2
+        : dateRange === "7d" ? 7
+        : dateRange === "30d" ? 30
+        : dateRange === "90d" ? 90
+        : customDays;
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
       items = items.filter(u => {
@@ -196,7 +203,7 @@ export default function FiscalPage() {
     }
 
     return items;
-  }, [updates, quickFilter, onlyToday, categoryFilter, dateRange, searchQuery, activeSources, qualityMin]);
+  }, [updates, quickFilter, onlyToday, categoryFilter, dateRange, customDays, searchQuery, activeSources, qualityMin]);
 
   const categories = useMemo(() => {
     const cats = [...new Set(((updates ?? []) as FiscalItem[]).map(u => u.category).filter(Boolean))];
@@ -215,6 +222,7 @@ export default function FiscalPage() {
     setOnlyToday(false);
     setCategoryFilter("all");
     setDateRange("all");
+    setCustomDays(14);
     setSearchQuery("");
     setQualityMin(40);
     setActiveSources([]);
@@ -471,6 +479,22 @@ export default function FiscalPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {dateRange === "custom" && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={customDays}
+                    onChange={e => {
+                      const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
+                      setCustomDays(v);
+                    }}
+                    className="w-20 h-8 px-2 rounded-md border border-input bg-background text-sm text-center focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <span className="text-sm text-muted-foreground">días atrás</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">
