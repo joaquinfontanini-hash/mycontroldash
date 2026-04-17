@@ -104,6 +104,7 @@ const DATE_RANGES = [
 
 export default function FiscalPage() {
   const [quickFilter, setQuickFilter] = useState("all");
+  const [onlyToday, setOnlyToday] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [dateRange, setDateRange] = useState("all");
@@ -150,6 +151,18 @@ export default function FiscalPage() {
     // Quality threshold
     items = items.filter(u => (u.qualityScore ?? 70) >= qualityMin);
 
+    // Solo hoy
+    if (onlyToday) {
+      const now = new Date();
+      const todayY = now.getFullYear();
+      const todayM = now.getMonth();
+      const todayD = now.getDate();
+      items = items.filter(u => {
+        const d = new Date(u.date);
+        return !isNaN(d.getTime()) && d.getFullYear() === todayY && d.getMonth() === todayM && d.getDate() === todayD;
+      });
+    }
+
     if (quickFilter === "saved") items = items.filter(u => u.isSaved);
     if (quickFilter === "normative") items = items.filter(u => u.isNormative);
 
@@ -194,9 +207,10 @@ export default function FiscalPage() {
 
   const isLoading = updatesLoading || metricsLoading;
 
-  const hasActiveFilters = categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "" || qualityMin > 40 || activeSources.length > 0;
+  const hasActiveFilters = onlyToday || categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "" || qualityMin > 40 || activeSources.length > 0;
 
   const clearFilters = () => {
+    setOnlyToday(false);
     setCategoryFilter("all");
     setDateRange("all");
     setSearchQuery("");
@@ -293,6 +307,19 @@ export default function FiscalPage() {
 
       <div className="space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Solo hoy */}
+          <button
+            onClick={() => setOnlyToday(v => !v)}
+            className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${
+              onlyToday
+                ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <span>📅</span>
+            Solo hoy
+          </button>
+
           {QUICK_FILTERS.map(f => (
             <button
               key={f.key}
@@ -319,7 +346,7 @@ export default function FiscalPage() {
             Filtros avanzados
             {hasActiveFilters && (
               <span className="h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                {(categoryFilter !== "all" ? 1 : 0) + (dateRange !== "all" ? 1 : 0) + (searchQuery ? 1 : 0) + activeSources.length}
+                {(onlyToday ? 1 : 0) + (categoryFilter !== "all" ? 1 : 0) + (dateRange !== "all" ? 1 : 0) + (searchQuery ? 1 : 0) + activeSources.length}
               </span>
             )}
           </button>
