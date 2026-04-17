@@ -738,10 +738,21 @@ export default function NewsPage() {
 
   // Client-side filters: "solo hoy" first, then search
   const filteredNews = useMemo(() => {
-    const todayDate = new Date().toISOString().split("T")[0]!;
+    const now = new Date();
+    const todayY = now.getFullYear();
+    const todayM = now.getMonth();
+    const todayD = now.getDate();
     let result = allNews;
     if (onlyToday) {
-      result = result.filter(n => n.date.startsWith(todayDate));
+      result = result.filter(n => {
+        const d = new Date(n.date);
+        return (
+          !isNaN(d.getTime()) &&
+          d.getFullYear() === todayY &&
+          d.getMonth() === todayM &&
+          d.getDate() === todayD
+        );
+      });
     }
     if (search.trim()) {
       const q = search.toLowerCase();
