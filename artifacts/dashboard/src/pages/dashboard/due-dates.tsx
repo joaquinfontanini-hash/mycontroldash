@@ -60,6 +60,11 @@ interface DueDateCategory {
   color: string;
 }
 
+interface ClientOption {
+  id: number;
+  name: string;
+}
+
 interface KPIs {
   totalThisMonth: number;
   overdue: number;
@@ -722,6 +727,7 @@ export default function DueDatesPage() {
   // Filters
   const [searchText, setSearchText] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterClient, setFilterClient] = useState<string>("");
   const [filterTrafficLight, setFilterTrafficLight] = useState<TrafficLight | "all">("all");
   const [filterStatus, setFilterStatus] = useState<"pending" | "done" | "all">("pending");
 
@@ -742,6 +748,16 @@ export default function DueDatesPage() {
       const res = await fetch(`${BASE}/api/due-date-categories`, { credentials: "include" });
       if (!res.ok) throw new Error("Error");
       return res.json();
+    },
+  });
+
+  const { data: clientOptions = [] } = useQuery<ClientOption[]>({
+    queryKey: ["clients-list-simple"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/clients`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error");
+      const data = await res.json();
+      return (data as { id: number; name: string }[]).map(c => ({ id: c.id, name: c.name }));
     },
   });
 
@@ -899,13 +915,14 @@ export default function DueDatesPage() {
     let items = dueDates;
     if (filterStatus !== "all") items = items.filter(d => d.status === filterStatus);
     if (filterCategory) items = items.filter(d => d.category === filterCategory);
+    if (filterClient) items = items.filter(d => d.clientId === parseInt(filterClient));
     if (filterTrafficLight !== "all") items = items.filter(d => (d.trafficLight ?? "gris") === filterTrafficLight);
     if (searchText) {
       const q = searchText.toLowerCase();
       items = items.filter(d => d.title.toLowerCase().includes(q) || (d.description ?? "").toLowerCase().includes(q));
     }
     return items;
-  }, [dueDates, filterStatus, filterCategory, filterTrafficLight, searchText]);
+  }, [dueDates, filterStatus, filterCategory, filterClient, filterTrafficLight, searchText]);
 
   // Sort: rojo first, then by date ascending
   const sorted = useMemo(() => {
@@ -1064,6 +1081,20 @@ export default function DueDatesPage() {
                 <option value="">Categorías</option>
                 {categories.map(c => (
                   <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Client filter */}
+            {clientOptions.length > 0 && (
+              <select
+                value={filterClient}
+                onChange={e => setFilterClient(e.target.value)}
+                className="h-8 px-2 rounded-md border border-border text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">Clientes</option>
+                {clientOptions.map(c => (
+                  <option key={c.id} value={String(c.id)}>{c.name}</option>
                 ))}
               </select>
             )}

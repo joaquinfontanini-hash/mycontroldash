@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc } from "drizzle-orm";
-import { db, clientsTable, clientTaxAssignmentsTable } from "@workspace/db";
+import { db, clientsTable, clientTaxAssignmentsTable, dueDatesTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { generateDueDatesForClient, regenerateAllDueDatesForClient } from "../services/afip-engine.js";
 import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
@@ -116,6 +116,7 @@ router.delete("/clients/:id", requireAuth, async (req, res): Promise<void> => {
     if (!existing) { res.status(404).json({ error: "Cliente no encontrado" }); return; }
     if (!assertOwnership(req, res, existing.userId)) return;
 
+    await db.delete(dueDatesTable).where(eq(dueDatesTable.clientId, id));
     await db.delete(clientTaxAssignmentsTable).where(eq(clientTaxAssignmentsTable.clientId, id));
     await db.delete(clientsTable).where(eq(clientsTable.id, id));
     res.json({ ok: true });
