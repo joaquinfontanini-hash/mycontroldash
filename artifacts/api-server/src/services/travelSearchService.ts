@@ -289,9 +289,22 @@ export async function searchSerpApiFlights(
     const flight = flights[i]!;
     const seg = flight.flights?.[0];
 
-    // FIX 3 — precio total = precio por persona × viajeros (SerpAPI retorna por persona)
-    const pricePerPersonUsd = flight.price ?? 0;
-    const totalPriceUsd = pricePerPersonUsd * travelers;
+    // Punto 2 — filtrar en backend si directFlightOnly: descartar vuelos con escalas o >180 min
+    if (profile.directFlightOnly) {
+      const flightLegs = flight.flights?.length ?? 1;
+      const duration = flight.total_duration ?? 0;
+      if (flightLegs > 1 || duration > 180) {
+        logger.info(
+          { legs: flightLegs, duration },
+          "[SerpAPI] Vuelo con escala o duración excesiva descartado por directFlightOnly",
+        );
+        continue;
+      }
+    }
+
+    // Punto 3 — SerpAPI devuelve flight.price como precio total del itinerario (todos los viajeros)
+    const totalPriceUsd = flight.price ?? 0;
+    const pricePerPersonUsd = travelers > 0 ? totalPriceUsd / travelers : totalPriceUsd;
 
     // FIX 1 — convertir a moneda del perfil para comparar con presupuesto
     const totalInProfileCurrency = profileCurrency === "ARS"
