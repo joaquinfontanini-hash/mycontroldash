@@ -228,10 +228,10 @@ export async function searchSerpApiFlights(
   const tolerancePct = profile.tolerancePercent ?? 20;
   const budgetWithTolerance = maxBudget * (1 + tolerancePct / 100);
 
-  // FIX 2 — return_date solo en round-trip (type=1); one-way (type=2) no admite return_date
-  const isRoundTrip = !profile.directFlightOnly;
+  // type=1 siempre (ida y vuelta) — type=2 es one-way, no round-trip con escalas
+  // Para vuelos sin escalas se usa stops=0, no type=2
   const minDays = profile.minDays ?? 3;
-  const returnDate = isRoundTrip ? addDays(departureDate, minDays) : null;
+  const returnDate = addDays(departureDate, minDays);
 
   const params = new URLSearchParams({
     engine: "google_flights",
@@ -239,14 +239,15 @@ export async function searchSerpApiFlights(
     departure_id: origin.code,
     arrival_id: dest.code,
     outbound_date: departureDate,
+    return_date: returnDate,
     adults: String(travelers),
     currency: "USD",
     hl: "es",
-    type: isRoundTrip ? "1" : "2",
+    type: "1",
   });
 
-  if (returnDate) {
-    params.set("return_date", returnDate);
+  if (profile.directFlightOnly) {
+    params.set("stops", "0");
   }
 
   const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
