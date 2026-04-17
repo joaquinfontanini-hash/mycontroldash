@@ -1,5 +1,5 @@
-import { db, annualDueCalendarsTable, annualDueCalendarRulesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, annualDueCalendarsTable, annualDueCalendarRulesTable, dueDatesTable } from "@workspace/db";
+import { eq, and, like } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -7,14 +7,15 @@ type Rule = { month: number; cuitTermination: string; dueDay: number };
 
 // ─── 2026 day-of-week for 1st of each month ────────────────────────────────
 // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
-// Jan 1 = Thu (4). Verified against calendar.
+// Jan 1, 2026 = Thursday (4). 2026 is NOT a leap year (Feb = 28 days).
 const FOM_DOW_2026 = [4, 0, 0, 3, 5, 1, 3, 6, 2, 4, 0, 2]; // Jan→Dec
 
 /**
- * Returns the actual AFIP due day for a given base day and month,
- * shifting Saturdays to Monday (+2) and Sundays to Monday (+1).
- * Argentine national holidays are NOT included here — add them as
- * known exceptions if specific months are flagged by the user.
+ * Returns the actual AFIP due day for a given base day and month in 2026,
+ * shifting Saturdays (+2 days → Mon) and Sundays (+1 day → Mon).
+ *
+ * Argentine national holidays are NOT modeled here.
+ * Add exceptions as needed if a specific month+day deviates.
  */
 function wd(month: number, baseDay: number): number {
   const fom = FOM_DOW_2026[month - 1]!;
@@ -24,7 +25,7 @@ function wd(month: number, baseDay: number): number {
   return baseDay;
 }
 
-/** Builds 12 monthly rules for a cuit group with a given base due day */
+/** Builds 12 monthly rules for a CUIT group with a given base due day */
 function monthlyGroup(cuitTermination: string, baseDay: number): Rule[] {
   return Array.from({ length: 12 }, (_, i) => ({
     month: i + 1,
@@ -66,7 +67,6 @@ const GANANCIAS_RULES: Rule[] = [
 ];
 
 // ─── ANTICIPOS (Gcias. Sociedades, Pers. Humanas, Bienes Personales, FC) ────
-// Mismo patrón que ganancias
 const ANTICIPO_GANANCIAS_RULES: Rule[] = [
   ...monthlyGroup("0-3", 13),
   ...monthlyGroup("4-6", 14),
@@ -110,7 +110,6 @@ const SICORE_1Q_RULES: Rule[] = [
 ];
 
 // ─── SICORE/SIRE 2° Quincena — DDJJ e ingreso de saldo ─────────────────────
-// Mismos días base que 1° quincena
 const SICORE_DDJJ_RULES: Rule[] = [
   ...monthlyGroup("0-3", 21),
   ...monthlyGroup("4-6", 22),
@@ -158,7 +157,7 @@ export async function seedCalendar2026() {
       status: "active",
       parseStatus: "done",
       calendarType: "general",
-      notes: "Seeded automáticamente. Ajuste automático de fines de semana aplicado. Verificar meses con feriados nacionales.",
+      notes: "Seed 2026 v3",
     }).returning();
 
     let totalRules = 0;
@@ -170,21 +169,27 @@ export async function seedCalendar2026() {
           month: rule.month,
           cuitTermination: rule.cuitTermination,
           dueDay: rule.dueDay,
-          notes: `Seed 2026 - ${taxType}`,
+          notes: `Seed 2026 v3 - ${taxType}`,
         });
         totalRules++;
       }
     }
 
-    logger.info({ calendarId: cal.id, totalRules }, "Calendar 2026 seeded successfully");
+    logger.info({ calendarId: cal.id, totalRules }, "Calendar 2026 seeded (v3)");
   } catch (err) {
     logger.error({ err }, "Failed to seed calendar 2026");
   }
 }
 
-// ─── Patch: reemplaza TODAS las reglas con los datos correctos ──────────────
-// Detecta si necesita patch chequeando si las reglas de IVA 0-1 en enero
-// tienen el día correcto (19). Si tiene 20, se aplica el patch v3.
+// ─── Patch: reemplaza reglas Y regenera vencimientos de todos los clientes ──
+//
+// Detección: busca "patch-v3-done" en el campo notes del calendario.
+// Si ya está, no hace nada. Si no, aplica el patch completo:
+//   1. Borra vencimientos 2026 generados por el engine (source = afip-engine)
+//   2. Reemplaza todas las reglas del calendario con los datos correctos
+//   3. Regenera vencimientos de todos los clientes activos
+//   4. Marca el calendario como patched ("patch-v3-done")
+//
 export async function patchCalendar2026FullRules() {
   try {
     const [cal] = await db.select().from(annualDueCalendarsTable)
@@ -198,28 +203,25 @@ export async function patchCalendar2026FullRules() {
       return;
     }
 
-    // Check if already patched: IVA Jan 0-1 should be 19 (base 18, Jan 18=Sun→19)
-    const ivaJanRules = await db.select().from(annualDueCalendarRulesTable)
-      .where(and(
-        eq(annualDueCalendarRulesTable.calendarId, cal.id),
-        eq(annualDueCalendarRulesTable.taxType, "iva"),
-        eq(annualDueCalendarRulesTable.month, 1),
-        eq(annualDueCalendarRulesTable.cuitTermination, "0-1"),
-      ));
-
-    const ivaJanDay = ivaJanRules[0]?.dueDay;
-    if (ivaJanDay === wd(1, 18)) {
-      logger.info({ ivaJanDay }, "Calendar 2026 rules already up-to-date — skipping patch");
+    // Already fully patched?
+    if (cal.notes?.includes("patch-v3-done")) {
+      logger.info("Calendar 2026 patch v3 already applied — skipping");
       return;
     }
 
-    logger.info({ ivaJanDay, expected: wd(1, 18) }, "Applying Calendar 2026 full patch v3 (corrected base days)");
+    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v3…");
 
-    // Delete all existing rules for this calendar
+    // ── Step 1: delete all 2026 afip-engine due dates (stale from old rules) ─
+    const deleted = await db.delete(dueDatesTable).where(and(
+      eq(dueDatesTable.source, "afip-engine"),
+      like(dueDatesTable.dueDate, "2026-%"),
+    )).returning({ id: dueDatesTable.id });
+    logger.info({ deletedCount: deleted.length }, "Deleted stale 2026 AFIP-engine due dates");
+
+    // ── Step 2: replace all calendar rules ──────────────────────────────────
     await db.delete(annualDueCalendarRulesTable)
       .where(eq(annualDueCalendarRulesTable.calendarId, cal.id));
 
-    // Insert all new corrected rules
     let totalRules = 0;
     for (const { taxType, rules } of ALL_RULE_SETS) {
       for (const rule of rules) {
@@ -234,13 +236,22 @@ export async function patchCalendar2026FullRules() {
         totalRules++;
       }
     }
+    logger.info({ totalRules }, "Calendar 2026 rules replaced (v3)");
 
-    logger.info(
-      { calendarId: cal.id, totalRules },
-      "Calendar 2026 full rules patched (v3: correct base days, auto weekend adjustment)"
-    );
+    // ── Step 3: regenerate due dates for all active clients ──────────────────
+    // Dynamic import to avoid circular dependency at module load time
+    const { generateDueDatesForAllClients } = await import("../services/afip-engine.js");
+    const genResult = await generateDueDatesForAllClients();
+    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v3");
+
+    // ── Step 4: mark calendar as patched ─────────────────────────────────────
+    await db.update(annualDueCalendarsTable)
+      .set({ notes: (cal.notes ?? "") + " | patch-v3-done" })
+      .where(eq(annualDueCalendarsTable.id, cal.id));
+
+    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v3 completed");
   } catch (err) {
-    logger.error({ err }, "Failed to patch Calendar 2026 full rules");
+    logger.error({ err }, "Failed to apply Calendar 2026 patch v3");
   }
 }
 
