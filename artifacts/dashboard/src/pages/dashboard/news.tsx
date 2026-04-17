@@ -249,10 +249,13 @@ function NewsCard({
 // ── Filter Panel ──────────────────────────────────────────────────────────────
 
 function FilterPanel({
+  onlyToday, setOnlyToday,
   regionLevel, setRegionLevel,
   newsCategory, setNewsCategory,
   search, setSearch,
 }: {
+  onlyToday: boolean;
+  setOnlyToday: (v: boolean) => void;
   regionLevel: string;
   setRegionLevel: (v: string) => void;
   newsCategory: string;
@@ -260,10 +263,37 @@ function FilterPanel({
   search: string;
   setSearch: (v: string) => void;
 }) {
-  const activeCount = (regionLevel ? 1 : 0) + (newsCategory ? 1 : 0) + (search.trim() ? 1 : 0);
+  const activeCount = (onlyToday ? 1 : 0) + (regionLevel ? 1 : 0) + (newsCategory ? 1 : 0) + (search.trim() ? 1 : 0);
+
+  const todayStr = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
 
   return (
     <div className="rounded-xl border border-border/60 bg-card/50 divide-y divide-border/60">
+
+      {/* Solo hoy — primer filtro */}
+      <div className="px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setOnlyToday(!onlyToday)}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+              onlyToday
+                ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                : "bg-transparent text-muted-foreground border-border/60 hover:border-border hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            <span className="text-sm">📅</span>
+            Solo hoy
+          </button>
+          {onlyToday && (
+            <span className="text-xs text-muted-foreground capitalize">{todayStr}</span>
+          )}
+        </div>
+        {onlyToday && (
+          <button onClick={() => setOnlyToday(false)} className="text-[10px] text-primary/70 hover:text-primary underline">
+            limpiar
+          </button>
+        )}
+      </div>
 
       {/* Search */}
       <div className="px-4 py-3">
@@ -357,6 +387,14 @@ function FilterPanel({
       {activeCount > 0 && (
         <div className="px-4 py-2.5 flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground mr-0.5">Filtrando:</span>
+          {onlyToday && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
+              📅 Hoy
+              <button onClick={() => setOnlyToday(false)} className="ml-0.5 hover:text-primary/60">
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          )}
           {regionLevel && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
               {REGION_OPTIONS.find(o => o.value === regionLevel)?.label}
@@ -382,7 +420,7 @@ function FilterPanel({
             </span>
           )}
           <button
-            onClick={() => { setRegionLevel(""); setNewsCategory(""); setSearch(""); }}
+            onClick={() => { setOnlyToday(false); setRegionLevel(""); setNewsCategory(""); setSearch(""); }}
             className="ml-1 text-[10px] text-muted-foreground hover:text-foreground underline"
           >
             limpiar todo
@@ -684,6 +722,7 @@ export default function NewsPage() {
   const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState("news");
+  const [onlyToday, setOnlyToday] = useState(false);
   const [regionLevel, setRegionLevel] = useState("");
   const [newsCategory, setNewsCategory] = useState("");
   const [search, setSearch] = useState("");
@@ -697,16 +736,23 @@ export default function NewsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Client-side search filter (region + category filtered server-side already)
+  // Client-side filters: "solo hoy" first, then search
   const filteredNews = useMemo(() => {
-    if (!search.trim()) return allNews;
-    const q = search.toLowerCase();
-    return allNews.filter(n =>
-      n.title.toLowerCase().includes(q) || n.summary.toLowerCase().includes(q)
-    );
-  }, [allNews, search]);
+    const todayDate = new Date().toISOString().split("T")[0]!;
+    let result = allNews;
+    if (onlyToday) {
+      result = result.filter(n => n.date.startsWith(todayDate));
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(n =>
+        n.title.toLowerCase().includes(q) || n.summary.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [allNews, onlyToday, search]);
 
-  const hasActiveFilters = !!(regionLevel || newsCategory || search.trim());
+  const hasActiveFilters = !!(onlyToday || regionLevel || newsCategory || search.trim());
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -751,6 +797,7 @@ export default function NewsPage() {
   };
 
   const clearFilters = () => {
+    setOnlyToday(false);
     setRegionLevel("");
     setNewsCategory("");
     setSearch("");
@@ -807,6 +854,8 @@ export default function NewsPage() {
         {/* ── NOTICIAS ───────────────────────────────────────── */}
         <TabsContent value="news" className="mt-4 space-y-4">
           <FilterPanel
+            onlyToday={onlyToday}
+            setOnlyToday={setOnlyToday}
             regionLevel={regionLevel}
             setRegionLevel={setRegionLevel}
             newsCategory={newsCategory}
