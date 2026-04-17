@@ -151,15 +151,17 @@ export default function FiscalPage() {
     // Quality threshold
     items = items.filter(u => (u.qualityScore ?? 70) >= qualityMin);
 
-    // Solo hoy
+    // Solo hoy — fiscal dates stored as "YYYY-MM-DD" (UTC); compare against today in Argentina time
     if (onlyToday) {
-      const now = new Date();
-      const todayY = now.getFullYear();
-      const todayM = now.getMonth();
-      const todayD = now.getDate();
+      const todayArg = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
       items = items.filter(u => {
-        const d = new Date(u.date);
-        return !isNaN(d.getTime()) && d.getFullYear() === todayY && d.getMonth() === todayM && d.getDate() === todayD;
+        const dateStr = u.date?.trim() ?? "";
+        // ISO date only: compare directly
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr === todayArg;
+        // Full datetime: parse and compare
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        return d.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }) === todayArg;
       });
     }
 
@@ -194,7 +196,7 @@ export default function FiscalPage() {
     }
 
     return items;
-  }, [updates, quickFilter, categoryFilter, dateRange, searchQuery, activeSources, qualityMin]);
+  }, [updates, quickFilter, onlyToday, categoryFilter, dateRange, searchQuery, activeSources, qualityMin]);
 
   const categories = useMemo(() => {
     const cats = [...new Set(((updates ?? []) as FiscalItem[]).map(u => u.category).filter(Boolean))];

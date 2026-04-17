@@ -738,20 +738,15 @@ export default function NewsPage() {
 
   // Client-side filters: "solo hoy" first, then search
   const filteredNews = useMemo(() => {
-    const now = new Date();
-    const todayY = now.getFullYear();
-    const todayM = now.getMonth();
-    const todayD = now.getDate();
     let result = allNews;
     if (onlyToday) {
+      const todayArg = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
       result = result.filter(n => {
-        const d = new Date(n.date);
-        return (
-          !isNaN(d.getTime()) &&
-          d.getFullYear() === todayY &&
-          d.getMonth() === todayM &&
-          d.getDate() === todayD
-        );
+        const dateStr = n.date?.trim() ?? "";
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr === todayArg;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        return d.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }) === todayArg;
       });
     }
     if (search.trim()) {
