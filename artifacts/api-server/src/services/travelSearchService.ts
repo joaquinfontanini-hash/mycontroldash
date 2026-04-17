@@ -334,6 +334,18 @@ export async function searchSerpApiFlights(
   const externalUrl = data.search_metadata?.google_flights_url ?? null;
   const results: InsertResult[] = [];
 
+  console.log('[DEBUG BUDGET]', JSON.stringify({
+    profileId: profile.id,
+    maxBudget: profile.maxBudget,
+    currency: profile.currency,
+    travelers: profile.travelersCount,
+    exchangeRate: usdToArs,
+    budgetWithTolerance,
+    flightsFound: flights.length,
+    firstFlightPrice: flights[0]?.price,
+    firstFlightPriceConverted: (flights[0]?.price ?? 0) * (profile.travelersCount || 1) * usdToArs
+  }));
+
   for (let i = 0; i < flights.length; i++) {
     const flight = flights[i]!;
     const seg = flight.flights?.[0];
