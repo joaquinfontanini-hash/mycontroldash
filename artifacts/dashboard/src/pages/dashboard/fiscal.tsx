@@ -109,7 +109,7 @@ export default function FiscalPage() {
   const [onlyToday, setOnlyToday] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [dateRange, setDateRange] = useState("all");
+  const [dateRange, setDateRange] = useState("30d");
   const [customDays, setCustomDays] = useState(14);
   const [showFilters, setShowFilters] = useState(false);
   const [activeSources, setActiveSources] = useState<string[]>([]);
@@ -205,6 +205,15 @@ export default function FiscalPage() {
     return items;
   }, [updates, quickFilter, onlyToday, categoryFilter, dateRange, customDays, searchQuery, activeSources, qualityMin]);
 
+  const displayedMetrics = useMemo(() => ({
+    total: displayed.length,
+    highImpact: displayed.filter(u => u.impact === "high").length,
+    requiresAction: displayed.filter(u => u.requiresAction).length,
+    avgQualityScore: displayed.length
+      ? Math.round(displayed.reduce((acc, u) => acc + (u.qualityScore ?? 70), 0) / displayed.length)
+      : null,
+  }), [displayed]);
+
   const categories = useMemo(() => {
     const cats = [...new Set(((updates ?? []) as FiscalItem[]).map(u => u.category).filter(Boolean))];
     return cats.sort();
@@ -216,12 +225,12 @@ export default function FiscalPage() {
 
   const isLoading = updatesLoading || metricsLoading;
 
-  const hasActiveFilters = onlyToday || categoryFilter !== "all" || dateRange !== "all" || searchQuery.trim() !== "" || qualityMin > 40 || activeSources.length > 0;
+  const hasActiveFilters = onlyToday || categoryFilter !== "all" || (dateRange !== "30d" && dateRange !== "all") || searchQuery.trim() !== "" || qualityMin > 40 || activeSources.length > 0;
 
   const clearFilters = () => {
     setOnlyToday(false);
     setCategoryFilter("all");
-    setDateRange("all");
+    setDateRange("30d");
     setCustomDays(14);
     setSearchQuery("");
     setQualityMin(40);
@@ -287,23 +296,21 @@ export default function FiscalPage() {
         </div>
       </div>
 
-      {metrics && (
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-          {[
-            { label: "Total visible", value: metrics.total, color: "text-foreground", bg: "bg-muted/60" },
-            { label: "Alto Impacto", value: metrics.highImpact, color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-900/20" },
-            { label: "Requiere Acción", value: metrics.requiresAction, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
-            { label: "Calidad promedio", value: metrics.avgQualityScore != null ? `${metrics.avgQualityScore}` : "–", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-          ].map(m => (
-            <Card key={m.label} className={`${m.bg} border-0`}>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground mb-1">{m.label}</p>
-                <p className={`text-2xl font-bold ${m.color}`}>{m.value}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+        {[
+          { label: "Total visible", value: displayedMetrics.total, color: "text-foreground", bg: "bg-muted/60" },
+          { label: "Alto Impacto", value: displayedMetrics.highImpact, color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-900/20" },
+          { label: "Requiere Acción", value: displayedMetrics.requiresAction, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
+          { label: "Calidad promedio", value: displayedMetrics.avgQualityScore != null ? `${displayedMetrics.avgQualityScore}` : "–", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+        ].map(m => (
+          <Card key={m.label} className={`${m.bg} border-0`}>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground mb-1">{m.label}</p>
+              <p className={`text-2xl font-bold ${m.color}`}>{m.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       {metrics && (metrics.needsReview ?? 0) > 0 && (
         <div className="flex items-center gap-2.5 text-sm rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-4 py-2.5">
