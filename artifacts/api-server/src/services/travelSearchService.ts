@@ -314,6 +314,8 @@ export async function searchSerpApiFlights(
       ? pricePerPersonUsd * usdToArs
       : pricePerPersonUsd;
 
+    console.log('[Budget Check]', { priceUsd: flight.price, usdToArs, totalPriceArs: flight.price * travelers * usdToArs, budget: profile.maxBudget, tolerance: budgetWithTolerance });
+
     if (maxBudget > 0 && totalInProfileCurrency > budgetWithTolerance) {
       logger.info(
         { total: Math.round(totalInProfileCurrency), budget: Math.round(budgetWithTolerance), currency: profileCurrency },
