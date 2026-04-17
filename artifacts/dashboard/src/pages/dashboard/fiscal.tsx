@@ -154,18 +154,11 @@ export default function FiscalPage() {
     // Quality threshold
     items = items.filter(u => (u.qualityScore ?? 70) >= qualityMin);
 
-    // Solo hoy — fiscal dates stored as "YYYY-MM-DD" (UTC); compare against today in Argentina time
+    // Solo hoy — Argentina is always UTC-3 (no DST)
+    // Fiscal dates are stored as "YYYY-MM-DD" via toISOString(), so we compare with UTC date directly
     if (onlyToday) {
-      const todayArg = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
-      items = items.filter(u => {
-        const dateStr = u.date?.trim() ?? "";
-        // ISO date only: compare directly
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr === todayArg;
-        // Full datetime: parse and compare
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
-        return d.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }) === todayArg;
-      });
+      const todayUTC = new Date().toISOString().split("T")[0]!;
+      items = items.filter(u => (u.date?.trim() ?? "").startsWith(todayUTC));
     }
 
     if (quickFilter === "saved") items = items.filter(u => u.isSaved);

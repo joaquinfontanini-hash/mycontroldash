@@ -740,13 +740,14 @@ export default function NewsPage() {
   const filteredNews = useMemo(() => {
     let result = allNews;
     if (onlyToday) {
-      const todayArg = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+      const todayUTC = new Date().toISOString().split("T")[0]!;
       result = result.filter(n => {
         const dateStr = n.date?.trim() ?? "";
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr === todayArg;
+        // ISO date-only string
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr === todayUTC;
+        // Full datetime (RSS): parse and compare UTC date
         const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
-        return d.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }) === todayArg;
+        return !isNaN(d.getTime()) && d.toISOString().split("T")[0] === todayUTC;
       });
     }
     if (search.trim()) {
