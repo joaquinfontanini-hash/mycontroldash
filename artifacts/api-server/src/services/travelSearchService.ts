@@ -1,3 +1,4 @@
+import { load as cheerioLoad } from "cheerio";
 import { eq, and, isNull, lt, or, sql as drizzleSql } from "drizzle-orm";
 import {
   db,
@@ -33,15 +34,63 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().split("T")[0]!;
 }
 
-// FIX 1 — tipo de cambio USD → ARS en tiempo real
-async function getUsdToArsRate(): Promise<number> {
-  try {
-    const res = await fetch("https://api.exchangerate-api.com/v4/latest/USD");
-    const data = await res.json() as { rates?: Record<string, number> };
-    return data.rates?.["ARS"] ?? 1200;
-  } catch {
-    return 1200;
+// ── BNA Exchange Rate — scraping con caché 1h ──────────────────────────────────
+
+const BNA_FALLBACK = 1200;
+
+let bnaCache: { rate: number; fetchedAt: Date; source: string } | null = null;
+
+export async function getBnaExchangeRate(): Promise<{ rate: number; fetchedAt: Date; source: string }> {
+  const now = new Date();
+  if (bnaCache && now.getTime() - bnaCache.fetchedAt.getTime() < 60 * 60 * 1000) {
+    return bnaCache;
   }
+
+  try {
+    const res = await fetch("https://www.bna.com.ar/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; dashboard-bot/1.0)",
+        "Accept": "text/html",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) throw new Error(`BNA HTTP ${res.status}`);
+
+    const html = await res.text();
+    const $ = cheerioLoad(html);
+
+    // La tabla del BNA tiene "Dólar U.S.A." con columnas Comprador / Vendedor
+    let vendedor: number | null = null;
+
+    $("table").each((_i, table) => {
+      $(table).find("tr").each((_j, row) => {
+        const cells = $(row).find("td");
+        const label = cells.eq(0).text().trim();
+        if (/d.lar\s+u\.?s\.?a/i.test(label) || /billete/i.test(label)) {
+          const raw = cells.eq(2).text().trim().replace(",", "."); // Vendedor está en col 3
+          const val = parseFloat(raw);
+          if (!isNaN(val) && val > 100) vendedor = val;
+        }
+      });
+    });
+
+    if (!vendedor) throw new Error("BNA: no se encontró el valor Vendedor en la tabla");
+
+    bnaCache = { rate: vendedor, fetchedAt: now, source: "BNA" };
+    logger.info({ rate: vendedor }, "[BNA] Tipo de cambio actualizado");
+    return bnaCache;
+  } catch (err) {
+    logger.warn({ err }, "[BNA] Scraping falló — usando fallback 1200");
+    const fallback = { rate: BNA_FALLBACK, fetchedAt: now, source: "fallback" };
+    if (!bnaCache) bnaCache = fallback; // no pisar un caché válido con el fallback
+    return bnaCache;
+  }
+}
+
+// Alias interno para compatibilidad con llamadas existentes
+async function getUsdToArsRate(): Promise<number> {
+  return (await getBnaExchangeRate()).rate;
 }
 
 // MEJORA 3 — Rango de fechas con rotación semanal para rangos largos

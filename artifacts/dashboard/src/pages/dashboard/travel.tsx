@@ -1181,7 +1181,7 @@ function ResultCard({
             {result.priceOriginal && result.priceOriginalCurrency && result.currency !== result.priceOriginalCurrency && (
               <div className="text-xs text-muted-foreground">
                 USD {Number(result.priceOriginal).toLocaleString("es-AR")}
-                {result.exchangeRate && ` · TC: ${Number(result.exchangeRate).toFixed(0)}`}
+                {result.exchangeRate && ` · TC BNA: $${Number(result.exchangeRate).toLocaleString("es-AR", { maximumFractionDigits: 0 })}`}
               </div>
             )}
           </div>
@@ -1277,6 +1277,50 @@ interface ApiQuotaEntry {
 }
 
 type ApiQuotasResponse = Record<string, ApiQuotaEntry>;
+
+function BnaRateCard() {
+  const { data, isLoading } = useQuery<{ rate: number; fetchedAt: string; source: string }>({
+    queryKey: ["bna-rate"],
+    queryFn: () => apiFetch("/api/travel/bna-rate"),
+    refetchInterval: 60 * 60 * 1000,
+    retry: 1,
+  });
+
+  const isFallback = data?.source === "fallback";
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <DollarSign className="h-4 w-4" />
+          Tipo de cambio BNA
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading || !data ? (
+          <Skeleton className="h-8 w-40 rounded" />
+        ) : (
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-2xl font-bold">
+              USD → ARS: ${data.rate.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <div className="flex flex-col text-xs text-muted-foreground">
+              <span>
+                Actualizado{" "}
+                {new Date(data.fetchedAt).toLocaleString("es-AR", {
+                  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                })}
+              </span>
+              <span className={isFallback ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
+                Fuente: {isFallback ? "Estimado (BNA no disponible)" : "BNA (Banco Nación Argentina)"}
+              </span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function ApiQuotaPanel() {
   const { data: quotas, isLoading, isError } = useQuery<ApiQuotasResponse>({
@@ -1724,6 +1768,9 @@ export default function TravelPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* TC BNA */}
+            <BnaRateCard />
 
             {/* API Quota Panel */}
             <TabErrorBoundary>

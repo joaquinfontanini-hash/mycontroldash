@@ -9,7 +9,7 @@ import {
 import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import { requireAuth, requireAdmin, getCurrentUserIdNum } from "../middleware/require-auth.js";
-import { runSearchProfile, getApiQuotas } from "../services/travelSearchService.js";
+import { runSearchProfile, getApiQuotas, getBnaExchangeRate } from "../services/travelSearchService.js";
 import { getTravelSchedulerStatus } from "../jobs/scheduler.js";
 
 const router: IRouter = Router();
@@ -448,6 +448,18 @@ router.post("/travel/seed-locations", requireAdmin, async (_req: Request, res: R
   } catch (err) {
     logger.error({ err }, "Error seeding travel locations");
     res.status(500).json({ error: err instanceof Error ? err.message : "Error al cargar ubicaciones" });
+  }
+});
+
+// ── GET /travel/bna-rate ──────────────────────────────────────────────────────
+
+router.get("/travel/bna-rate", requireAuth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const bna = await getBnaExchangeRate();
+    res.json({ rate: bna.rate, fetchedAt: bna.fetchedAt, source: bna.source });
+  } catch (err) {
+    logger.error({ err }, "Error fetching BNA rate");
+    res.status(500).json({ error: "Error al obtener TC BNA" });
   }
 });
 
