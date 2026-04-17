@@ -130,7 +130,8 @@ router.post("/clients/:id/generate-due-dates", async (req, res): Promise<void> =
   try {
     const id = parseInt(req.params["id"] as string);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
-    const result = await generateDueDatesForClient(id);
+    // Always regenerate: delete existing AFIP-engine due dates first, then generate fresh
+    const result = await regenerateAllDueDatesForClient(id);
     res.json(result);
   } catch (err) {
     logger.error({ err }, "AFIP engine error");
