@@ -68,7 +68,7 @@ interface SearchProfile {
   updatedAt: string;
   lastRunAt: string | null;
   lastRunStatus: string | null;
-  lastRunSummaryJson: { count: number; ranAt: string } | null;
+  lastRunSummaryJson: { count: number; skipped: number; errors: string[]; runCount?: number; ranAt: string } | null;
 }
 
 interface SearchResult {
@@ -848,25 +848,35 @@ function ProfileFormDialog({
                 ))}
               </div>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2 col-span-2">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Salida desde <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
+                Período de búsqueda <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
               </Label>
-              <Input
-                type="date"
-                value={form.departureDateFrom}
-                onChange={e => set("departureDateFrom", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Salida hasta <span className="text-xs font-normal normal-case text-muted-foreground/60">(opcional)</span>
-              </Label>
-              <Input
-                type="date"
-                value={form.departureDateTo}
-                onChange={e => set("departureDateTo", e.target.value)}
-              />
+              <p className="text-xs text-muted-foreground -mt-1">
+                El sistema buscará ofertas con salida dentro de este período. Sin fechas, busca desde hoy hasta 60 días adelante.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Desde</span>
+                  <Input
+                    type="date"
+                    value={form.departureDateFrom}
+                    min={new Date().toISOString().split("T")[0]}
+                    onChange={e => set("departureDateFrom", e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Hasta</span>
+                  <Input
+                    type="date"
+                    value={form.departureDateTo}
+                    min={new Date().toISOString().split("T")[0]}
+                    onChange={e => set("departureDateTo", e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1017,15 +1027,51 @@ function ProfileCard({
           )}
         </div>
 
-        {/* Footer: última ejecución + resultados */}
+        {/* Período de búsqueda */}
+        {(profile.departureDateFrom || profile.departureDateTo) && (
+          <p className="text-xs text-muted-foreground">
+            📅{" "}
+            {profile.departureDateFrom
+              ? new Date(profile.departureDateFrom + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })
+              : "Hoy"}
+            {" → "}
+            {profile.departureDateTo
+              ? new Date(profile.departureDateTo + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })
+              : "Sin límite"}
+          </p>
+        )}
+
+        {/* Estado de última ejecución */}
+        {profile.lastRunStatus === "error" && (
+          <div className="mt-1">
+            <span className="text-destructive text-xs font-medium">● Error en última ejecución</span>
+            {profile.lastRunSummaryJson?.errors?.length > 0 && (
+              <p className="text-xs text-destructive/80 mt-0.5 leading-relaxed line-clamp-2">
+                {profile.lastRunSummaryJson.errors[0]}
+              </p>
+            )}
+          </div>
+        )}
+        {profile.lastRunStatus === "ok" && profile.lastRunSummaryJson?.count === 0 && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+            ● Sin resultados — precio por debajo del mercado actual
+          </p>
+        )}
+        {profile.lastRunStatus === "ok" && (profile.lastRunSummaryJson?.count ?? 0) > 0 && (
+          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+            ● {profile.lastRunSummaryJson!.count} oferta{profile.lastRunSummaryJson!.count > 1 ? "s" : ""} encontrada{profile.lastRunSummaryJson!.count > 1 ? "s" : ""}
+          </p>
+        )}
+
+        {/* Footer: última ejecución + botón */}
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <div className="text-xs text-muted-foreground">
             {profile.lastRunAt ? (
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {fmtRelative(profile.lastRunAt)}
-                {profile.lastRunStatus === "error" && (
-                  <span className="text-destructive ml-1">· error</span>
+                {profile.lastRunSummaryJson?.runCount != null && (
+                  <span className="text-muted-foreground/60">· #{profile.lastRunSummaryJson.runCount}</span>
                 )}
               </span>
             ) : (

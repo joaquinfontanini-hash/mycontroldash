@@ -44,8 +44,11 @@ async function getUsdToArsRate(): Promise<number> {
   }
 }
 
-// FIX 4 — rango de fechas multi-punto
+// MEJORA 3 — Rango de fechas con rotación semanal para rangos largos
 function generateDepartureDates(profile: typeof travelSearchProfilesTable.$inferSelect): string[] {
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0]!;
+
   const from = profile.departureDateFrom
     ? new Date(profile.departureDateFrom + "T12:00:00")
     : new Date(Date.now() + 14 * 86400000);
@@ -53,30 +56,48 @@ function generateDepartureDates(profile: typeof travelSearchProfilesTable.$infer
     ? new Date(profile.departureDateTo + "T12:00:00")
     : new Date(Date.now() + 60 * 86400000);
 
-  const dates: string[] = [];
-  const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000);
+  // No buscar fechas pasadas
+  const effectiveFrom = from < now ? now : from;
+  if (effectiveFrom > to) return [];
 
-  if (diffDays <= 7) {
-    for (let i = 0; i <= diffDays; i++) {
-      const d = new Date(from);
+  const diffDays = Math.round((to.getTime() - effectiveFrom.getTime()) / 86400000);
+  const dates: string[] = [];
+
+  if (diffDays <= 14) {
+    // Rango corto (≤2 semanas): cada 2 días, máx 7
+    for (let i = 0; i <= diffDays && dates.length < 7; i += 2) {
+      const d = new Date(effectiveFrom);
       d.setDate(d.getDate() + i);
       dates.push(d.toISOString().split("T")[0]!);
     }
-  } else if (diffDays <= 30) {
-    for (let i = 0; i <= diffDays; i += 3) {
-      const d = new Date(from);
+  } else if (diffDays <= 60) {
+    // Rango medio (2 semanas–2 meses): cada semana, máx 8
+    for (let i = 0; i <= diffDays && dates.length < 8; i += 7) {
+      const d = new Date(effectiveFrom);
       d.setDate(d.getDate() + i);
       dates.push(d.toISOString().split("T")[0]!);
     }
   } else {
-    for (let i = 0; i <= diffDays && dates.length < 8; i += 7) {
-      const d = new Date(from);
-      d.setDate(d.getDate() + i);
-      dates.push(d.toISOString().split("T")[0]!);
+    // Rango largo (>2 meses): 1 fecha por mes, rotando el día para cubrir distintas semanas
+    const prevRunCount = (profile.lastRunSummaryJson as { runCount?: number } | null)?.runCount ?? 0;
+    const dayOffset = (prevRunCount % 4) * 7; // rota: días 1, 8, 15, 22 del mes
+
+    let current = new Date(effectiveFrom.getFullYear(), effectiveFrom.getMonth(), 1 + dayOffset);
+    if (current < effectiveFrom) {
+      // Si el offset cae antes del inicio, avanzar al mes siguiente
+      current = new Date(current.getFullYear(), current.getMonth() + 1, 1 + dayOffset);
+    }
+
+    while (current <= to && dates.length < 9) {
+      if (current >= effectiveFrom) {
+        dates.push(current.toISOString().split("T")[0]!);
+      }
+      current = new Date(current.getFullYear(), current.getMonth() + 1, 1 + dayOffset);
     }
   }
 
-  return dates.length > 0 ? dates : [from.toISOString().split("T")[0]!];
+  // Filtrar fechas pasadas
+  return dates.filter(d => d >= todayStr);
 }
 
 function getDestinations(profile: typeof travelSearchProfilesTable.$inferSelect): Array<{ label: string; code: string | null; country: string; region: string }> {
@@ -619,15 +640,17 @@ export async function runSearchProfile(profileId: string, userId: number): Promi
 
   // Actualizar metadata del perfil
   const now = new Date();
+  const prevRunCount = (profile.lastRunSummaryJson as { runCount?: number } | null)?.runCount ?? 0;
   await db
     .update(travelSearchProfilesTable)
     .set({
       lastRunAt: now,
-      lastRunStatus: errors.length === 0 || toInsert.length > 0 ? "ok" : "error",
+      lastRunStatus: toInsert.length > 0 ? "ok" : errors.length > 0 ? "error" : "ok",
       lastRunSummaryJson: {
         count: toInsert.length,
         skipped: allResults.length - toInsert.length,
         errors,
+        runCount: prevRunCount + 1,
         ranAt: now.toISOString(),
       },
       updatedAt: now,
@@ -733,9 +756,11 @@ async function runSearchProfileForScheduler(profile: typeof travelSearchProfiles
   }
 
   const now = new Date();
+  const prevRunCountSched = (profile.lastRunSummaryJson as { runCount?: number } | null)?.runCount ?? 0;
   await db.update(travelSearchProfilesTable).set({
-    lastRunAt: now, lastRunStatus: errors.length === 0 || toInsert.length > 0 ? "ok" : "error",
-    lastRunSummaryJson: { count: toInsert.length, skipped: allResults.length - toInsert.length, errors, ranAt: now.toISOString() },
+    lastRunAt: now,
+    lastRunStatus: toInsert.length > 0 ? "ok" : errors.length > 0 ? "error" : "ok",
+    lastRunSummaryJson: { count: toInsert.length, skipped: allResults.length - toInsert.length, errors, runCount: prevRunCountSched + 1, ranAt: now.toISOString() },
     updatedAt: now,
   }).where(eq(travelSearchProfilesTable.id, profile.id));
 
