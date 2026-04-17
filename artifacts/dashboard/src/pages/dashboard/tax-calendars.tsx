@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
@@ -16,7 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload, FileText, CheckCircle2, Clock, AlertTriangle, Trash2,
-  Zap, RotateCcw, FolderOpen, CalendarCheck, Info, ShieldAlert,
+  Zap, RotateCcw, FolderOpen, CalendarCheck, Info, ShieldAlert, Sparkles,
 } from "lucide-react";
 
 import { BASE } from "@/lib/base-url";
@@ -25,6 +28,7 @@ interface AnnualCalendar {
   id: number;
   name: string;
   year: number;
+  calendarType: string;
   status: "draft" | "active" | "archived";
   parseStatus: "pending" | "done" | "error";
   parseErrors: string | null;
@@ -62,6 +66,21 @@ const PARSE_LABEL: Record<string, string> = {
   error: "Error de procesamiento",
 };
 
+function calendarTypeBadge(type: string) {
+  if (type === "iibb_nqn") {
+    return (
+      <Badge className="bg-violet-500/15 text-violet-600 border-violet-500/30 dark:text-violet-400 text-xs">
+        IIBB NQN
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/30 dark:text-blue-400 text-xs">
+      AFIP General
+    </Badge>
+  );
+}
+
 function calendarStatusBadge(status: string) {
   if (status === "active") return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 dark:text-emerald-400">Activo</Badge>;
   if (status === "archived") return <Badge variant="secondary" className="text-muted-foreground">Archivado</Badge>;
@@ -86,13 +105,6 @@ function parseStatusBadge(status: string) {
   );
 }
 
-function formatBytes(bytes: number | null | undefined): string {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("es-AR", {
     day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
@@ -105,6 +117,8 @@ export default function TaxCalendarsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [uploadType, setUploadType] = useState<"general" | "iibb_nqn">("general");
   const [detailCalendar, setDetailCalendar] = useState<AnnualCalendar | null>(null);
 
   const { data: calendars = [], isLoading } = useQuery<AnnualCalendar[]>({
@@ -112,7 +126,9 @@ export default function TaxCalendarsPage() {
     queryFn: () => fetch(`${BASE}/api/annual-calendars`).then(r => r.json()),
   });
 
-  const hasActive = calendars.some(c => c.status === "active");
+  const hasGeneralActive = calendars.some(c => c.status === "active" && (c.calendarType === "general" || !c.calendarType));
+  const hasIibbNqnActive = calendars.some(c => c.status === "active" && c.calendarType === "iibb_nqn");
+  const hasAnyActive = hasGeneralActive || hasIibbNqnActive;
 
   const activateMutation = useMutation({
     mutationFn: (id: number) =>
@@ -159,6 +175,7 @@ export default function TaxCalendarsPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("calendarType", uploadType);
       const res = await fetch(`${BASE}/api/tax-calendars/upload`, { method: "POST", body: formData });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -176,7 +193,7 @@ export default function TaxCalendarsPage() {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [qc, toast]);
+  }, [qc, toast, uploadType]);
 
   const onFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -193,88 +210,175 @@ export default function TaxCalendarsPage() {
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const onDragLeave = () => setIsDragging(false);
 
+  const handleSeedIibbNqn = async () => {
+    setIsSeeding(true);
+    try {
+      const res = await fetch(`${BASE}/api/annual-calendars/seed/iibb-nqn`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: 2026 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Error al crear");
+      qc.invalidateQueries({ queryKey: ["annual-calendars"] });
+      toast({
+        title: "Calendario IIBB NQN 2026 creado",
+        description: `${data.rulesInserted} reglas cargadas desde la tabla oficial. Revisá y activá el calendario.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const alreadyHasIibbNqn2026 = calendars.some(c => c.calendarType === "iibb_nqn" && c.year === 2026);
+
   return (
     <div className="flex flex-col gap-6 p-6 max-w-5xl mx-auto">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold tracking-tight">Calendarios impositivos</h1>
         <p className="text-muted-foreground text-sm">
-          Cargá el archivo de vencimientos fiscales anuales (AFIP / Rentas). El sistema lo usa para calcular vencimientos por CUIT e impuesto.
+          Cargá los calendarios de vencimientos fiscales anuales. El sistema soporta un calendario general (AFIP) y uno específico para IIBB Neuquén, activos en paralelo.
         </p>
       </div>
 
-      {!hasActive && !isLoading && (
+      {!hasGeneralActive && !isLoading && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm">
           <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
           <div>
-            <span className="font-semibold text-amber-600 dark:text-amber-400">Sin calendario activo</span>
+            <span className="font-semibold text-amber-600 dark:text-amber-400">Sin calendario AFIP activo</span>
             <span className="text-muted-foreground ml-1.5">
-              No hay un calendario de vencimientos activo. Subí y activá uno para que el motor de AFIP calcule vencimientos automáticamente.
+              Subí y activá el calendario general de AFIP para calcular vencimientos automáticamente.
             </span>
           </div>
         </div>
       )}
 
-      {hasActive && (
+      {hasGeneralActive && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
           <CalendarCheck className="h-4 w-4 shrink-0" />
-          <span className="font-medium">Calendario activo registrado.</span>
-          <span className="text-muted-foreground">El motor de vencimientos lo usa para calcular fechas por CUIT e impuesto.</span>
+          <span className="font-medium">Calendario AFIP activo.</span>
+          <span className="text-muted-foreground">El motor calcula vencimientos por CUIT e impuesto.</span>
         </div>
       )}
 
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Upload className="h-4 w-4 text-primary" />
-            Subir calendario anual
-          </CardTitle>
-          <CardDescription>
-            Formatos aceptados: PDF (calendario impreso/escaneado) · Excel · CSV — máx. 50 MB
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onClick={() => !isUploading && fileInputRef.current?.click()}
-            className={`relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-all cursor-pointer
-              ${isDragging ? "border-primary bg-primary/8 scale-[1.01]" : "border-border hover:border-primary/60 hover:bg-muted/40"}
-              ${isUploading ? "pointer-events-none opacity-60" : ""}
-            `}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.xlsx,.xls,.csv"
-              className="hidden"
-              onChange={onFileInput}
-            />
-            {isUploading ? (
-              <>
-                <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                <p className="text-sm font-medium text-muted-foreground">Subiendo archivo…</p>
-              </>
+      {hasIibbNqnActive && (
+        <div className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-700 dark:text-violet-400">
+          <CalendarCheck className="h-4 w-4 shrink-0" />
+          <span className="font-medium">Calendario IIBB NQN activo.</span>
+          <span className="text-muted-foreground">Se usa para clientes con Ingresos Brutos Neuquén asignado.</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Upload className="h-4 w-4 text-primary" />
+              Subir calendario
+            </CardTitle>
+            <CardDescription>
+              PDF · Excel · CSV — máx. 50 MB
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Tipo:</span>
+              <Select value={uploadType} onValueChange={(v) => setUploadType(v as "general" | "iibb_nqn")}>
+                <SelectTrigger className="h-8 text-xs flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">AFIP General</SelectItem>
+                  <SelectItem value="iibb_nqn">IIBB NQN (Ingresos Brutos Neuquén)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onClick={() => !isUploading && fileInputRef.current?.click()}
+              className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer
+                ${isDragging ? "border-primary bg-primary/8 scale-[1.01]" : "border-border hover:border-primary/60 hover:bg-muted/40"}
+                ${isUploading ? "pointer-events-none opacity-60" : ""}
+              `}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.xlsx,.xls,.csv"
+                className="hidden"
+                onChange={onFileInput}
+              />
+              {isUploading ? (
+                <>
+                  <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  <p className="text-sm font-medium text-muted-foreground">Subiendo archivo…</p>
+                </>
+              ) : (
+                <>
+                  <div className={`rounded-full p-3 ${isDragging ? "bg-primary/15" : "bg-muted"}`}>
+                    <FolderOpen className={`h-6 w-6 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-sm font-semibold">
+                      {isDragging ? "Soltá el archivo" : "Arrastrá o hacé clic"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">para seleccionar desde tu computadora</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className={`border-violet-500/30 ${alreadyHasIibbNqn2026 ? "opacity-60" : ""}`}>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-violet-500" />
+              IIBB NQN 2026 — Carga rápida
+            </CardTitle>
+            <CardDescription>
+              Crea el calendario de Ingresos Brutos Neuquén 2026 con todos los vencimientos pre-cargados desde la tabla oficial.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="rounded-lg bg-muted/40 border p-3 text-xs text-muted-foreground space-y-1">
+              <p><span className="font-medium text-foreground">55 reglas</span> — períodos Enero a Noviembre 2026</p>
+              <p>Grupos CUIT: 0-1 · 2-3 · 4-5 · 6-7 · 8-9</p>
+              <p>Solo aplica a clientes con <span className="font-medium text-foreground">IIBB Neuquén</span> asignado.</p>
+            </div>
+            {alreadyHasIibbNqn2026 ? (
+              <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Calendario IIBB NQN 2026 ya existe
+              </div>
             ) : (
-              <>
-                <div className={`rounded-full p-4 ${isDragging ? "bg-primary/15" : "bg-muted"}`}>
-                  <FolderOpen className={`h-8 w-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <p className="text-sm font-semibold">
-                    {isDragging ? "Soltá el archivo aquí" : "Arrastrá el archivo aquí"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">o hacé clic para seleccionar desde tu computadora</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" className="mt-1 pointer-events-none">
-                  <Upload className="h-3.5 w-3.5 mr-1.5" />
-                  Seleccionar archivo
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSeedIibbNqn}
+                disabled={isSeeding}
+                className="border-violet-500/40 text-violet-700 dark:text-violet-400 hover:bg-violet-500/10 hover:border-violet-500/60"
+              >
+                {isSeeding ? (
+                  <>
+                    <div className="h-3.5 w-3.5 rounded-full border border-violet-500 border-t-transparent animate-spin mr-1.5" />
+                    Creando…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                    Crear calendario IIBB NQN 2026
+                  </>
+                )}
+              </Button>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
@@ -295,18 +399,19 @@ export default function TaxCalendarsPage() {
             <FileText className="h-10 w-10 text-muted-foreground/40" />
             <div>
               <p className="text-sm font-medium text-muted-foreground">No hay calendarios cargados</p>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">Subí el primer archivo usando el panel de arriba.</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Subí el primer archivo o usá la carga rápida de IIBB NQN.</p>
             </div>
           </div>
         )}
 
         {!isLoading && calendars.map(cal => (
-          <Card key={cal.id} className={`transition-all ${cal.status === "active" ? "ring-1 ring-emerald-500/40" : ""}`}>
+          <Card key={cal.id} className={`transition-all ${cal.status === "active" ? (cal.calendarType === "iibb_nqn" ? "ring-1 ring-violet-500/40" : "ring-1 ring-emerald-500/40") : ""}`}>
             <CardContent className="p-5">
               <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="font-semibold text-sm truncate">{cal.name}</span>
+                    {calendarTypeBadge(cal.calendarType)}
                     {calendarStatusBadge(cal.status)}
                     <Badge variant="outline" className="text-xs font-mono">{cal.year}</Badge>
                   </div>
@@ -352,7 +457,10 @@ export default function TaxCalendarsPage() {
                       size="sm"
                       onClick={() => activateMutation.mutate(cal.id)}
                       disabled={activateMutation.isPending}
-                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                      className={`h-8 text-xs text-white ${cal.calendarType === "iibb_nqn"
+                        ? "bg-violet-600 hover:bg-violet-700"
+                        : "bg-emerald-600 hover:bg-emerald-700"
+                      }`}
                     >
                       <Zap className="h-3.5 w-3.5 mr-1" />
                       Activar
@@ -360,7 +468,7 @@ export default function TaxCalendarsPage() {
                   )}
 
                   {cal.status === "active" && (
-                    <Button size="sm" variant="ghost" disabled className="h-8 text-xs text-emerald-600 cursor-default">
+                    <Button size="sm" variant="ghost" disabled className={`h-8 text-xs cursor-default ${cal.calendarType === "iibb_nqn" ? "text-violet-600" : "text-emerald-600"}`}>
                       <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
                       Activo
                     </Button>
@@ -407,11 +515,10 @@ export default function TaxCalendarsPage() {
         <Info className="h-4 w-4 mt-0.5 shrink-0" />
         <div className="space-y-1">
           <p className="font-medium text-foreground">¿Cómo funciona?</p>
-          <p>1. Subí el PDF del calendario de vencimientos impositivos (AFIP o Rentas Neuquén).</p>
-          <p>2. El sistema registra el archivo y lo deja en estado <strong>Pendiente de revisión</strong>.</p>
-          <p>3. Revisá que los datos sean correctos y hacé clic en <strong>Activar</strong>.</p>
-          <p>4. Al activar, el motor de vencimientos usará ese calendario para calcular fechas por CUIT e impuesto para todos tus clientes.</p>
-          <p className="mt-1 text-muted-foreground/70">Solo puede haber un calendario activo a la vez. Activar uno archiva automáticamente el anterior.</p>
+          <p>1. El sistema soporta dos calendarios activos en paralelo: uno <strong>AFIP General</strong> y uno <strong>IIBB NQN</strong>.</p>
+          <p>2. Al generar vencimientos para un cliente, el motor usa el calendario correcto según el impuesto: IIBB Neuquén usa el calendario NQN; los demás usan el general.</p>
+          <p>3. Activar un calendario solo archiva otros del <strong>mismo tipo</strong>: activar un IIBB NQN no afecta al calendario AFIP activo.</p>
+          <p>4. Para IIBB NQN, usá la "Carga rápida" para pre-cargar los 55 vencimientos del 2026 de la tabla oficial, o subí tu propio archivo.</p>
         </div>
       </div>
 
@@ -432,10 +539,14 @@ export default function TaxCalendarsPage() {
                   <div className="font-semibold font-mono">{detailCalendar.year}</div>
                 </div>
                 <div className="rounded-lg border bg-muted/30 p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Tipo</div>
+                  <div>{calendarTypeBadge(detailCalendar.calendarType)}</div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-3">
                   <div className="text-xs text-muted-foreground mb-1">Estado</div>
                   <div>{calendarStatusBadge(detailCalendar.status)}</div>
                 </div>
-                <div className="rounded-lg border bg-muted/30 p-3 col-span-2">
+                <div className="rounded-lg border bg-muted/30 p-3">
                   <div className="text-xs text-muted-foreground mb-1">Procesamiento</div>
                   <div>{parseStatusBadge(detailCalendar.parseStatus)}</div>
                 </div>

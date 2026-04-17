@@ -6,6 +6,7 @@ export const annualDueCalendarsTable = pgTable("annual_due_calendars", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   year: integer("year").notNull(),
+  calendarType: text("calendar_type").notNull().default("general"),
   status: text("status").notNull().default("draft"),
   notes: text("notes"),
   uploadedFile: text("uploaded_file"),

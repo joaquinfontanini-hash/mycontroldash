@@ -79,10 +79,11 @@ router.get("/annual-calendars/:id", async (req, res): Promise<void> => {
 router.post("/annual-calendars", async (req, res): Promise<void> => {
   try {
     const userId = getAuth(req)?.userId;
-    const { name, year, notes } = req.body;
+    const { name, year, notes, calendarType } = req.body;
     if (!name || !year) { res.status(400).json({ error: "Nombre y año son requeridos" }); return; }
     const [cal] = await db.insert(annualDueCalendarsTable).values({
       name, year: parseInt(year), notes,
+      calendarType: calendarType ?? "general",
       status: "draft", parseStatus: "pending",
       userId: userId ?? null,
     }).returning();
@@ -97,7 +98,14 @@ router.put("/annual-calendars/:id/activate", async (req, res): Promise<void> => 
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
-    await db.update(annualDueCalendarsTable).set({ status: "archived" });
+    // Find out which type this calendar is so we only archive others of the same type
+    const [target] = await db.select().from(annualDueCalendarsTable).where(eq(annualDueCalendarsTable.id, id));
+    if (!target) { res.status(404).json({ error: "Calendario no encontrado" }); return; }
+    const calType = target.calendarType ?? "general";
+    // Archive only calendars of the same type
+    await db.update(annualDueCalendarsTable)
+      .set({ status: "archived" })
+      .where(eq(annualDueCalendarsTable.calendarType, calType));
     const [activated] = await db.update(annualDueCalendarsTable)
       .set({ status: "active" })
       .where(eq(annualDueCalendarsTable.id, id))
@@ -348,6 +356,16 @@ router.delete("/uploaded-due-files/:id", async (req, res): Promise<void> => {
   }
 });
 
+function detectCalendarType(filename: string, explicitType?: string): string {
+  if (explicitType === "iibb_nqn") return "iibb_nqn";
+  if (explicitType === "general") return "general";
+  const upper = filename.toUpperCase();
+  if (upper.includes("IIBB") || upper.includes("NQN") || upper.includes("NEUQUEN") || upper.includes("NEUQUÉN") || upper.includes("RENTAS")) {
+    return "iibb_nqn";
+  }
+  return "general";
+}
+
 router.post(
   "/tax-calendars/upload",
   upload.single("file"),
@@ -359,11 +377,15 @@ router.post(
 
       const detectedYear = detectYear(file.originalname) ?? (req.body.year ? parseInt(req.body.year) : null);
       const fileType = detectFileType(file.originalname);
-      const calendarName = req.body.name || `Calendario ${detectedYear ?? "sin año"} — ${file.originalname}`;
+      const calType = detectCalendarType(file.originalname, req.body.calendarType);
+      const calendarName = req.body.name || (calType === "iibb_nqn"
+        ? `IIBB NQN ${detectedYear ?? "sin año"}`
+        : `Calendario ${detectedYear ?? "sin año"} — ${file.originalname}`);
 
       const [calendar] = await db.insert(annualDueCalendarsTable).values({
         name: calendarName,
         year: detectedYear ?? new Date().getFullYear(),
+        calendarType: calType,
         status: "draft",
         parseStatus: "pending",
         uploadedFile: file.path,
@@ -395,5 +417,78 @@ router.post(
     }
   }
 );
+
+/** POST /api/annual-calendars/seed/iibb-nqn — crea el calendario IIBB NQN con reglas pre-cargadas desde la tabla oficial */
+router.post("/annual-calendars/seed/iibb-nqn", async (req, res): Promise<void> => {
+  try {
+    const userId = getAuth(req)?.userId;
+    const year = req.body.year ? parseInt(req.body.year) : 2026;
+
+    // Check if already exists
+    const existing = await db.select().from(annualDueCalendarsTable)
+      .where(eq(annualDueCalendarsTable.calendarType, "iibb_nqn"));
+    const alreadyForYear = existing.find(c => c.year === year);
+    if (alreadyForYear) {
+      res.status(409).json({ error: `Ya existe un calendario IIBB NQN para el año ${year} (ID ${alreadyForYear.id})` });
+      return;
+    }
+
+    const [calendar] = await db.insert(annualDueCalendarsTable).values({
+      name: `IIBB NQN ${year}`,
+      year,
+      calendarType: "iibb_nqn",
+      status: "draft",
+      parseStatus: "done",
+      notes: "Calendario de Ingresos Brutos Neuquén pre-cargado desde tabla oficial. Vencimientos de Diciembre (enero del año siguiente) no incluidos en este calendario.",
+      userId: userId ?? null,
+    }).returning();
+
+    // Rules data: [dueMonth, dueDay, cuitTermination]
+    // Period months → due month (Enero→Feb, Febrero→Mar, ..., Noviembre→Dic)
+    const RULES: Array<[number, number, string]> = [
+      // Enero (período 1) → vence en Febrero
+      [2, 20, "0-1"], [2, 20, "2-3"], [2, 20, "4-5"], [2, 23, "6-7"], [2, 24, "8-9"],
+      // Febrero (período 2) → vence en Marzo
+      [3, 18, "0-1"], [3, 19, "2-3"], [3, 20, "4-5"], [3, 23, "6-7"], [3, 25, "8-9"],
+      // Marzo (período 3) → vence en Abril
+      [4, 20, "0-1"], [4, 21, "2-3"], [4, 22, "4-5"], [4, 23, "6-7"], [4, 24, "8-9"],
+      // Abril (período 4) → vence en Mayo
+      [5, 18, "0-1"], [5, 19, "2-3"], [5, 20, "4-5"], [5, 21, "6-7"], [5, 22, "8-9"],
+      // Mayo (período 5) → vence en Junio
+      [6, 18, "0-1"], [6, 19, "2-3"], [6, 22, "4-5"], [6, 23, "6-7"], [6, 24, "8-9"],
+      // Junio (período 6) → vence en Julio
+      [7, 20, "0-1"], [7, 21, "2-3"], [7, 22, "4-5"], [7, 23, "6-7"], [7, 24, "8-9"],
+      // Julio (período 7) → vence en Agosto
+      [8, 18, "0-1"], [8, 19, "2-3"], [8, 20, "4-5"], [8, 21, "6-7"], [8, 24, "8-9"],
+      // Agosto (período 8) → vence en Septiembre
+      [9, 18, "0-1"], [9, 21, "2-3"], [9, 22, "4-5"], [9, 23, "6-7"], [9, 24, "8-9"],
+      // Septiembre (período 9) → vence en Octubre
+      [10, 19, "0-1"], [10, 20, "2-3"], [10, 21, "4-5"], [10, 22, "6-7"], [10, 23, "8-9"],
+      // Octubre (período 10) → vence en Noviembre
+      [11, 18, "0-1"], [11, 19, "2-3"], [11, 20, "4-5"], [11, 24, "6-7"], [11, 25, "8-9"],
+      // Noviembre (período 11) → vence en Diciembre
+      [12, 18, "0-1"], [12, 21, "2-3"], [12, 22, "4-5"], [12, 23, "6-7"], [12, 24, "8-9"],
+    ];
+
+    const inserted = [];
+    for (const [month, dueDay, cuitTermination] of RULES) {
+      const [rule] = await db.insert(annualDueCalendarRulesTable).values({
+        calendarId: calendar.id,
+        taxType: "iibb_neuquen",
+        month,
+        dueDay,
+        cuitTermination,
+        isManualOverride: false,
+      }).returning();
+      inserted.push(rule);
+    }
+
+    logger.info({ calendarId: calendar.id, year, rules: inserted.length }, "IIBB NQN calendar seeded");
+    res.status(201).json({ calendar, rulesInserted: inserted.length });
+  } catch (err) {
+    logger.error({ err }, "IIBB NQN seed error");
+    res.status(500).json({ error: "Error al crear calendario IIBB NQN" });
+  }
+});
 
 export default router;

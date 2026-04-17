@@ -126,7 +126,21 @@ export async function getActiveCalendar() {
   const [cal] = await db
     .select()
     .from(annualDueCalendarsTable)
-    .where(eq(annualDueCalendarsTable.status, "active"));
+    .where(and(
+      eq(annualDueCalendarsTable.status, "active"),
+      eq(annualDueCalendarsTable.calendarType, "general"),
+    ));
+  return cal ?? null;
+}
+
+export async function getActiveCalendarByType(calendarType: string) {
+  const [cal] = await db
+    .select()
+    .from(annualDueCalendarsTable)
+    .where(and(
+      eq(annualDueCalendarsTable.status, "active"),
+      eq(annualDueCalendarsTable.calendarType, calendarType),
+    ));
   return cal ?? null;
 }
 
@@ -255,19 +269,23 @@ export async function generateDueDatesForClient(
     return result;
   }
 
-  // Load active calendar
-  const calendar = await getActiveCalendar();
-  if (!calendar) {
+  // Load both calendars: general (AFIP) and IIBB NQN (if applicable)
+  const [generalCalendar, iibbNqnCalendar] = await Promise.all([
+    getActiveCalendarByType("general"),
+    getActiveCalendarByType("iibb_nqn"),
+  ]);
+
+  if (!generalCalendar && !iibbNqnCalendar) {
     result.errors.push("No hay calendario activo. Active un calendario en Configuración → Calendarios Fiscales");
     await auditLog("generate_failed", `Sin calendario activo para cliente ${client.name} (ID ${clientId})`);
     return result;
   }
 
-  // Validate calendar year
-  if (!calendar.year || calendar.year < 2000 || calendar.year > 2100) {
-    const msg = `Calendario "${calendar.name}" tiene año inválido (${calendar.year}). Corregí el año antes de calcular vencimientos.`;
+  // Validate general calendar year if present
+  if (generalCalendar && (!generalCalendar.year || generalCalendar.year < 2000 || generalCalendar.year > 2100)) {
+    const msg = `Calendario "${generalCalendar.name}" tiene año inválido (${generalCalendar.year}).`;
     result.errors.push(msg);
-    logger.error({ calendarId: calendar.id, year: calendar.year }, "AFIP engine: calendar has invalid year");
+    logger.error({ calendarId: generalCalendar.id, year: generalCalendar.year }, "AFIP engine: calendar has invalid year");
     await auditLog("generate_failed", msg, String(clientId));
     return result;
   }
@@ -286,11 +304,15 @@ export async function generateDueDatesForClient(
     return result;
   }
 
-  // Load calendar rules
-  const rules = await db
-    .select()
-    .from(annualDueCalendarRulesTable)
-    .where(eq(annualDueCalendarRulesTable.calendarId, calendar.id));
+  // Pre-load rules for each calendar
+  const [generalRules, iibbNqnRules] = await Promise.all([
+    generalCalendar
+      ? db.select().from(annualDueCalendarRulesTable).where(eq(annualDueCalendarRulesTable.calendarId, generalCalendar.id))
+      : Promise.resolve([]),
+    iibbNqnCalendar
+      ? db.select().from(annualDueCalendarRulesTable).where(eq(annualDueCalendarRulesTable.calendarId, iibbNqnCalendar.id))
+      : Promise.resolve([]),
+  ]);
 
   const cuitLastDigit = getCuitLastDigit(client.cuit);
 
@@ -307,18 +329,34 @@ export async function generateDueDatesForClient(
     existingDueDates.map(d => `${d.calendarRuleId}-${d.dueDate}`)
   );
 
-  // Pre-compute unique taxTypes in calendar for diagnostics
-  const calendarTaxTypes = [...new Set(rules.map(r => r.taxType))];
-
   for (const assignment of taxAssignments) {
+    const isIibbNqn = normalizeTaxCode(assignment.taxType) === "iibb_neuquen";
+
+    // Pick the right calendar + rules for this tax type
+    const calendar = isIibbNqn ? iibbNqnCalendar : generalCalendar;
+    const rules = isIibbNqn ? iibbNqnRules : generalRules;
+
+    if (!calendar) {
+      const reason = isIibbNqn
+        ? `No hay calendario IIBB NQN activo. Cargá y activá el calendario de Ingresos Brutos Neuquén en Calendarios Fiscales.`
+        : `No hay calendario general activo. Active un calendario AFIP en Calendarios Fiscales.`;
+      result.errors.push(reason);
+      result.details.push({
+        tax: assignment.taxType, month: 0, date: "",
+        trafficLight: "rojo", cuitGroup: `terminacion-${cuitLastDigit}`,
+        status: "error", reason,
+      });
+      continue;
+    }
+
     // ── Matching robusto: normaliza ambos lados ────────────────────────────
+    const calendarTaxTypes = [...new Set(rules.map(r => r.taxType))];
     const matchingRules = rules.filter(r =>
       taxCodesMatch(r.taxType, assignment.taxType) &&
       cuitTerminationMatches(r.cuitTermination, cuitLastDigit)
     );
 
     if (matchingRules.length === 0) {
-      // Build diagnostic: show what the calendar has vs what we're looking for
       const clientTaxNorm = normalizeTaxCode(assignment.taxType);
       const calendarTaxNorms = calendarTaxTypes.map(t => `"${t}" → ${normalizeTaxCode(t)}`).join(", ");
 
@@ -340,15 +378,10 @@ export async function generateDueDatesForClient(
       });
 
       logger.warn({
-        clientId,
-        clientName: client.name,
-        taxType: assignment.taxType,
-        taxTypeNormalized: clientTaxNorm,
-        calendarId: calendar.id,
-        calendarName: calendar.name,
-        calendarYear: calendar.year,
-        cuitLastDigit,
-        availableTaxTypes: calendarTaxTypes,
+        clientId, clientName: client.name,
+        taxType: assignment.taxType, taxTypeNormalized: clientTaxNorm,
+        calendarId: calendar.id, calendarName: calendar.name, calendarYear: calendar.year,
+        cuitLastDigit, availableTaxTypes: calendarTaxTypes,
       }, "AFIP engine: no matching rules found for tax");
 
       continue;
@@ -409,7 +442,6 @@ export async function generateDueDatesForClient(
           clientId: client.id,
           calendarRuleId: rule.id,
           userId: client.userId,
-          // New v2 fields
           trafficLight: tl,
           cuitGroup: rule.cuitTermination,
           cuitTermination: cuitLastDigit,
