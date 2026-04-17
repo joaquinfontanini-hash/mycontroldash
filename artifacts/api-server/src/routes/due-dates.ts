@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { db, dueDatesTable, dueDateCategoriesTable } from "@workspace/db";
 import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 
@@ -129,6 +129,22 @@ router.delete("/due-dates/:id", requireAuth, async (req, res): Promise<void> => 
   if (!assertOwnership(req, res, existing.userId)) return;
   await db.delete(dueDatesTable).where(eq(dueDatesTable.id, id));
   res.status(204).end();
+});
+
+router.post("/due-dates/bulk-delete", requireAuth, async (req, res): Promise<void> => {
+  const userId = getCurrentUserId(req);
+  const { ids } = req.body as { ids?: unknown };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids requeridos (array no vacío)" }); return;
+  }
+  const numericIds = (ids as unknown[]).map(Number).filter(n => !isNaN(n));
+  if (numericIds.length === 0) {
+    res.status(400).json({ error: "IDs inválidos" }); return;
+  }
+  await db.delete(dueDatesTable).where(
+    and(inArray(dueDatesTable.id, numericIds), eq(dueDatesTable.userId, userId))
+  );
+  res.json({ ok: true, deleted: numericIds.length });
 });
 
 export default router;
