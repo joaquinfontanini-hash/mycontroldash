@@ -1221,21 +1221,29 @@ class TabErrorBoundary extends Component<
 
 // ── Api Quota Panel ───────────────────────────────────────────────────────────
 
-interface ApiQuota {
-  id: string;
-  apiName: string;
-  periodMonth: string;
+interface ApiQuotaEntry {
   callsUsed: number;
   callsLimit: number;
+  callsRemaining: number;
+  percentUsed: number;
+  status: "ok" | "warning" | "exhausted";
+  dailyBudgetRemaining: number;
 }
 
+type ApiQuotasResponse = Record<string, ApiQuotaEntry>;
+
 function ApiQuotaPanel() {
-  const { data: quotas = [], isLoading, isError } = useQuery<ApiQuota[]>({
+  const { data: quotas, isLoading, isError } = useQuery<ApiQuotasResponse>({
     queryKey: ["travel-api-quotas"],
-    queryFn: () => apiFetch<ApiQuota[]>("/api/travel/api-quotas"),
+    queryFn: () => apiFetch<ApiQuotasResponse>("/api/travel/api-quotas"),
     refetchInterval: 30000,
     retry: 1,
   });
+
+  const API_INFO: Record<string, { label: string; monthlyLimit: number; color: string }> = {
+    serpapi:  { label: "SerpAPI",  monthlyLimit: 100,  color: "bg-green-500"  },
+    amadeus:  { label: "Amadeus",  monthlyLimit: 2000, color: "bg-blue-500"   },
+  };
 
   if (isError) {
     return (
@@ -1248,16 +1256,7 @@ function ApiQuotaPanel() {
     );
   }
 
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const currentQuotas = quotas.filter(q => q.periodMonth === currentMonth);
-
-  const API_INFO: Record<string, { label: string; monthlyLimit: number; color: string; url?: string }> = {
-    serpapi:  { label: "SerpAPI",  monthlyLimit: 100,  color: "bg-green-500",  url: "https://serpapi.com" },
-    amadeus:  { label: "Amadeus",  monthlyLimit: 2000, color: "bg-blue-500",   url: "https://developers.amadeus.com" },
-  };
-
-  if (isLoading) {
+  if (isLoading || !quotas) {
     return (
       <Card>
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><Globe className="h-4 w-4" />APIs de búsqueda</CardTitle></CardHeader>
@@ -1265,6 +1264,8 @@ function ApiQuotaPanel() {
       </Card>
     );
   }
+
+  const now = new Date();
 
   return (
     <Card>
@@ -1276,18 +1277,18 @@ function ApiQuotaPanel() {
       </CardHeader>
       <CardContent className="space-y-4">
         {Object.entries(API_INFO).map(([apiName, info]) => {
-          const quota = currentQuotas.find(q => q.apiName === apiName);
+          const quota = quotas[apiName];
           const used = quota?.callsUsed ?? 0;
           const limit = quota?.callsLimit ?? info.monthlyLimit;
           const pct = Math.min((used / limit) * 100, 100);
-          const hasKey = used > 0 || quota != null;
+          const configured = quota != null;
           return (
             <div key={apiName} className="space-y-1.5">
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">{info.label}</span>
                 <span className="text-muted-foreground text-xs">
                   {used} / {limit} llamadas
-                  {!hasKey && <span className="ml-1 text-amber-600 dark:text-amber-400">(sin configurar)</span>}
+                  {!configured && <span className="ml-1 text-amber-600 dark:text-amber-400">(sin configurar)</span>}
                 </span>
               </div>
               <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
@@ -1301,12 +1302,15 @@ function ApiQuotaPanel() {
                   <AlertTriangle className="h-3 w-3" /> Cuota casi agotada
                 </p>
               )}
+              {quota?.dailyBudgetRemaining != null && (
+                <p className="text-xs text-muted-foreground">{quota.dailyBudgetRemaining} llamadas restantes hoy</p>
+              )}
             </div>
           );
         })}
         <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-1 border-t border-border/40">
           <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-          Configurá las variables de entorno SERPAPI_KEY y AMADEUS_CLIENT_ID/SECRET para activar búsquedas reales. Sin ellas el sistema usa datos simulados.
+          SERPAPI_KEY activa búsquedas reales en Google Flights. AMADEUS_CLIENT_ID/SECRET activa paquetes y vuelos alternativos.
         </p>
       </CardContent>
     </Card>
