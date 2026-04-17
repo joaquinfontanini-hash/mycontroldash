@@ -162,7 +162,11 @@ export function taxLabel(taxType: string): string {
 }
 
 function taxCategory(taxType: string): string {
-  if (["iva", "ganancias", "monotributo", "autonomos", "iibb_neuquen", "iibb_rio_negro"].includes(taxType))
+  if ([
+    "iva", "ganancias", "anticipo_ganancias", "monotributo", "autonomos",
+    "iibb_neuquen", "iibb_rio_negro", "convenio_multilateral",
+    "sicore_1q", "sicore_ddjj", "internos",
+  ].includes(taxType))
     return "impuestos";
   if (["cargas_sociales", "empleada_domestica", "sindicato"].includes(taxType))
     return "cargas_sociales";

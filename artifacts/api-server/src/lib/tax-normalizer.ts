@@ -27,9 +27,23 @@ const TAX_ALIASES: Array<{ code: string; patterns: string[] }> = [
     patterns: [
       "ganancias sociedades ddjj", "ganancias sociedades",
       "ganancias personas humanas", "ganancias ph",
-      "gcias sociedades", "gcias. sociedades", "gcias.",
+      "gcias sociedades ddjj", "gcias sociedades",
+      "gcias. sociedades", "gcias.",
       "impuesto a las ganancias", "impuesto ganancias",
       "ganancias ddjj", "ganancias",
+    ],
+  },
+  {
+    code: "anticipo_ganancias",
+    patterns: [
+      "anticipos gcias sociedades", "anticipos gcias. sociedades",
+      "anticipos gcias pers humanas", "anticipos gcias. pers. humanas",
+      "bienes personales fondo cooperativo",
+      "anticipos gcias", "anticipo gcias",
+      "anticipo de ig", "anticipos ig",
+      "anticipo ig", "anticipo impuesto ganancias",
+      "anticipos ganancias", "anticipo ganancias",
+      "anticipos",
     ],
   },
   {
@@ -48,6 +62,53 @@ const TAX_ALIASES: Array<{ code: string; patterns: string[] }> = [
     ],
   },
   {
+    code: "cargas_sociales",
+    patterns: [
+      "empleadores sicoss", "empleadores (sicoss)",
+      "sicoss", "sistema integrado previsional argentino",
+      "cargas sociales empleadores", "cargas sociales",
+      "cs empleadores", "seguridad social", "aportes y contribuciones",
+    ],
+  },
+  {
+    code: "convenio_multilateral",
+    patterns: [
+      "convenio multilateral cm",
+      "convenio multilateral",
+      "multilateral",
+      "cm convenio",
+    ],
+  },
+  {
+    code: "sicore_1q",
+    patterns: [
+      "1° quincena pago a cuenta",
+      "1era quincena pago a cuenta",
+      "1a quincena pago a cuenta",
+      "sicore 1° quincena", "sicore 1era quincena",
+      "sicore/sire 1° quincena",
+      "sicore/sire impositivo 1q",
+      "retenciones 1° quincena",
+      "pago a cuenta sicore",
+      "sicore 1q", "sire 1q",
+      "1° quincena sicore",
+    ],
+  },
+  {
+    code: "sicore_ddjj",
+    patterns: [
+      "2° quincena ddjj e ingreso de saldo",
+      "2° quincena ddjj e ingreso del saldo",
+      "2° quincena ddjj",
+      "sicore ddjj", "sicore 2° quincena",
+      "sicore/sire 2° quincena",
+      "sicore/sire impositivo ddjj",
+      "ddjj e ingreso de saldo sicore",
+      "2° quincena sicore",
+      "sicore 2q", "sire 2q",
+    ],
+  },
+  {
     code: "iibb_neuquen",
     patterns: [
       "ingresos brutos neuquen", "ingresos brutos neuquen mensual",
@@ -60,13 +121,6 @@ const TAX_ALIASES: Array<{ code: string; patterns: string[] }> = [
     patterns: [
       "ingresos brutos rio negro", "iibb rio negro", "iibb rn",
       "rentas rio negro",
-    ],
-  },
-  {
-    code: "cargas_sociales",
-    patterns: [
-      "cargas sociales empleadores", "cargas sociales",
-      "cs empleadores", "seguridad social", "aportes y contribuciones",
     ],
   },
   {
@@ -143,12 +197,16 @@ export function taxCodesMatch(a: string, b: string): boolean {
 const TAX_LABELS: Record<string, string> = {
   iva: "IVA DDJJ",
   ganancias: "Ganancias",
+  anticipo_ganancias: "Anticipo de Ganancias",
   monotributo: "Monotributo",
   autonomos: "Autónomos",
+  cargas_sociales: "Cargas Sociales (SICOSS)",
+  convenio_multilateral: "Convenio Multilateral",
+  sicore_1q: "SICORE 1° Quincena",
+  sicore_ddjj: "SICORE 2° Quincena DDJJ",
   iibb_neuquen: "IIBB Neuquén",
   iibb_rio_negro: "IIBB Río Negro",
-  cargas_sociales: "Cargas Sociales",
-  empleada_domestica: "Empleada Doméstica",
+  empleada_domestica: "Personal de Casas Particulares",
   sindicato: "Sindicato",
   facturacion: "Facturación",
 };

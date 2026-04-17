@@ -21,12 +21,16 @@ import { BASE } from "@/lib/base-url";
 const TAX_TYPES = [
   { key: "iva", label: "IVA", category: "impuestos" },
   { key: "ganancias", label: "Ganancias", category: "impuestos" },
+  { key: "anticipo_ganancias", label: "Anticipo de IG", category: "impuestos" },
   { key: "monotributo", label: "Monotributo", category: "impuestos" },
   { key: "autonomos", label: "Autónomos", category: "impuestos" },
+  { key: "convenio_multilateral", label: "Convenio Multilateral", category: "impuestos" },
+  { key: "sicore_1q", label: "SICORE 1° Quincena", category: "impuestos" },
+  { key: "sicore_ddjj", label: "SICORE DDJJ", category: "impuestos" },
   { key: "iibb_neuquen", label: "IIBB Neuquén", category: "impuestos" },
   { key: "iibb_rio_negro", label: "IIBB Río Negro", category: "impuestos" },
-  { key: "cargas_sociales", label: "Cargas Sociales", category: "cargas" },
-  { key: "empleada_domestica", label: "Empleada Doméstica", category: "cargas" },
+  { key: "cargas_sociales", label: "Cargas Sociales (SICOSS)", category: "cargas" },
+  { key: "empleada_domestica", label: "Personal de Casas Particulares", category: "cargas" },
   { key: "sindicato", label: "Sindicato", category: "cargas" },
   { key: "facturacion", label: "Facturación", category: "otros" },
 ];
