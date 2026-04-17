@@ -177,7 +177,7 @@ export default function FiscalPage() {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
       items = items.filter(u => {
-        try { return new Date(u.date) >= cutoff; } catch { return true; }
+        try { return new Date(u.date + "T12:00:00") >= cutoff; } catch { return true; }
       });
     }
 
@@ -566,7 +566,7 @@ export default function FiscalPage() {
                   return (
                     <tr key={update.id} className={`hover:bg-muted/30 transition-colors ${update.requiresAction ? "bg-amber-50/30 dark:bg-amber-950/10" : ""}`}>
                       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(update.date).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
+                        {new Date(update.date + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs font-medium">{update.organism}</span>
@@ -638,7 +638,7 @@ export default function FiscalPage() {
                         <Badge variant="outline" className="text-xs">{update.organism}</Badge>
                         <Badge variant="secondary" className="text-xs">{update.jurisdiction}</Badge>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(update.date).toLocaleDateString("es-AR", {
+                          {new Date(update.date + "T12:00:00").toLocaleDateString("es-AR", {
                             day: "numeric", month: "short", year: "numeric",
                           })}
                         </span>
