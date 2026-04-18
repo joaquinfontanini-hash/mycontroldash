@@ -90,13 +90,32 @@ const ANTICIPO_GANANCIAS_RULES: Rule[] = [
 ];
 
 // ─── CONVENIO MULTILATERAL ─────────────────────────────────────────────────
-// Grupos: 0-2 (base 13), 3-5 (base 15), 6-7 (base 16), 8-9 (base 17)
-const CONVENIO_MULTILATERAL_RULES: Rule[] = [
-  ...monthlyGroup("0-2", 13),
-  ...monthlyGroup("3-5", 15),
-  ...monthlyGroup("6-7", 16),
-  ...monthlyGroup("8-9", 17),
+// Tabla oficial COMARB 2026 — fuente: calendariofiscal.com.ar/impuestos/convenio-multilateral
+// Grupos: 0-2, 3-5, 6-7, 8-9 (4 grupos, diferente a SICORE que usa 3).
+// Pago en mes M cubre el período del mes M-1.
+// Fila = [mes_pago, dia_0-2, dia_3-5, dia_6-7, dia_8-9]
+// Nota: base 13 para 0-2 corre cuando cae en fin de semana (ej: Jun→15, Sep→14, Dic→14).
+//       base 18/19/20 para 3-5/6-7/8-9 corre por feriados (ej: Apr, Jul, Sep, Oct).
+const CM_TABLE: [number, number, number, number, number][] = [
+  [1,  13, 19, 20, 21],  // ene: Jan 18=dom → 3-5 corre a 19, cascada
+  [2,  13, 18, 19, 20],  // feb: Feb 13=vie, 18=mié (pre-Carnaval 16-17) ✓
+  [3,  13, 18, 19, 20],  // mar
+  [4,  13, 20, 21, 22],  // abr: Apr 18=sáb, 19=dom → 20(lun), 21(mar), 22(mié)
+  [5,  13, 18, 19, 20],  // may
+  [6,  15, 18, 19, 22],  // jun: Jun 13=sáb→15(lun); Jun 20=sáb→22(lun) para 8-9
+  [7,  13, 20, 21, 22],  // jul: Jul 18=sáb, 19=dom → 20(lun), 21(mar), 22(mié)
+  [8,  13, 18, 19, 20],  // ago
+  [9,  14, 18, 21, 22],  // sep: Sep 13=dom→14(lun); Sep 19=sáb, 20=dom→21(lun), 22(mar)
+  [10, 13, 19, 20, 21],  // oct: Oct 12=Día Raza(lun)→ base 18=dom→19; cascada 20/21
+  [11, 13, 18, 19, 20],  // nov: Nov 13=vie, 18=mié, 19=jue; Nov 20 sic oficial COMARB
+  [12, 14, 18, 21, 22],  // dic: Dic 13=dom→14(lun); Dic 19=sáb, 20=dom→21(lun), 22(mar)
 ];
+const CONVENIO_MULTILATERAL_RULES: Rule[] = CM_TABLE.flatMap(([month, d02, d35, d67, d89]) => [
+  { month, cuitTermination: "0-2", dueDay: d02 },
+  { month, cuitTermination: "3-5", dueDay: d35 },
+  { month, cuitTermination: "6-7", dueDay: d67 },
+  { month, cuitTermination: "8-9", dueDay: d89 },
+]);
 
 // ─── IVA DDJJ ───────────────────────────────────────────────────────────────
 // Tabla oficial ARCA 2026 hardcodeada (fuente: calendariofiscal.com.ar / ARCA).
@@ -241,12 +260,12 @@ export async function seedCalendar2026() {
 
 // ─── Patch: reemplaza reglas Y regenera vencimientos de todos los clientes ──
 //
-// Detección: busca "patch-v7-done" en el campo notes del calendario.
+// Detección: busca "patch-v8-done" en el campo notes del calendario.
 // Si ya está, no hace nada. Si no, aplica el patch completo:
 //   1. Borra vencimientos 2026 generados por el engine (source = afip-engine)
 //   2. Reemplaza todas las reglas del calendario con los datos correctos
 //   3. Regenera vencimientos de todos los clientes activos
-//   4. Marca el calendario como patched ("patch-v7-done")
+//   4. Marca el calendario como patched ("patch-v8-done")
 //
 // v6: Autónomos — tabla hardcodeada oficial ARCA (elimina grupo "any" + corrige
 //     fechas 7-9 que eran incorrectas con fórmula independiente vs. días hábiles
@@ -266,12 +285,12 @@ export async function patchCalendar2026FullRules() {
     }
 
     // Already fully patched?
-    if (cal.notes?.includes("patch-v7-done")) {
-      logger.info("Calendar 2026 patch v7 already applied — skipping");
+    if (cal.notes?.includes("patch-v8-done")) {
+      logger.info("Calendar 2026 patch v8 already applied — skipping");
       return;
     }
 
-    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v7…");
+    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v8…");
 
     // ── Step 1: delete all 2026 afip-engine due dates (stale from old rules) ─
     const deleted = await db.delete(dueDatesTable).where(and(
@@ -293,27 +312,27 @@ export async function patchCalendar2026FullRules() {
           month: rule.month,
           cuitTermination: rule.cuitTermination,
           dueDay: rule.dueDay,
-          notes: `Patch 2026 v7 — SICORE tablas oficiales SIRE + Autónomos + IVA`,
+          notes: `Patch 2026 v8 — CM tabla oficial COMARB + SICORE SIRE + Autónomos + IVA`,
         });
         totalRules++;
       }
     }
-    logger.info({ totalRules }, "Calendar 2026 rules replaced (v7)");
+    logger.info({ totalRules }, "Calendar 2026 rules replaced (v8)");
 
     // ── Step 3: regenerate due dates for all active clients ──────────────────
     // Dynamic import to avoid circular dependency at module load time
     const { generateDueDatesForAllClients } = await import("../services/afip-engine.js");
     const genResult = await generateDueDatesForAllClients();
-    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v7");
+    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v8");
 
     // ── Step 4: mark calendar as patched ─────────────────────────────────────
     await db.update(annualDueCalendarsTable)
-      .set({ notes: (cal.notes ?? "") + " | patch-v7-done" })
+      .set({ notes: (cal.notes ?? "") + " | patch-v8-done" })
       .where(eq(annualDueCalendarsTable.id, cal.id));
 
-    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v7 completed");
+    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v8 completed");
   } catch (err) {
-    logger.error({ err }, "Failed to apply Calendar 2026 patch v7");
+    logger.error({ err }, "Failed to apply Calendar 2026 patch v8");
   }
 }
 
