@@ -35,14 +35,30 @@ function monthlyGroup(cuitTermination: string, baseDay: number): Rule[] {
 }
 
 // ─── AUTÓNOMOS ──────────────────────────────────────────────────────────────
-// Grupos: 0-3 (base 5), 4-6 (base 6), 7-9 (base 9), any = general (base 20)
-// Verificado: CUIT 0 → Ene=5, Feb=5, Mar=5, Abr=6 ✓
-const AUTONOMOS_RULES: Rule[] = [
-  ...monthlyGroup("0-3", 5),
-  ...monthlyGroup("4-6", 6),
-  ...monthlyGroup("7-9", 9),
-  ...monthlyGroup("any", 20),
+// Tabla oficial ARCA 2026 — fuente: calendariofiscal.com.ar/impuestos/autonomos
+// Los 3 grupos pagan días hábiles CONSECUTIVOS (no bases independientes).
+// Cada fila = [mes, dia_0-3, dia_4-6, dia_7-9]
+// Nota Nov: AFIP saltea Vie 6-nov (asueto largo), arranca el 9 (lun).
+// Nota Dic: Dec 5=Sáb + Dec 7=puente + Dec 8=Inmaculada → arranca el 9 (mié).
+const AUTONOMOS_TABLE: [number, number, number, number][] = [
+  [1,  5,  6,  7],
+  [2,  5,  6,  9],
+  [3,  5,  6,  9],
+  [4,  6,  7,  8],
+  [5,  5,  6,  7],
+  [6,  5,  8,  9],
+  [7,  6,  7,  8],
+  [8,  5,  6,  7],
+  [9,  7,  8,  9],
+  [10, 5,  6,  7],
+  [11, 5,  9,  10],
+  [12, 9,  10, 11],
 ];
+const AUTONOMOS_RULES: Rule[] = AUTONOMOS_TABLE.flatMap(([month, d03, d46, d79]) => [
+  { month, cuitTermination: "0-3", dueDay: d03 },
+  { month, cuitTermination: "4-6", dueDay: d46 },
+  { month, cuitTermination: "7-9", dueDay: d79 },
+]);
 
 // ─── MONOTRIBUTO ────────────────────────────────────────────────────────────
 // Un solo vencimiento general para todos los CUIT (base 20)
@@ -191,14 +207,16 @@ export async function seedCalendar2026() {
 
 // ─── Patch: reemplaza reglas Y regenera vencimientos de todos los clientes ──
 //
-// Detección: busca "patch-v5-done" en el campo notes del calendario.
+// Detección: busca "patch-v6-done" en el campo notes del calendario.
 // Si ya está, no hace nada. Si no, aplica el patch completo:
 //   1. Borra vencimientos 2026 generados por el engine (source = afip-engine)
 //   2. Reemplaza todas las reglas del calendario con los datos correctos
 //   3. Regenera vencimientos de todos los clientes activos
-//   4. Marca el calendario como patched ("patch-v5-done")
+//   4. Marca el calendario como patched ("patch-v6-done")
 //
-// v5: corrección diciembre 8-9: 24→28 (Nochebuena+Navidad+finde → lun 28)
+// v6: Autónomos — tabla hardcodeada oficial ARCA (elimina grupo "any" + corrige
+//     fechas 7-9 que eran incorrectas con fórmula independiente vs. días hábiles
+//     consecutivos reales: ene=7, abr=8, may=7, jul=8, ago=7, oct=7, nov=10, dic=11)
 //
 export async function patchCalendar2026FullRules() {
   try {
@@ -214,12 +232,12 @@ export async function patchCalendar2026FullRules() {
     }
 
     // Already fully patched?
-    if (cal.notes?.includes("patch-v5-done")) {
-      logger.info("Calendar 2026 patch v5 already applied — skipping");
+    if (cal.notes?.includes("patch-v6-done")) {
+      logger.info("Calendar 2026 patch v6 already applied — skipping");
       return;
     }
 
-    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v5…");
+    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v6…");
 
     // ── Step 1: delete all 2026 afip-engine due dates (stale from old rules) ─
     const deleted = await db.delete(dueDatesTable).where(and(
@@ -241,27 +259,27 @@ export async function patchCalendar2026FullRules() {
           month: rule.month,
           cuitTermination: rule.cuitTermination,
           dueDay: rule.dueDay,
-          notes: `Patch 2026 v5 — IVA tabla oficial ARCA + feriados/puentes (Dic 8-9 corregido)`,
+          notes: `Patch 2026 v6 — Autónomos tabla oficial + IVA tabla oficial ARCA`,
         });
         totalRules++;
       }
     }
-    logger.info({ totalRules }, "Calendar 2026 rules replaced (v5)");
+    logger.info({ totalRules }, "Calendar 2026 rules replaced (v6)");
 
     // ── Step 3: regenerate due dates for all active clients ──────────────────
     // Dynamic import to avoid circular dependency at module load time
     const { generateDueDatesForAllClients } = await import("../services/afip-engine.js");
     const genResult = await generateDueDatesForAllClients();
-    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v5");
+    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v6");
 
     // ── Step 4: mark calendar as patched ─────────────────────────────────────
     await db.update(annualDueCalendarsTable)
-      .set({ notes: (cal.notes ?? "") + " | patch-v5-done" })
+      .set({ notes: (cal.notes ?? "") + " | patch-v6-done" })
       .where(eq(annualDueCalendarsTable.id, cal.id));
 
-    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v5 completed");
+    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v6 completed");
   } catch (err) {
-    logger.error({ err }, "Failed to apply Calendar 2026 patch v5");
+    logger.error({ err }, "Failed to apply Calendar 2026 patch v6");
   }
 }
 

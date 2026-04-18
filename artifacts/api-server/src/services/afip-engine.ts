@@ -355,10 +355,13 @@ export async function generateDueDatesForClient(
 
     // ── Matching robusto: normaliza ambos lados ────────────────────────────
     const calendarTaxTypes = [...new Set(rules.map(r => r.taxType))];
-    const matchingRules = rules.filter(r =>
+    const allMatchingRules = rules.filter(r =>
       taxCodesMatch(r.taxType, assignment.taxType) &&
       cuitTerminationMatches(r.cuitTermination, cuitLastDigit)
     );
+    // Prefer specific group rules over "any" fallback to avoid duplicates
+    const specificMatchingRules = allMatchingRules.filter(r => r.cuitTermination !== "any");
+    const matchingRules = specificMatchingRules.length > 0 ? specificMatchingRules : allMatchingRules;
 
     if (matchingRules.length === 0) {
       const clientTaxNorm = normalizeTaxCode(assignment.taxType);
