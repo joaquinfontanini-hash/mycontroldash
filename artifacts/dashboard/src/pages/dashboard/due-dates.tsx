@@ -155,36 +155,68 @@ function getDaysRemaining(dueDate: string): number {
 
 // ── KPI Bar ───────────────────────────────────────────────────────────────────
 
-function KpiBar({ kpis, onRecalculate, isRecalculating }: {
+type KpiFilter = "all" | "overdue" | "today" | "3days" | "rojo" | "amarillo" | "verde";
+
+function KpiBar({ kpis, onRecalculate, isRecalculating, activeKpi, onKpiClick }: {
   kpis?: KPIs;
   onRecalculate: () => void;
   isRecalculating: boolean;
+  activeKpi: KpiFilter;
+  onKpiClick: (k: KpiFilter) => void;
 }) {
   if (!kpis) return <Skeleton className="h-24 rounded-xl" />;
 
-  const tiles = [
-    { label: "Este mes",   value: kpis.totalThisMonth,           color: "text-foreground",        bg: "bg-card border" },
-    { label: "Vencidos",   value: kpis.overdue,                  color: "text-red-600",           bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60" },
-    { label: "Hoy",        value: kpis.dueToday,                 color: "text-orange-600",        bg: "bg-orange-50 dark:bg-orange-900/20 border border-orange-200/60" },
-    { label: "Próx. 3d",   value: kpis.due3days,                 color: "text-amber-600",         bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60" },
-    { label: "🔴 Rojos",   value: kpis.byTrafficLight.rojo,      color: "text-red-600",           bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60" },
-    { label: "🟡 Amarillo",value: kpis.byTrafficLight.amarillo,  color: "text-amber-600",         bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60" },
-    { label: "🟢 Verdes",  value: kpis.byTrafficLight.verde,     color: "text-emerald-600",       bg: "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/60" },
-    { label: "Clientes ⚠",value: kpis.clientsRojo + kpis.clientsAmarillo, color: "text-orange-600", bg: "bg-card border" },
-    { label: "Errores",    value: kpis.errors,                   color: kpis.errors > 0 ? "text-red-600" : "text-muted-foreground", bg: "bg-card border" },
+  const tiles: { label: string; value: number; color: string; bg: string; activeBg: string; kpi: KpiFilter | null }[] = [
+    { label: "Este mes",    value: kpis.totalThisMonth,          color: "text-foreground",   bg: "bg-card border",                                                        activeBg: "ring-2 ring-primary",             kpi: null },
+    { label: "Vencidos",    value: kpis.overdue,                 color: "text-red-600",      bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60",                  activeBg: "ring-2 ring-red-500",             kpi: "overdue" },
+    { label: "Hoy",         value: kpis.dueToday,                color: "text-orange-600",   bg: "bg-orange-50 dark:bg-orange-900/20 border border-orange-200/60",         activeBg: "ring-2 ring-orange-500",          kpi: "today" },
+    { label: "Próx. 3d",    value: kpis.due3days,                color: "text-amber-600",    bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60",            activeBg: "ring-2 ring-amber-500",           kpi: "3days" },
+    { label: "🔴 Rojos",    value: kpis.byTrafficLight.rojo,     color: "text-red-600",      bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60",                  activeBg: "ring-2 ring-red-500",             kpi: "rojo" },
+    { label: "🟡 Amarillo", value: kpis.byTrafficLight.amarillo, color: "text-amber-600",    bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60",            activeBg: "ring-2 ring-amber-500",           kpi: "amarillo" },
+    { label: "🟢 Verdes",   value: kpis.byTrafficLight.verde,    color: "text-emerald-600",  bg: "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/60",      activeBg: "ring-2 ring-emerald-500",         kpi: "verde" },
+    { label: "Clientes ⚠",  value: kpis.clientsRojo + kpis.clientsAmarillo, color: "text-orange-600", bg: "bg-card border", activeBg: "ring-2 ring-orange-400",          kpi: null },
+    { label: "Errores",     value: kpis.errors,                  color: kpis.errors > 0 ? "text-red-600" : "text-muted-foreground", bg: "bg-card border", activeBg: "ring-2 ring-destructive", kpi: null },
   ];
 
   return (
     <div className="space-y-2 pb-5">
       <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
-        {tiles.map(t => (
-          <div key={t.label} className={`rounded-lg p-2.5 text-center ${t.bg}`}>
-            <p className={`text-2xl font-bold tabular-nums leading-none ${t.color}`}>{t.value}</p>
-            <p className="text-[10px] text-muted-foreground mt-1 leading-tight">{t.label}</p>
-          </div>
-        ))}
+        {tiles.map(t => {
+          const isActive = t.kpi !== null && activeKpi === t.kpi;
+          const isClickable = t.kpi !== null;
+          return (
+            <button
+              key={t.label}
+              onClick={() => {
+                if (!isClickable) return;
+                onKpiClick(isActive ? "all" : t.kpi!);
+              }}
+              disabled={!isClickable}
+              className={[
+                "rounded-lg p-2.5 text-center transition-all",
+                t.bg,
+                isClickable ? "cursor-pointer hover:scale-105 hover:shadow-md" : "cursor-default",
+                isActive ? t.activeBg : "",
+              ].join(" ")}
+              title={isClickable ? (isActive ? "Quitar filtro" : `Filtrar: ${t.label}`) : undefined}
+            >
+              <p className={`text-2xl font-bold tabular-nums leading-none ${t.color}`}>{t.value}</p>
+              <p className="text-[10px] text-muted-foreground mt-1 leading-tight">{t.label}</p>
+              {isActive && <div className="w-4 h-0.5 bg-current rounded-full mx-auto mt-1 opacity-60" />}
+            </button>
+          );
+        })}
       </div>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        {activeKpi !== "all" ? (
+          <button
+            onClick={() => onKpiClick("all")}
+            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors px-2 py-1 rounded bg-primary/10 hover:bg-primary/20"
+          >
+            <X className="h-3 w-3" />
+            Quitar filtro
+          </button>
+        ) : <span />}
         <button
           onClick={onRecalculate}
           disabled={isRecalculating}
@@ -671,6 +703,8 @@ interface DueDateForm {
   status: DueDate["status"];
   alertEnabled: boolean;
   recurrenceType: string;
+  recurrenceDay: number | "";
+  recurrenceEndDate: string;
 }
 
 const EMPTY_FORM: DueDateForm = {
@@ -682,6 +716,8 @@ const EMPTY_FORM: DueDateForm = {
   status: "pending",
   alertEnabled: true,
   recurrenceType: "none",
+  recurrenceDay: "",
+  recurrenceEndDate: new Date().getFullYear() + "-12-31",
 };
 
 // ── Alert Logs Tab ────────────────────────────────────────────────────────────
@@ -775,6 +811,7 @@ export default function DueDatesPage() {
   const [filterClient, setFilterClient] = useState<string>("");
   const [filterTrafficLight, setFilterTrafficLight] = useState<TrafficLight | "all">("all");
   const [filterStatus, setFilterStatus] = useState<"pending" | "done" | "all">("pending");
+  const [filterKpi, setFilterKpi] = useState<KpiFilter>("all");
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -968,16 +1005,26 @@ export default function DueDatesPage() {
       status: item.status,
       alertEnabled: item.alertEnabled,
       recurrenceType: item.recurrenceType ?? "none",
+      recurrenceDay: item.recurrenceRule ? parseInt(item.recurrenceRule) || "" : "",
+      recurrenceEndDate: item.recurrenceEndDate ?? (new Date().getFullYear() + "-12-31"),
     });
     setDialogOpen(true);
   };
 
   const handleSubmit = () => {
     if (!form.title.trim() || !form.dueDate) return;
+    const payload = {
+      ...form,
+      recurrenceType: form.recurrenceType,
+      recurrenceRule: form.recurrenceType === "monthly-day" && form.recurrenceDay !== ""
+        ? String(form.recurrenceDay)
+        : null,
+      recurrenceEndDate: form.recurrenceType === "monthly-day" ? form.recurrenceEndDate : null,
+    };
     if (editing) {
-      updateMutation.mutate({ id: editing.id, data: form });
+      updateMutation.mutate({ id: editing.id, data: payload });
     } else {
-      createMutation.mutate(form);
+      createMutation.mutate(payload);
     }
   };
 
@@ -993,8 +1040,39 @@ export default function DueDatesPage() {
   // ── Filters ──
 
   const filtered = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split("T")[0];
+    const in3d = new Date(today); in3d.setDate(in3d.getDate() + 3);
+    const in3dStr = in3d.toISOString().split("T")[0];
+
     let items = dueDates;
-    if (filterStatus !== "all") items = items.filter(d => d.status === filterStatus);
+
+    // KPI quick-filter takes precedence over other status/traffic-light filters
+    if (filterKpi !== "all") {
+      switch (filterKpi) {
+        case "overdue":
+          items = items.filter(d => d.status === "pending" && d.dueDate < todayStr);
+          break;
+        case "today":
+          items = items.filter(d => d.status === "pending" && d.dueDate === todayStr);
+          break;
+        case "3days":
+          items = items.filter(d => d.status === "pending" && d.dueDate > todayStr && d.dueDate <= in3dStr);
+          break;
+        case "rojo":
+          items = items.filter(d => d.trafficLight === "rojo");
+          break;
+        case "amarillo":
+          items = items.filter(d => d.trafficLight === "amarillo");
+          break;
+        case "verde":
+          items = items.filter(d => d.trafficLight === "verde");
+          break;
+      }
+    } else {
+      if (filterStatus !== "all") items = items.filter(d => d.status === filterStatus);
+    }
+
     if (filterCategory) items = items.filter(d => d.category === filterCategory);
     if (filterClient) items = items.filter(d => d.clientId === parseInt(filterClient));
     if (filterTrafficLight !== "all") items = items.filter(d => (d.trafficLight ?? "gris") === filterTrafficLight);
@@ -1080,6 +1158,11 @@ export default function DueDatesPage() {
         kpis={kpis}
         onRecalculate={() => recalculateMutation.mutate()}
         isRecalculating={recalculateMutation.isPending}
+        activeKpi={filterKpi}
+        onKpiClick={(k) => {
+          setFilterKpi(k);
+          if (k !== "all") setFilterTrafficLight("all");
+        }}
       />
 
       {/* Tabs */}
@@ -1417,6 +1500,57 @@ export default function DueDatesPage() {
               />
               <span className="text-sm">Habilitar alertas por email</span>
             </label>
+
+            {/* Recurrence */}
+            {!editing && (
+              <div className="border border-border/60 rounded-lg p-3 space-y-3 bg-muted/20">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.recurrenceType === "monthly-day"}
+                    onChange={e => setForm(f => ({
+                      ...f,
+                      recurrenceType: e.target.checked ? "monthly-day" : "none",
+                      recurrenceDay: e.target.checked ? (f.recurrenceDay || 20) : "",
+                    }))}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm font-medium">Repetir mensualmente</span>
+                </label>
+                {form.recurrenceType === "monthly-day" && (
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Día del mes (1–31)</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={form.recurrenceDay}
+                        onChange={e => setForm(f => ({ ...f, recurrenceDay: parseInt(e.target.value) || "" }))}
+                        placeholder="20"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Hasta</Label>
+                      <Input
+                        type="date"
+                        value={form.recurrenceEndDate}
+                        onChange={e => setForm(f => ({ ...f, recurrenceEndDate: e.target.value }))}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    {form.recurrenceDay !== "" && form.dueDate && (
+                      <p className="col-span-2 text-[11px] text-muted-foreground">
+                        Se crearán instancias el día <strong>{form.recurrenceDay}</strong> de cada mes
+                        desde <strong>{new Date(form.dueDate + "T00:00:00").toLocaleDateString("es-AR", { month: "long", year: "numeric" })}</strong> hasta{" "}
+                        <strong>{form.recurrenceEndDate ? new Date(form.recurrenceEndDate + "T00:00:00").toLocaleDateString("es-AR", { month: "long", year: "numeric" }) : "fin de año"}</strong>.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter>

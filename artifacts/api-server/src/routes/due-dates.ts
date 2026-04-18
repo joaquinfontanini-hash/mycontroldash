@@ -79,6 +79,58 @@ router.post("/due-dates", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "title y dueDate son requeridos" });
     return;
   }
+
+  // ── Monthly recurrence: create one entry per month ──────────────────────────
+  if (data.recurrenceType === "monthly-day" && data.recurrenceRule) {
+    const dayOfMonth = parseInt(String(data.recurrenceRule), 10);
+    if (!isNaN(dayOfMonth) && dayOfMonth >= 1 && dayOfMonth <= 31) {
+      const startRef = new Date(data.dueDate + "T00:00:00");
+      const endRef = data.recurrenceEndDate
+        ? new Date(data.recurrenceEndDate + "T00:00:00")
+        : new Date(startRef.getFullYear(), 11, 31);
+
+      const entries: Parameters<typeof db.insert>[0] extends never ? never : any[] = [];
+      let year = startRef.getFullYear();
+      let month = startRef.getMonth();
+      let isFirst = true;
+
+      while (true) {
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const day = Math.min(dayOfMonth, daysInMonth);
+        const d = new Date(year, month, day);
+        if (d > endRef) break;
+        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        entries.push({
+          title: data.title.trim(),
+          category: data.category ?? "general",
+          dueDate: dateStr,
+          description: data.description ?? null,
+          priority: data.priority ?? "medium",
+          status: data.status ?? "pending",
+          alertEnabled: data.alertEnabled ?? true,
+          userId,
+          recurrenceType: "monthly-day",
+          recurrenceRule: String(dayOfMonth),
+          recurrenceEndDate: data.recurrenceEndDate ?? null,
+          isRecurrenceParent: isFirst,
+        });
+        isFirst = false;
+        month++;
+        if (month > 11) { month = 0; year++; }
+        if (entries.length >= 60) break; // safety cap (5 years)
+      }
+
+      if (entries.length === 0) {
+        res.status(400).json({ error: "Ninguna ocurrencia generada con los parámetros dados" });
+        return;
+      }
+      const items = await db.insert(dueDatesTable).values(entries).returning();
+      res.status(201).json(items);
+      return;
+    }
+  }
+
+  // ── Single entry ─────────────────────────────────────────────────────────────
   const [item] = await db.insert(dueDatesTable).values({
     title: data.title.trim(),
     category: data.category ?? "general",
