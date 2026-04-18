@@ -93,7 +93,7 @@ const IVA_TABLE: Record<string, number[]> = {
   "2-3": [20, 19, 19, 21, 19, 19, 21, 19, 21, 20, 19, 21],
   "4-5": [21, 20, 20, 22, 20, 22, 22, 20, 22, 21, 20, 22],
   "6-7": [22, 23, 25, 23, 21, 23, 23, 21, 23, 22, 24, 23],
-  "8-9": [23, 24, 26, 24, 22, 24, 24, 24, 24, 23, 25, 24],
+  "8-9": [23, 24, 26, 24, 22, 24, 24, 24, 24, 23, 25, 28], // Dic: 24=Nochebuena+Navidad+finde → 28
 };
 
 const IVA_RULES: Rule[] = Object.entries(IVA_TABLE).flatMap(
@@ -191,14 +191,14 @@ export async function seedCalendar2026() {
 
 // ─── Patch: reemplaza reglas Y regenera vencimientos de todos los clientes ──
 //
-// Detección: busca "patch-v4-done" en el campo notes del calendario.
+// Detección: busca "patch-v5-done" en el campo notes del calendario.
 // Si ya está, no hace nada. Si no, aplica el patch completo:
 //   1. Borra vencimientos 2026 generados por el engine (source = afip-engine)
 //   2. Reemplaza todas las reglas del calendario con los datos correctos
 //   3. Regenera vencimientos de todos los clientes activos
-//   4. Marca el calendario como patched ("patch-v4-done")
+//   4. Marca el calendario como patched ("patch-v5-done")
 //
-// v4: tabla IVA hardcodeada desde fuente oficial ARCA 2026 (corrige feriados/puentes)
+// v5: corrección diciembre 8-9: 24→28 (Nochebuena+Navidad+finde → lun 28)
 //
 export async function patchCalendar2026FullRules() {
   try {
@@ -214,12 +214,12 @@ export async function patchCalendar2026FullRules() {
     }
 
     // Already fully patched?
-    if (cal.notes?.includes("patch-v4-done")) {
-      logger.info("Calendar 2026 patch v4 already applied — skipping");
+    if (cal.notes?.includes("patch-v5-done")) {
+      logger.info("Calendar 2026 patch v5 already applied — skipping");
       return;
     }
 
-    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v4…");
+    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v5…");
 
     // ── Step 1: delete all 2026 afip-engine due dates (stale from old rules) ─
     const deleted = await db.delete(dueDatesTable).where(and(
@@ -241,27 +241,27 @@ export async function patchCalendar2026FullRules() {
           month: rule.month,
           cuitTermination: rule.cuitTermination,
           dueDay: rule.dueDay,
-          notes: `Patch 2026 v4 — IVA tabla oficial ARCA + feriados/puentes argentinos`,
+          notes: `Patch 2026 v5 — IVA tabla oficial ARCA + feriados/puentes (Dic 8-9 corregido)`,
         });
         totalRules++;
       }
     }
-    logger.info({ totalRules }, "Calendar 2026 rules replaced (v4)");
+    logger.info({ totalRules }, "Calendar 2026 rules replaced (v5)");
 
     // ── Step 3: regenerate due dates for all active clients ──────────────────
     // Dynamic import to avoid circular dependency at module load time
     const { generateDueDatesForAllClients } = await import("../services/afip-engine.js");
     const genResult = await generateDueDatesForAllClients();
-    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v4");
+    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v5");
 
     // ── Step 4: mark calendar as patched ─────────────────────────────────────
     await db.update(annualDueCalendarsTable)
-      .set({ notes: (cal.notes ?? "") + " | patch-v4-done" })
+      .set({ notes: (cal.notes ?? "") + " | patch-v5-done" })
       .where(eq(annualDueCalendarsTable.id, cal.id));
 
-    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v4 completed");
+    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v5 completed");
   } catch (err) {
-    logger.error({ err }, "Failed to apply Calendar 2026 patch v4");
+    logger.error({ err }, "Failed to apply Calendar 2026 patch v5");
   }
 }
 
