@@ -66,13 +66,36 @@ const MONOTRIBUTO_RULES: Rule[] = [
   ...monthlyGroup("any", 20),
 ];
 
-// ─── EMPLEADORES SICOSS ─────────────────────────────────────────────────────
-// Grupos: 0-3 (base 9), 4-6 (base 10), 7-9 (base 11)
-const CARGAS_SOCIALES_RULES: Rule[] = [
-  ...monthlyGroup("0-3", 9),
-  ...monthlyGroup("4-6", 10),
-  ...monthlyGroup("7-9", 11),
+// ─── EMPLEADORES — F.931 (Cargas Sociales / Seguridad Social) ───────────────
+// Tabla oficial ARCA 2026 — fuente: calendariofiscal.com.ar/impuestos/f931
+// Grupos: 0-3, 4-6, 7-9. Pago en mes M por período M-1.
+// Fila = [mes_pago, dia_0-3, dia_4-6, dia_7-9]
+// Desvíos respecto de base 9/10/11:
+//   Ene: 10=sáb, 11=dom → 4-6=12(lun), 7-9=13(mar)
+//   Abr: 11=sáb, 12=dom → 7-9=13(lun)
+//   May: 9=sáb, 10=dom → todo corre: 11(lun), 12(mar), 13(mié)
+//   Jul: 9=Independencia(jue)+puente 10(vie) → 13(lun), 14(mar), 15(mié)
+//   Ago: 9=dom → 10(lun), 11(mar), 12(mié)
+//   Oct: 10=sáb, 11=dom, 12=Día Raza(lun) → 4-6=13(mar), 7-9=14(mié)
+const F931_TABLE: [number, number, number, number][] = [
+  [1,   9, 12, 13],
+  [2,   9, 10, 11],
+  [3,   9, 10, 11],
+  [4,   9, 10, 13],
+  [5,  11, 12, 13],
+  [6,   9, 10, 11],
+  [7,  13, 14, 15],
+  [8,  10, 11, 12],
+  [9,   9, 10, 11],
+  [10,  9, 13, 14],
+  [11,  9, 10, 11],
+  [12,  9, 10, 11],
 ];
+const CARGAS_SOCIALES_RULES: Rule[] = F931_TABLE.flatMap(([month, d03, d46, d79]) => [
+  { month, cuitTermination: "0-3", dueDay: d03 },
+  { month, cuitTermination: "4-6", dueDay: d46 },
+  { month, cuitTermination: "7-9", dueDay: d79 },
+]);
 
 // ─── GANANCIAS SOCIEDADES DDJJ ──────────────────────────────────────────────
 // Grupos: 0-3 (base 13), 4-6 (base 14), 7-9 (base 15)
@@ -260,12 +283,12 @@ export async function seedCalendar2026() {
 
 // ─── Patch: reemplaza reglas Y regenera vencimientos de todos los clientes ──
 //
-// Detección: busca "patch-v8-done" en el campo notes del calendario.
+// Detección: busca "patch-v9-done" en el campo notes del calendario.
 // Si ya está, no hace nada. Si no, aplica el patch completo:
 //   1. Borra vencimientos 2026 generados por el engine (source = afip-engine)
 //   2. Reemplaza todas las reglas del calendario con los datos correctos
 //   3. Regenera vencimientos de todos los clientes activos
-//   4. Marca el calendario como patched ("patch-v8-done")
+//   4. Marca el calendario como patched ("patch-v9-done")
 //
 // v6: Autónomos — tabla hardcodeada oficial ARCA (elimina grupo "any" + corrige
 //     fechas 7-9 que eran incorrectas con fórmula independiente vs. días hábiles
@@ -285,12 +308,12 @@ export async function patchCalendar2026FullRules() {
     }
 
     // Already fully patched?
-    if (cal.notes?.includes("patch-v8-done")) {
-      logger.info("Calendar 2026 patch v8 already applied — skipping");
+    if (cal.notes?.includes("patch-v9-done")) {
+      logger.info("Calendar 2026 patch v9 already applied — skipping");
       return;
     }
 
-    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v8…");
+    logger.info({ calendarId: cal.id }, "Applying Calendar 2026 patch v9…");
 
     // ── Step 1: delete all 2026 afip-engine due dates (stale from old rules) ─
     const deleted = await db.delete(dueDatesTable).where(and(
@@ -312,27 +335,27 @@ export async function patchCalendar2026FullRules() {
           month: rule.month,
           cuitTermination: rule.cuitTermination,
           dueDay: rule.dueDay,
-          notes: `Patch 2026 v8 — CM tabla oficial COMARB + SICORE SIRE + Autónomos + IVA`,
+          notes: `Patch 2026 v9 — CM tabla oficial COMARB + SICORE SIRE + Autónomos + IVA`,
         });
         totalRules++;
       }
     }
-    logger.info({ totalRules }, "Calendar 2026 rules replaced (v8)");
+    logger.info({ totalRules }, "Calendar 2026 rules replaced (v9)");
 
     // ── Step 3: regenerate due dates for all active clients ──────────────────
     // Dynamic import to avoid circular dependency at module load time
     const { generateDueDatesForAllClients } = await import("../services/afip-engine.js");
     const genResult = await generateDueDatesForAllClients();
-    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v8");
+    logger.info(genResult, "Regenerated due dates for all clients after calendar patch v9");
 
     // ── Step 4: mark calendar as patched ─────────────────────────────────────
     await db.update(annualDueCalendarsTable)
-      .set({ notes: (cal.notes ?? "") + " | patch-v8-done" })
+      .set({ notes: (cal.notes ?? "") + " | patch-v9-done" })
       .where(eq(annualDueCalendarsTable.id, cal.id));
 
-    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v8 completed");
+    logger.info({ calendarId: cal.id, totalRules, ...genResult }, "Calendar 2026 patch v9 completed");
   } catch (err) {
-    logger.error({ err }, "Failed to apply Calendar 2026 patch v8");
+    logger.error({ err }, "Failed to apply Calendar 2026 patch v9");
   }
 }
 
