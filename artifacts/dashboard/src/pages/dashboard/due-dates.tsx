@@ -1081,7 +1081,7 @@ export default function DueDatesPage() {
       items = items.filter(d => d.title.toLowerCase().includes(q) || (d.description ?? "").toLowerCase().includes(q));
     }
     return items;
-  }, [dueDates, filterStatus, filterCategory, filterClient, filterTrafficLight, searchText]);
+  }, [dueDates, filterStatus, filterCategory, filterClient, filterTrafficLight, filterKpi, searchText]);
 
   // Sort: rojo first, then by date ascending
   const sorted = useMemo(() => {
