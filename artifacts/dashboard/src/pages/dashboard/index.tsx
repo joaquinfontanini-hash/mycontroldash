@@ -241,41 +241,43 @@ function DollarWidget() {
     .filter(Boolean) as DolarRate[];
 
   return (
-    <Card className="border-l-4 border-l-slate-400">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <DollarSign className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cotizaciones</p>
-              {lastUpdate && <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>}
-            </div>
-          </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {displayRates.map(rate => {
-            const colors = DOLAR_COLORS[rate.type] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
-            return (
-              <div key={rate.type} className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}>
-                <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{rate.label}</p>
-                <p className={`text-lg font-bold ${colors.accent} leading-none`}>{formatRate(rate.sell ?? rate.avg)}</p>
-                {rate.buy !== null && rate.sell !== null && (
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Cpr: {formatRate(rate.buy)} · Vta: {formatRate(rate.sell)}
-                  </p>
-                )}
-                {rate.status === "error" && <p className="text-[10px] text-destructive mt-1">Sin datos</p>}
+    <div className="@container">
+      <Card className="border-l-4 border-l-slate-400">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <DollarSign className="h-4 w-4 text-slate-600 dark:text-slate-400" />
               </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cotizaciones</p>
+                {lastUpdate && <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>}
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 @xs:grid-cols-2 @xl:grid-cols-4 gap-2">
+            {displayRates.map(rate => {
+              const colors = DOLAR_COLORS[rate.type] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
+              return (
+                <div key={rate.type} className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}>
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{rate.label}</p>
+                  <p className={`text-lg font-bold ${colors.accent} leading-none`}>{formatRate(rate.sell ?? rate.avg)}</p>
+                  {rate.buy !== null && rate.sell !== null && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Cpr: {formatRate(rate.buy)} · Vta: {formatRate(rate.sell)}
+                    </p>
+                  )}
+                  {rate.status === "error" && <p className="text-[10px] text-destructive mt-1">Sin datos</p>}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -341,62 +343,64 @@ function BcraWidget() {
   }
 
   return (
-    <Card className="border-l-4 border-l-slate-400">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <TrendingUp className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Indicadores BCRA
-              </p>
-              <div className="flex items-center gap-1.5">
-                {lastUpdate && <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>}
-                {data.isStale && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
-                    Dato anterior
-                  </span>
-                )}
+    <div className="@container">
+      <Card className="border-l-4 border-l-slate-400">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Indicadores BCRA
+                </p>
+                <div className="flex items-center gap-1.5">
+                  {lastUpdate && <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>}
+                  {data.isStale && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                      Dato anterior
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {data.indicators.map(ind => {
-            const colors = BCRA_COLORS[ind.key] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
-            const hasValue = ind.value !== null && ind.status !== "error";
-            const unit = (ind.unit ?? "").replace(/\s*(i\.a\.|n\.a\.)\s*/gi, "").trim();
-            const formatted = hasValue
-              ? `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(ind.value!)} ${unit}`
-              : "—";
-            return (
-              <div
-                key={ind.key}
-                className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}
-                title={ind.tooltip}
-              >
-                <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{ind.label}</p>
-                <p className={`text-lg font-bold ${colors.accent} leading-none`}>{formatted}</p>
-                {ind.date && (
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    {new Date(ind.date + "T12:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
-                  </p>
-                )}
-                {ind.status === "error" && !hasValue && (
-                  <p className="text-[10px] text-destructive mt-1">Sin datos</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+          <div className="grid grid-cols-1 @xs:grid-cols-2 @xl:grid-cols-4 gap-2">
+            {data.indicators.map(ind => {
+              const colors = BCRA_COLORS[ind.key] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
+              const hasValue = ind.value !== null && ind.status !== "error";
+              const unit = (ind.unit ?? "").replace(/\s*(i\.a\.|n\.a\.)\s*/gi, "").trim();
+              const formatted = hasValue
+                ? `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(ind.value!)} ${unit}`
+                : "—";
+              return (
+                <div
+                  key={ind.key}
+                  className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}
+                  title={ind.tooltip}
+                >
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{ind.label}</p>
+                  <p className={`text-lg font-bold ${colors.accent} leading-none`}>{formatted}</p>
+                  {ind.date && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {new Date(ind.date + "T12:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
+                    </p>
+                  )}
+                  {ind.status === "error" && !hasValue && (
+                    <p className="text-[10px] text-destructive mt-1">Sin datos</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
