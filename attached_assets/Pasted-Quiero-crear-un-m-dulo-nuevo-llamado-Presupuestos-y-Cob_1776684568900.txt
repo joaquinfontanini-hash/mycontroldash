@@ -1,0 +1,523 @@
+Quiero crear un módulo nuevo llamado “Presupuestos y Cobranzas” dentro del sistema actual.
+
+Este módulo debe estar unificado: no quiero un módulo separado de presupuestos y otro de cobranzas. Debe ser un único módulo que permita presupuestar, actualizar presupuestos, registrar cobros parciales o totales, controlar vencimientos y analizar deuda por cliente.
+
+IMPORTANTE:
+Desarrollarlo como un senior full-stack engineer, con foco en:
+- consistencia con el sistema actual
+- integración real con el módulo de Clientes
+- integración con el módulo de Dashboards
+- rendimiento
+- claridad visual
+- facilidad de uso
+- escalabilidad
+- auditoría y trazabilidad
+
+Quiero implementación completa: base de datos, backend, frontend, filtros, KPIs, dashboard, validaciones, permisos y auditoría.
+
+==================================================
+1) OBJETIVO FUNCIONAL DEL MÓDULO
+==================================================
+
+El módulo debe permitir:
+
+- crear presupuestos vinculados a clientes existentes
+- actualizar presupuestos sin perder historial
+- manejar versiones de presupuestos
+- registrar cobranzas parciales o totales
+- ver claramente qué está:
+  - pendiente
+  - parcialmente cobrado
+  - cobrado
+  - vencido
+  - rechazado
+- controlar vencimientos
+- ver deuda real por cliente
+- mostrar métricas y gráficos en dashboards
+
+Este módulo debe servir tanto para operación diaria como para análisis gerencial.
+
+==================================================
+2) INTEGRACIÓN OBLIGATORIA CON EL MÓDULO DE CLIENTES
+==================================================
+
+Todos los presupuestos deben estar vinculados obligatoriamente con el módulo de Clientes mediante clientId.
+
+Reglas:
+- no permitir cargar clientes manualmente en texto libre
+- siempre seleccionar cliente existente
+- usar buscador/autocomplete en selector de cliente
+- si el cliente está inactivo, no permitir nuevos presupuestos salvo permiso especial de superadmin
+
+Dentro de la ficha del cliente agregar una nueva pestaña o sección llamada:
+- Presupuestos y Cobranzas
+
+Esa sección debe mostrar:
+- cantidad total de presupuestos
+- total presupuestado
+- total cobrado
+- saldo pendiente
+- cantidad de presupuestos vencidos
+- cantidad de presupuestos parcialmente cobrados
+- último presupuesto emitido
+- último pago registrado
+- tabla de presupuestos del cliente
+- historial de cobranzas del cliente
+
+Acciones rápidas dentro del cliente:
+- ver presupuesto
+- editar presupuesto
+- crear nueva versión
+- registrar cobro
+- ver historial
+- filtrar vencidos
+- filtrar pendientes
+
+==================================================
+3) LAS 5 RECOMENDACIONES OBLIGATORIAS A IMPLEMENTAR
+==================================================
+
+Estas 5 cosas deben quedar implementadas sí o sí:
+
+A) HISTORIAL DE VERSIONES
+- cada vez que cambie el importe o la estructura principal del presupuesto, no debe perderse el original
+- debe quedar historial completo de versiones
+- debe poder verse qué cambió, cuándo cambió y quién lo cambió
+- debe existir timeline o sección de revisiones
+
+B) COBROS PARCIALES
+- el sistema debe soportar múltiples pagos sobre un mismo presupuesto
+- debe poder quedar parcialmente cobrado
+- el saldo pendiente debe recalcularse automáticamente
+- no limitar a lógica binaria “pagado / no pagado”
+
+C) KPIs CLICKEABLES
+- los indicadores superiores del módulo deben funcionar como filtros al hacer click
+- ejemplo: click en “vencidos” filtra solo presupuestos vencidos
+- click en “pendientes” filtra solo pendientes
+- click en “cobrados” filtra cobrados
+- click en “parciales” filtra parcialmente cobrados
+
+D) VISTA DENTRO DEL CLIENTE
+- toda la información del cliente relacionada con presupuestos y cobranzas debe poder verse desde su ficha
+- el cliente debe tener visibilidad financiera/comercial consolidada
+
+E) SEMÁFORO DE VENCIMIENTO
+- agregar semáforo visual en listado y detalle:
+  - verde = al día
+  - amarillo = vence pronto
+  - rojo = vencido
+  - azul o equivalente = cobrado total
+- configurable si es posible
+- debe verse claramente sin entrar al detalle
+
+==================================================
+4) INTEGRACIÓN CON EL MÓDULO DE DASHBOARDS
+==================================================
+
+Este módulo debe integrarse con el módulo de dashboards existente.
+
+Objetivo:
+que el sistema pueda mostrar widgets inteligentes relacionados con presupuestos y cobranzas.
+
+Agregar soporte para widgets y métricas del módulo:
+- total presupuestado
+- total cobrado
+- saldo pendiente
+- cantidad de vencidos
+- cantidad de pendientes
+- cantidad de parcialmente cobrados
+- cobranzas del mes
+- tasa de cobro
+- top clientes con mayor deuda
+- top clientes con mayor facturación presupuestada
+- próximos vencimientos
+- evolución mensual de cobranzas
+- evolución mensual de deuda pendiente
+
+IMPORTANTE:
+Estos widgets deben poder usarse en dashboards generales del sistema.
+
+Crear datasets/endpoints o adaptaciones necesarias para que el módulo Dashboard pueda consumir estos datos sin lógica duplicada.
+
+Si existe tabla dashboard_widgets o estructura equivalente, dejar este módulo preparado para conectarse con widgets reutilizables.
+
+Además, si el sistema ya tiene dashboards inteligentes o generador dinámico de widgets, agregar este módulo como fuente de datos disponible.
+
+Widgets sugeridos:
+- KPI de total presupuestado
+- KPI de total cobrado
+- KPI de saldo pendiente
+- KPI de vencidos
+- gráfico de barras de cobranzas por mes
+- gráfico de barras de deuda por cliente
+- tabla de próximos vencimientos
+- ranking de clientes deudores
+- pie chart por estado del presupuesto
+- tasa de cobro mensual
+
+Todos los widgets deben respetar filtros globales de:
+- rango de fechas
+- cliente
+- moneda
+- estado
+- usuario responsable si existe
+
+==================================================
+5) MODELO DE DATOS
+==================================================
+
+Crear o adaptar estas tablas:
+
+A) quotes
+Campos mínimos:
+- id
+- quoteNumber (único, autogenerado, legible)
+- clientId (FK obligatoria)
+- issueDate
+- dueDate
+- title
+- description
+- currency
+- subtotal
+- discountAmount
+- taxAmount
+- totalAmount
+- status
+- version
+- parentQuoteId nullable
+- approvedAt nullable
+- rejectedAt nullable
+- notes nullable
+- createdBy
+- createdAt
+- updatedAt
+- archivedAt nullable
+
+Estados válidos:
+- draft
+- sent
+- approved
+- rejected
+- expired
+- partially_paid
+- paid
+
+B) quote_items
+- id
+- quoteId
+- description
+- quantity
+- unitPrice
+- lineTotal
+- sortOrder
+
+C) quote_revisions
+- id
+- quoteId
+- previousTotalAmount
+- newTotalAmount
+- previousPayloadJson
+- newPayloadJson
+- changeReason
+- changedBy
+- changedAt
+
+D) payments
+- id
+- quoteId
+- clientId
+- paymentDate
+- amount
+- currency
+- paymentMethod
+- reference nullable
+- notes nullable
+- createdBy
+- createdAt
+
+E) opcional pero recomendado: quote_activity_logs
+- id
+- quoteId
+- clientId
+- actionType
+- description
+- metadataJson
+- performedBy
+- performedAt
+
+==================================================
+6) REGLAS DE NEGOCIO
+==================================================
+
+- no permitir borrar presupuestos físicamente desde UI
+- permitir archivar, rechazar o anular, pero mantener historial
+- toda modificación importante debe crear revisión
+- soportar pagos parciales múltiples
+- el saldo pendiente debe calcularse automáticamente
+- total cobrado = suma de payments.amount
+- saldo pendiente = totalAmount - totalCobrado
+
+Lógica de estados:
+- si saldo pendiente = 0 => paid
+- si saldo pendiente > 0 y tiene pagos => partially_paid
+- si no tiene pagos y venció => expired
+- si fue rechazado manualmente => rejected
+- si fue aprobado manualmente y no está pago => approved
+- si está en edición => draft
+- si fue enviado y todavía no aprobado => sent
+
+Validaciones:
+- no permitir presupuesto sin clientId
+- no permitir total negativo
+- no permitir moneda vacía
+- no permitir dueDate anterior a issueDate salvo confirmación especial
+- no permitir registrar pago de importe 0 o negativo
+- no permitir pago que exceda el saldo salvo permiso especial
+- validar que quoteId y clientId coincidan correctamente
+- validar que no se puedan registrar pagos a presupuestos archivados sin permiso
+
+==================================================
+7) BACKEND / CONSULTAS / PERFORMANCE
+==================================================
+
+Crear endpoints robustos para:
+- listar presupuestos con filtros y paginación
+- obtener detalle completo de presupuesto
+- crear presupuesto
+- editar presupuesto
+- crear nueva versión
+- cambiar estado
+- registrar cobro
+- listar cobranzas
+- obtener resumen por cliente
+- obtener KPIs
+- obtener datasets para dashboard
+
+IMPORTANTE:
+- el filtrado debe hacerse en base de datos, no en memoria
+- paginación real
+- evitar N+1 queries
+- usar joins y agregaciones eficientes
+- indexar como mínimo:
+  - clientId
+  - status
+  - dueDate
+  - issueDate
+  - createdAt
+- optimizar consultas de KPIs y dashboard
+
+Si hace falta, crear views SQL o funciones agregadas para:
+- resumen por cliente
+- total cobrado por presupuesto
+- saldo pendiente por presupuesto
+- vencidos por rango
+- cobranzas mensuales
+- tasa de cobro
+
+==================================================
+8) VISTAS DE FRONTEND
+==================================================
+
+A) LISTADO GENERAL DE PRESUPUESTOS / COBRANZAS
+Tabla con columnas:
+- Nº presupuesto
+- Cliente
+- Fecha emisión
+- Fecha vencimiento
+- Total
+- Total cobrado
+- Saldo pendiente
+- Estado
+- Semáforo
+- Último pago
+- Acciones
+
+Filtros:
+- cliente
+- estado
+- fecha emisión
+- fecha vencimiento
+- moneda
+- solo pendientes
+- solo vencidos
+- solo parciales
+- solo cobrados
+- búsqueda global
+
+Orden por defecto:
+- primero vencidos
+- luego próximos a vencer
+- luego resto
+
+Acciones:
+- ver detalle
+- editar
+- duplicar
+- crear nueva versión
+- registrar cobro
+- marcar aprobado
+- marcar rechazado
+- archivar
+
+B) FORMULARIO DE ALTA / EDICIÓN DE PRESUPUESTO
+Campos:
+- cliente con autocomplete
+- título
+- descripción
+- ítems dinámicos
+- moneda
+- descuentos
+- impuestos
+- vencimiento
+- notas
+
+Mostrar cálculo automático:
+- subtotal
+- descuento
+- impuestos
+- total final
+
+Botones:
+- guardar borrador
+- guardar y marcar enviado
+- duplicar
+- crear nueva versión si corresponde
+
+C) DETALLE DEL PRESUPUESTO
+Mostrar:
+- datos del cliente
+- detalle completo
+- estado actual
+- semáforo
+- total
+- total cobrado
+- saldo pendiente
+- historial de versiones
+- historial de cobranzas
+- historial de actividad
+- timeline de cambios
+- acciones rápidas
+
+D) REGISTRAR COBRO
+Pantalla o modal con:
+- fecha
+- importe
+- moneda
+- medio de pago
+- referencia
+- observaciones
+
+Mostrar antes de confirmar:
+- total presupuesto
+- total cobrado
+- saldo actual
+- saldo resultante después del nuevo cobro
+
+==================================================
+9) DASHBOARD INTERNO DEL MÓDULO
+==================================================
+
+Dentro del propio módulo crear un dashboard superior con KPIs clickeables:
+
+- Total presupuestado
+- Total cobrado
+- Saldo pendiente
+- Presupuestos vencidos
+- Pendientes de cobro
+- Parcialmente cobrados
+- Cobranzas del mes
+- Tasa de cobro
+
+Cada KPI debe funcionar como filtro.
+
+Debajo, agregar visualizaciones:
+- gráfico de cobranzas por mes
+- gráfico de deuda por cliente
+- ranking de clientes con mayor saldo pendiente
+- próximos vencimientos
+- distribución por estado del presupuesto
+
+El dashboard debe ser consistente con el resto del sistema.
+
+==================================================
+10) AUDITORÍA Y TRAZABILIDAD
+==================================================
+
+Registrar:
+- quién creó el presupuesto
+- quién lo editó
+- quién lo aprobó o rechazó
+- quién registró el cobro
+- qué cambió
+- cuándo cambió
+
+Debe existir actividad auditable por presupuesto.
+
+Quiero trazabilidad completa.
+
+==================================================
+11) PERMISOS
+==================================================
+
+Definir permisos por rol:
+- ver presupuestos
+- crear presupuestos
+- editar presupuestos
+- crear revisiones
+- registrar cobros
+- ver cobranzas
+- aprobar
+- rechazar
+- archivar
+- sobrecobrar
+- reactivar archivados
+- ver dashboard financiero/comercial del módulo
+
+==================================================
+12) CALIDAD TÉCNICA OBLIGATORIA
+==================================================
+
+No quiero:
+- mocks
+- hardcode
+- datos inventados
+- filtros en memoria
+- doble lógica entre dashboard y módulo
+- duplicación de cálculos en frontend y backend
+- romper funcionalidades existentes
+
+Sí quiero:
+- migraciones correctas
+- esquema robusto
+- API consistente
+- frontend usable
+- responsive
+- estados correctos
+- cálculos confiables
+- integración real con clientes
+- integración real con dashboard
+- buena experiencia de usuario
+
+==================================================
+13) VERIFICACIONES FINALES OBLIGATORIAS
+==================================================
+
+Antes de dar por terminado el trabajo, verificar y mostrar evidencia de:
+
+- vinculación real con módulo de Clientes
+- funcionamiento de la pestaña Presupuestos y Cobranzas dentro del cliente
+- historial de versiones funcionando
+- pagos parciales funcionando
+- cálculo correcto de total cobrado
+- cálculo correcto de saldo pendiente
+- actualización automática de estados
+- semáforo de vencimientos funcionando
+- KPIs clickeables funcionando
+- dashboard del módulo funcionando
+- widgets/datasets disponibles para módulo de Dashboards
+- filtros funcionando desde base de datos
+- permisos funcionando
+- responsive correcto
+
+Si algo no está implementado, decirlo explícitamente. No simular que está hecho.

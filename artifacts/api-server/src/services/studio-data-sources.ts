@@ -15,6 +15,8 @@ import {
   inAppNotificationsTable,
   jobLogsTable,
   auditLogsTable,
+  quotesTable,
+  quotePaymentsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, isNull, ne, sql, lt } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
@@ -52,6 +54,12 @@ export const DATA_SOURCE_CATALOG: DataSourceMeta[] = [
   { key: "audit.activity",             label: "Auditoría — Actividad reciente",  description: "Actividad reciente del sistema",             category: "admin",     supportsSnapshot: false },
   { key: "static.text",                 label: "Texto estático",                  description: "Bloque de texto personalizado",              category: "general" },
   { key: "static.links",               label: "Links rápidos",                   description: "Lista de links configurables",               category: "general" },
+  // Presupuestos y Cobranzas
+  { key: "quotes.kpis",                label: "Presupuestos — KPIs",             description: "Total presupuestado, cobrado, saldo, tasa",   category: "presupuestos", supportsSnapshot: true },
+  { key: "quotes.upcoming.expiry",     label: "Presupuestos — Próximos a vencer",description: "Presupuestos próximos a vencer (30 días)",    category: "presupuestos" },
+  { key: "quotes.monthly.payments",    label: "Presupuestos — Cobranzas por mes",description: "Evolución mensual de cobranzas",              category: "presupuestos", supportsSnapshot: true },
+  { key: "quotes.by.status",           label: "Presupuestos — Por estado",       description: "Distribución de presupuestos por estado",    category: "presupuestos", supportsSnapshot: true },
+  { key: "quotes.top.debtors",         label: "Presupuestos — Ranking deudores", description: "Top clientes con mayor saldo pendiente",      category: "presupuestos", supportsSnapshot: true },
 ];
 
 // ── Resolver ──────────────────────────────────────────────────────────────────
@@ -269,6 +277,79 @@ export async function resolveDataSource(
           .where(eq(auditLogsTable.userId, userIdStr))
           .orderBy(desc(auditLogsTable.createdAt))
           .limit(15);
+      }
+
+      case "quotes.kpis": {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const monthStart = todayStr.slice(0, 7) + "-01";
+        const [kpis] = await db.select({
+          totalPresupuestado: sql<string>`coalesce(sum(total_amount), 0)`,
+          cantidadPresupuestos: sql<number>`count(*)`,
+          cantidadVencidos: sql<number>`count(*) filter (where status = 'expired' or (due_date < ${todayStr} and status not in ('paid','rejected') and archived_at is null))`,
+          cantidadPendientes: sql<number>`count(*) filter (where status in ('draft','sent','approved') and archived_at is null)`,
+          cantidadPagados: sql<number>`count(*) filter (where status = 'paid')`,
+          cantidadParciales: sql<number>`count(*) filter (where status = 'partially_paid')`,
+        }).from(quotesTable).where(eq(quotesTable.userId, userIdStr));
+        const [cob] = await db.select({ total: sql<string>`coalesce(sum(amount), 0)` }).from(quotePaymentsTable).where(eq(quotePaymentsTable.userId, userIdStr));
+        const [mes] = await db.select({ total: sql<string>`coalesce(sum(amount), 0)` }).from(quotePaymentsTable).where(and(eq(quotePaymentsTable.userId, userIdStr), gte(quotePaymentsTable.paymentDate, monthStart)));
+        const totalPres = parseFloat(kpis?.totalPresupuestado ?? "0");
+        const totalCob = parseFloat(cob?.total ?? "0");
+        return {
+          totalPresupuestado: totalPres, totalCobrado: totalCob, saldoPendiente: totalPres - totalCob,
+          cantidadPresupuestos: Number(kpis?.cantidadPresupuestos ?? 0),
+          cantidadVencidos: Number(kpis?.cantidadVencidos ?? 0),
+          cantidadPendientes: Number(kpis?.cantidadPendientes ?? 0),
+          cantidadPagados: Number(kpis?.cantidadPagados ?? 0),
+          cantidadParciales: Number(kpis?.cantidadParciales ?? 0),
+          cobranzasMes: parseFloat(mes?.total ?? "0"),
+          tasaCobro: totalPres > 0 ? Math.round((totalCob / totalPres) * 1000) / 10 : 0,
+        };
+      }
+
+      case "quotes.upcoming.expiry": {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const in30 = new Date(); in30.setDate(in30.getDate() + 30); const in30Str = in30.toISOString().slice(0, 10);
+        return await db.select({
+          id: quotesTable.id, quoteNumber: quotesTable.quoteNumber, title: quotesTable.title,
+          dueDate: quotesTable.dueDate, totalAmount: quotesTable.totalAmount, status: quotesTable.status,
+          clientName: clientsTable.name,
+          balance: sql<string>`${quotesTable.totalAmount} - coalesce((select sum(p.amount) from quote_payments p where p.quote_id = ${quotesTable.id}), 0)`,
+        }).from(quotesTable)
+          .leftJoin(clientsTable, eq(quotesTable.clientId, clientsTable.id))
+          .where(and(eq(quotesTable.userId, userIdStr), gte(quotesTable.dueDate, todayStr), lte(quotesTable.dueDate, in30Str), isNull(quotesTable.archivedAt)))
+          .orderBy(quotesTable.dueDate).limit(15);
+      }
+
+      case "quotes.monthly.payments": {
+        const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - 11); const cutoffStr = cutoff.toISOString().slice(0, 7) + "-01";
+        return await db.select({
+          mes: sql<string>`to_char(payment_date::date, 'YYYY-MM')`,
+          total: sql<string>`sum(amount)`,
+          cantidad: sql<number>`count(*)`,
+        }).from(quotePaymentsTable)
+          .where(and(eq(quotePaymentsTable.userId, userIdStr), gte(quotePaymentsTable.paymentDate, cutoffStr)))
+          .groupBy(sql`to_char(payment_date::date, 'YYYY-MM')`)
+          .orderBy(sql`to_char(payment_date::date, 'YYYY-MM')`);
+      }
+
+      case "quotes.by.status": {
+        return await db.select({
+          status: quotesTable.status, cantidad: sql<number>`count(*)`, total: sql<string>`sum(total_amount)`,
+        }).from(quotesTable).where(eq(quotesTable.userId, userIdStr)).groupBy(quotesTable.status);
+      }
+
+      case "quotes.top.debtors": {
+        return await db.select({
+          clientId: quotesTable.clientId, clientName: clientsTable.name,
+          totalPresupuestado: sql<string>`sum(${quotesTable.totalAmount})`,
+          totalCobrado: sql<string>`coalesce((select sum(p.amount) from quote_payments p where p.quote_id = ${quotesTable.id}), 0)`,
+          saldoPendiente: sql<string>`sum(${quotesTable.totalAmount}) - coalesce(sum((select coalesce(sum(p.amount),0) from quote_payments p where p.quote_id = ${quotesTable.id})), 0)`,
+        }).from(quotesTable)
+          .leftJoin(clientsTable, eq(quotesTable.clientId, clientsTable.id))
+          .where(and(eq(quotesTable.userId, userIdStr), isNull(quotesTable.archivedAt)))
+          .groupBy(quotesTable.clientId, clientsTable.name)
+          .orderBy(sql`sum(${quotesTable.totalAmount}) - coalesce(sum((select coalesce(sum(p.amount),0) from quote_payments p where p.quote_id = ${quotesTable.id})), 0) desc`)
+          .limit(10);
       }
 
       case "static.text":

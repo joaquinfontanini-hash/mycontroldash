@@ -11,11 +11,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Users, Plus, Search, Edit2, Trash2, RefreshCw, CheckCircle2,
   AlertCircle, X, CalendarClock, Zap, ChevronDown, ChevronUp,
-  FolderOpen, Settings2, Loader2,
+  FolderOpen, Settings2, Loader2, FileText, CreditCard, ExternalLink,
+  TrendingDown, Receipt,
 } from "lucide-react";
 import {
   Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
 } from "@/components/ui/empty";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Link } from "wouter";
 
 import { BASE } from "@/lib/base-url";
 
@@ -323,6 +326,156 @@ function GroupSelector({
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
+
+// ── Client Quotes Summary (tab en la ficha del cliente) ───────────────────────
+
+type QuoteStatus2 = "draft"|"sent"|"approved"|"rejected"|"expired"|"partially_paid"|"paid";
+const STATUS_LABEL: Record<QuoteStatus2, string> = {
+  draft: "Borrador", sent: "Enviado", approved: "Aprobado",
+  rejected: "Rechazado", expired: "Vencido", partially_paid: "Parcial", paid: "Cobrado",
+};
+const STATUS_COLOR: Record<QuoteStatus2, string> = {
+  draft: "bg-gray-100 dark:bg-gray-800 text-gray-600",
+  sent: "bg-blue-100 dark:bg-blue-900/30 text-blue-700",
+  approved: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700",
+  rejected: "bg-red-100 dark:bg-red-900/30 text-red-700",
+  expired: "bg-orange-100 dark:bg-orange-900/30 text-orange-700",
+  partially_paid: "bg-amber-100 dark:bg-amber-900/30 text-amber-700",
+  paid: "bg-teal-100 dark:bg-teal-900/30 text-teal-700",
+};
+
+function fmtMoney(n: number | string, currency = "ARS") {
+  const v = typeof n === "string" ? parseFloat(n) : n;
+  if (isNaN(v)) return "-";
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency, minimumFractionDigits: 0 }).format(v);
+}
+function fmtDateShort(d: string | null | undefined) {
+  if (!d) return "-";
+  const [y, m, dd] = d.split("-");
+  if (!y || !m || !dd) return d;
+  return `${dd}/${m}/${y.slice(2)}`;
+}
+
+interface ClientQSummary {
+  totalPresupuestos: number;
+  totalPresupuestado: number;
+  totalCobrado: number;
+  saldoPendiente: number;
+  cantidadVencidos: number;
+  cantidadParciales: number;
+  lastQuote: { id: number; quoteNumber: string; issueDate: string; title: string; totalAmount: string; status: string } | null;
+  lastPayment: { id: number; paymentDate: string; amount: string; currency: string } | null;
+}
+interface ClientQRow {
+  id: number; quoteNumber: string; title: string; issueDate: string; dueDate: string;
+  totalAmount: string; status: string; currency: string; version: number; totalPaid: number; balance: number; lastPaymentDate: string | null;
+}
+interface ClientPaymentRow {
+  id: number; quoteNumber: string; paymentDate: string; amount: string; currency: string; paymentMethod: string; reference: string | null;
+}
+
+function ClientQuotesSummary({ clientId, clientName }: { clientId: number; clientName: string }) {
+  const { data, isLoading, isError } = useQuery<{ summary: ClientQSummary; quotes: ClientQRow[]; payments: ClientPaymentRow[] }>({
+    queryKey: ["client-quotes", clientId],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/quotes/client/${clientId}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Error");
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  if (isLoading) return <div className="space-y-2 py-2">{[1,2,3].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div>;
+  if (isError || !data) return <p className="text-xs text-muted-foreground py-3">No se pudieron cargar los presupuestos</p>;
+
+  const { summary, quotes, payments } = data;
+
+  return (
+    <div className="space-y-3 pt-2">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {[
+          { label: "Presupuestado", value: fmtMoney(summary.totalPresupuestado), color: "text-foreground" },
+          { label: "Cobrado", value: fmtMoney(summary.totalCobrado), color: "text-teal-600" },
+          { label: "Saldo pendiente", value: fmtMoney(summary.saldoPendiente), color: summary.saldoPendiente > 0 ? "text-amber-600" : "text-foreground" },
+          { label: "Vencidos", value: summary.cantidadVencidos.toString(), color: summary.cantidadVencidos > 0 ? "text-red-600" : "text-muted-foreground" },
+        ].map(k => (
+          <div key={k.label} className="bg-muted/40 rounded-lg px-3 py-2 text-center">
+            <p className="text-[10px] text-muted-foreground">{k.label}</p>
+            <p className={`text-sm font-bold ${k.color}`}>{k.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Link a presupuestos */}
+      <div className="flex justify-end">
+        <Link href="/dashboard/quotes" className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline">
+          <ExternalLink className="w-3 h-3" /> Ver en módulo completo
+        </Link>
+      </div>
+
+      <Tabs defaultValue="presupuestos">
+        <TabsList className="h-7 text-xs">
+          <TabsTrigger value="presupuestos" className="text-xs h-6">
+            Presupuestos ({summary.totalPresupuestos})
+          </TabsTrigger>
+          <TabsTrigger value="cobros" className="text-xs h-6">
+            Cobros ({payments.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="presupuestos" className="mt-2">
+          {quotes.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-3">Sin presupuestos</p>
+          ) : (
+            <div className="space-y-1.5">
+              {quotes.slice(0, 8).map(q => (
+                <div key={q.id} className="flex items-center gap-2 text-xs border rounded-lg px-3 py-2 bg-card">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${q.status === "paid" ? "bg-teal-500" : q.status === "expired" ? "bg-red-500" : q.status === "partially_paid" ? "bg-amber-500" : q.balance > 0 && q.dueDate <= new Date().toISOString().slice(0,10) ? "bg-red-500" : "bg-emerald-500"}`} />
+                  <div className="min-w-0 flex-1">
+                    <span className="font-mono text-[10px] text-muted-foreground">{q.quoteNumber}</span>
+                    <span className="ml-1.5 truncate">{q.title}</span>
+                  </div>
+                  <span className="font-medium shrink-0">{fmtMoney(q.totalAmount, q.currency)}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${STATUS_COLOR[q.status as QuoteStatus2] ?? "bg-gray-100 text-gray-600"}`}>
+                    {STATUS_LABEL[q.status as QuoteStatus2] ?? q.status}
+                  </span>
+                </div>
+              ))}
+              {quotes.length > 8 && (
+                <p className="text-[10px] text-muted-foreground text-center">+{quotes.length - 8} más</p>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="cobros" className="mt-2">
+          {payments.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-3">Sin cobros registrados</p>
+          ) : (
+            <div className="space-y-1.5">
+              {payments.slice(0, 8).map(p => (
+                <div key={p.id} className="flex items-center justify-between gap-2 text-xs border rounded-lg px-3 py-2 bg-card">
+                  <div className="min-w-0">
+                    <span className="font-mono text-[10px] text-muted-foreground">{p.quoteNumber}</span>
+                    <span className="ml-1.5 text-muted-foreground">{fmtDateShort(p.paymentDate)}</span>
+                    {p.reference && <span className="ml-1.5 italic text-[10px] text-muted-foreground">Ref: {p.reference}</span>}
+                  </div>
+                  <span className="font-semibold text-teal-600 shrink-0">{fmtMoney(p.amount, p.currency)}</span>
+                </div>
+              ))}
+              {payments.length > 8 && (
+                <p className="text-[10px] text-muted-foreground text-center">+{payments.length - 8} más</p>
+              )}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
   const qc = useQueryClient();
@@ -702,13 +855,20 @@ export default function ClientsPage() {
                   </div>
 
                   {isExpanded && (
-                    <div className="space-y-2 border-t pt-3">
+                    <div className="space-y-3 border-t pt-3">
                       {client.notes && (
                         <p className="text-xs text-muted-foreground italic">{client.notes}</p>
                       )}
                       <div className="text-[10px] text-muted-foreground space-y-1">
                         <p>CUIT: <span className="font-mono">{formatCuit(client.cuit)}</span> · Terminación: <strong>{cuitLastDigit(client.cuit)}</strong></p>
                         <p>Creado: {new Date(client.createdAt).toLocaleDateString("es-AR")}</p>
+                      </div>
+                      {/* Presupuestos y Cobranzas del cliente */}
+                      <div className="border-t pt-3">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2 flex items-center gap-1">
+                          <FileText className="w-3 h-3" /> Presupuestos y Cobranzas
+                        </p>
+                        <ClientQuotesSummary clientId={client.id} clientName={client.name} />
                       </div>
                     </div>
                   )}

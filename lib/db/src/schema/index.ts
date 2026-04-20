@@ -30,3 +30,4 @@ export * from "./job-logs";
 export * from "./in-app-notifications";
 export * from "./user-preferences";
 export * from "./dashboard-studio";
+export * from "./quotes";

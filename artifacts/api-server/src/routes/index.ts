@@ -34,6 +34,7 @@ import notificationsRouter from "./notifications";
 import inAppNotificationsRouter from "./in-app-notifications";
 import preferencesRouter from "./preferences";
 import studioRouter from "./studio";
+import quotesRouter from "./quotes";
 
 const router: IRouter = Router();
 
@@ -81,6 +82,7 @@ router.use(["/daily-goals", "/strategy-goals"], requireModule("goals"));
 router.use("/contacts", requireModule("contacts"));
 router.use("/conversations", requireModule("chat"));
 router.use("/studio", requireModule("dashboard_studio"));
+router.use("/quotes", requireModule("quotes"));
 
 // Sub-routers — mounted without path so their own route definitions are preserved
 router.use(dashboardRouter);
@@ -101,5 +103,6 @@ router.use(contactsRouter);
 router.use(chatRouter);
 router.use(fiscalAdminRouter);
 router.use(studioRouter);
+router.use(quotesRouter);
 
 export default router;

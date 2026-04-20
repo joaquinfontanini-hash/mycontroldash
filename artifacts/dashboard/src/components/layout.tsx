@@ -13,7 +13,7 @@ import {
   Shield, Search, LogOut, Moon, Sun, Menu, Users, Truck, Crown,
   DollarSign, Sparkles, RefreshCw, Brain, Target, Flag,
   ChevronLeft, ChevronRight, Pin, PinOff, PanelLeftClose, PanelLeft,
-  MessageSquare, Contact, LayoutGrid, Gauge,
+  MessageSquare, Contact, LayoutGrid, Gauge, FileText,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,7 @@ const ALL_NAV_ITEMS = [
   { href: "/dashboard/strategy", label: "Proyectos", icon: Flag, moduleKey: "strategy" },
   { href: "/dashboard/decisions", label: "Decisiones", icon: Brain, moduleKey: "decisions" },
   { href: "/dashboard/contacts", label: "Contactos", icon: Contact, moduleKey: "contacts" },
+  { href: "/dashboard/quotes", label: "Presupuestos y Cob.", icon: FileText, moduleKey: "quotes" },
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare, moduleKey: "chat" },
   { href: "/dashboard/studio", label: "Dashboard Studio", icon: LayoutGrid, moduleKey: "dashboard_studio" },
 ];
