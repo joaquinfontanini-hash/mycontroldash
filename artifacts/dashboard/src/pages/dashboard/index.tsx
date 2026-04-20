@@ -9,7 +9,7 @@ import {
   CloudRain, Sun, Cloud, ArrowRight, TrendingUp, RefreshCw,
   DollarSign, AlertCircle, CheckCircle2, CalendarClock,
   Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw,
-  Pencil, Check, GripVertical, X as XIcon,
+  GripHorizontal,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -552,95 +552,57 @@ function loadModulesLayout(): Layout[] {
 
 function ModulesGrid() {
   const [layout, setLayout] = useState<Layout[]>(loadModulesLayout);
-  const [editing, setEditing] = useState(false);
-  const [stagingLayout, setStagingLayout] = useState<Layout[]>(layout);
 
-  const startEdit = useCallback(() => {
-    setStagingLayout(layout);
-    setEditing(true);
-  }, [layout]);
-
-  const saveEdit = useCallback(() => {
-    setLayout(stagingLayout);
-    localStorage.setItem(MODULES_LS_KEY, JSON.stringify(stagingLayout));
-    setEditing(false);
-  }, [stagingLayout]);
-
-  const cancelEdit = useCallback(() => {
-    setStagingLayout(layout);
-    setEditing(false);
-  }, [layout]);
-
-  const resetLayout = useCallback(() => {
-    setStagingLayout(DEFAULT_MODULES_LAYOUT);
+  const handleLayoutChange = useCallback((newLayout: Layout[]) => {
+    setLayout(newLayout);
+    localStorage.setItem(MODULES_LS_KEY, JSON.stringify(newLayout));
   }, []);
 
-  const currentLayout = editing ? stagingLayout : layout;
+  const resetLayout = useCallback(() => {
+    setLayout(DEFAULT_MODULES_LAYOUT);
+    localStorage.setItem(MODULES_LS_KEY, JSON.stringify(DEFAULT_MODULES_LAYOUT));
+  }, []);
 
   return (
     <div className="space-y-3">
-      {/* Toolbar */}
+      {/* Separator */}
       <div className="flex items-center gap-2">
         <div className="h-px flex-1 bg-border/60" />
         <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-1">Módulos</span>
         <div className="h-px flex-1 bg-border/60" />
-        {!editing ? (
-          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 text-muted-foreground" onClick={startEdit}>
-            <Pencil className="h-3 w-3" /> Editar disposición
-          </Button>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground" onClick={resetLayout}>
-              <RotateCcw className="h-3 w-3" /> Reset
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground" onClick={cancelEdit}>
-              <XIcon className="h-3 w-3" /> Cancelar
-            </Button>
-            <Button variant="default" size="sm" className="h-7 text-xs gap-1.5" onClick={saveEdit}>
-              <Check className="h-3 w-3" /> Guardar
-            </Button>
-          </div>
-        )}
+        <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1 text-muted-foreground/50 hover:text-muted-foreground" onClick={resetLayout}>
+          <RotateCcw className="h-2.5 w-2.5" /> Restablecer
+        </Button>
       </div>
 
-      {editing && (
-        <p className="text-[11px] text-muted-foreground text-center bg-primary/5 border border-primary/20 rounded-lg py-1.5 px-3">
-          Arrastrá los widgets desde el encabezado · Redimensionalos desde la esquina inferior derecha
-        </p>
-      )}
-
-      {/* Grid */}
-      <div className={editing ? "ring-1 ring-primary/20 ring-offset-2 rounded-xl" : ""}>
-        <GridLayout
-          layout={currentLayout}
-          cols={12}
-          rowHeight={30}
-          margin={[12, 12]}
-          containerPadding={[0, 0]}
-          isDraggable={editing}
-          isResizable={editing}
-          draggableHandle=".drag-handle"
-          onLayoutChange={(newLayout) => { if (editing) setStagingLayout(newLayout); }}
-          resizeHandles={["se"]}
-          className="modules-grid"
-        >
-          {MODULES_ITEMS.map(({ key, label, Component }) => (
-            <div key={key} className="group/widget">
-              <div className={`h-full flex flex-col rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden transition-shadow ${editing ? "ring-1 ring-primary/30 cursor-default" : ""}`}>
-                {editing && (
-                  <div className="drag-handle flex items-center gap-1.5 px-3 py-1.5 bg-primary/5 border-b border-primary/20 cursor-grab active:cursor-grabbing select-none shrink-0">
-                    <GripVertical className="h-3.5 w-3.5 text-primary/60" />
-                    <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">{label}</span>
-                  </div>
-                )}
-                <div className="flex-1 overflow-auto min-h-0">
-                  <Component />
-                </div>
+      {/* Grid — always draggable/resizable */}
+      <GridLayout
+        layout={layout}
+        cols={12}
+        rowHeight={30}
+        margin={[12, 12]}
+        containerPadding={[0, 0]}
+        isDraggable={true}
+        isResizable={true}
+        draggableHandle=".drag-handle"
+        onLayoutChange={handleLayoutChange}
+        resizeHandles={["se"]}
+        className="modules-grid"
+      >
+        {MODULES_ITEMS.map(({ key, Component }) => (
+          <div key={key} className="group/widget">
+            <div className="h-full flex flex-col rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden">
+              {/* Drag strip — thin top border, only visible on hover */}
+              <div className="drag-handle flex items-center justify-center h-4 shrink-0 cursor-grab active:cursor-grabbing select-none opacity-0 group-hover/widget:opacity-100 transition-opacity bg-muted/30 border-b border-border/40">
+                <GripHorizontal className="h-3 w-3 text-muted-foreground/50" />
+              </div>
+              <div className="flex-1 overflow-auto min-h-0">
+                <Component />
               </div>
             </div>
-          ))}
-        </GridLayout>
-      </div>
+          </div>
+        ))}
+      </GridLayout>
     </div>
   );
 }
