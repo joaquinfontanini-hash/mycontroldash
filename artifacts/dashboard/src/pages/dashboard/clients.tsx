@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Users, Plus, Search, Edit2, Trash2, RefreshCw, CheckCircle2,
   AlertCircle, X, CalendarClock, Zap, ChevronDown, ChevronUp,
+  FolderOpen, Settings2, Loader2,
 } from "lucide-react";
 import {
   Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent,
@@ -34,6 +35,21 @@ const TAX_TYPES = [
   { key: "sindicato", label: "Sindicato", category: "cargas" },
   { key: "facturacion", label: "Facturación", category: "otros" },
 ];
+
+const GROUP_COLORS = [
+  { key: "blue",    label: "Azul",     bg: "bg-blue-100 dark:bg-blue-900/30",     text: "text-blue-700 dark:text-blue-300",     dot: "bg-blue-500" },
+  { key: "emerald", label: "Verde",    bg: "bg-emerald-100 dark:bg-emerald-900/30", text: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
+  { key: "amber",   label: "Amarillo", bg: "bg-amber-100 dark:bg-amber-900/30",   text: "text-amber-700 dark:text-amber-300",   dot: "bg-amber-500" },
+  { key: "rose",    label: "Rojo",     bg: "bg-rose-100 dark:bg-rose-900/30",     text: "text-rose-700 dark:text-rose-300",     dot: "bg-rose-500" },
+  { key: "violet",  label: "Violeta",  bg: "bg-violet-100 dark:bg-violet-900/30", text: "text-violet-700 dark:text-violet-300", dot: "bg-violet-500" },
+  { key: "orange",  label: "Naranja",  bg: "bg-orange-100 dark:bg-orange-900/30", text: "text-orange-700 dark:text-orange-300", dot: "bg-orange-500" },
+  { key: "cyan",    label: "Cyan",     bg: "bg-cyan-100 dark:bg-cyan-900/30",     text: "text-cyan-700 dark:text-cyan-300",     dot: "bg-cyan-500" },
+  { key: "pink",    label: "Rosa",     bg: "bg-pink-100 dark:bg-pink-900/30",     text: "text-pink-700 dark:text-pink-300",     dot: "bg-pink-500" },
+];
+
+function getGroupColor(color: string) {
+  return GROUP_COLORS.find(c => c.key === color) ?? GROUP_COLORS[0]!;
+}
 
 function formatCuit(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 11);
@@ -63,25 +79,250 @@ function cuitLastDigit(cuit: string): string {
 }
 
 interface TaxAssignment { id: number; clientId: number; taxType: string; enabled: boolean; }
+
+interface ClientGroup {
+  id: number;
+  name: string;
+  color: string;
+  description?: string | null;
+  userId?: string | null;
+  createdAt: string;
+}
+
 interface Client {
   id: number; name: string; cuit: string; email?: string | null;
   phone?: string | null; status: string; notes?: string | null;
+  groupId?: number | null;
+  group?: ClientGroup | null;
   createdAt: string; taxAssignments: TaxAssignment[];
 }
 
 interface ClientForm {
   name: string; cuit: string; email: string; phone: string;
   status: string; notes: string; taxTypes: string[];
+  groupId: string;
 }
 
 const EMPTY_FORM: ClientForm = {
-  name: "", cuit: "", email: "", phone: "", status: "active", notes: "", taxTypes: [],
+  name: "", cuit: "", email: "", phone: "", status: "active", notes: "", taxTypes: [], groupId: "",
 };
 
 const STATUS_BADGE: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
   inactive: "bg-muted text-muted-foreground",
 };
+
+// ── Group Badge ───────────────────────────────────────────────────────────────
+
+function GroupBadge({ group }: { group: ClientGroup }) {
+  const cfg = getGroupColor(group.color);
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${cfg.bg} ${cfg.text}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      {group.name}
+    </span>
+  );
+}
+
+// ── Group Manager Dialog ──────────────────────────────────────────────────────
+
+function GroupManagerDialog({
+  open, onClose, groups, onRefresh,
+}: {
+  open: boolean;
+  onClose: () => void;
+  groups: ClientGroup[];
+  onRefresh: () => void;
+}) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("blue");
+  const [editDesc, setEditDesc] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const startEdit = (g: ClientGroup) => {
+    setEditingId(g.id);
+    setEditName(g.name);
+    setEditColor(g.color);
+    setEditDesc(g.description ?? "");
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditName(""); setEditColor("blue"); setEditDesc(""); };
+
+  const handleSave = async () => {
+    if (!editingId || !editName.trim()) return;
+    setSaving(true);
+    try {
+      await fetch(`${BASE}/api/clients/groups/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim(), color: editColor, description: editDesc }),
+        credentials: "include",
+      });
+      onRefresh();
+      cancelEdit();
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: number) => {
+    setDeletingId(id);
+    try {
+      await fetch(`${BASE}/api/clients/groups/${id}`, { method: "DELETE", credentials: "include" });
+      onRefresh();
+    } finally { setDeletingId(null); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4" />
+            Gestionar grupos
+          </DialogTitle>
+          <DialogDescription>Editá el nombre, color o eliminá grupos existentes.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto py-1">
+          {groups.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">No hay grupos creados aún.</p>
+          )}
+          {groups.map(g => {
+            const cfg = getGroupColor(g.color);
+            if (editingId === g.id) {
+              return (
+                <div key={g.id} className="space-y-2 p-3 border rounded-xl bg-muted/20">
+                  <Input value={editName} onChange={e => setEditName(e.target.value)} className="h-8 text-sm" placeholder="Nombre del grupo" />
+                  <Input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="h-8 text-sm" placeholder="Descripción (opcional)" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {GROUP_COLORS.map(c => (
+                      <button key={c.key} type="button" onClick={() => setEditColor(c.key)}
+                        className={`h-6 w-6 rounded-full ${c.dot} transition-all ${editColor === c.key ? "ring-2 ring-offset-1 ring-foreground scale-110" : "opacity-60 hover:opacity-100"}`}
+                        title={c.label} />
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5 justify-end">
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelEdit}>Cancelar</Button>
+                    <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={saving || !editName.trim()}>
+                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Guardar"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={g.id} className="flex items-center gap-2 px-3 py-2 border rounded-xl hover:bg-muted/30 transition-colors group">
+                <span className={`h-3 w-3 rounded-full ${cfg.dot} shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{g.name}</p>
+                  {g.description && <p className="text-[10px] text-muted-foreground truncate">{g.description}</p>}
+                </div>
+                <button onClick={() => startEdit(g)} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-primary">
+                  <Edit2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => handleDelete(g.id)}
+                  disabled={deletingId === g.id}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-destructive"
+                >
+                  {deletingId === g.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Group Selector (inline in client form) ────────────────────────────────────
+
+function GroupSelector({
+  groups, value, onChange, onGroupCreated,
+}: {
+  groups: ClientGroup[];
+  value: string;
+  onChange: (id: string) => void;
+  onGroupCreated: (g: ClientGroup) => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState("blue");
+  const [saving, setSaving] = useState(false);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/clients/groups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), color: newColor }),
+        credentials: "include",
+      });
+      if (res.ok) {
+        const g: ClientGroup = await res.json();
+        onGroupCreated(g);
+        onChange(String(g.id));
+        setNewName(""); setNewColor("blue"); setCreating(false);
+      }
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-2">
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+      >
+        <option value="">Sin grupo</option>
+        {groups.map(g => <option key={g.id} value={String(g.id)}>{g.name}</option>)}
+      </select>
+
+      {!creating ? (
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+        >
+          <Plus className="h-3 w-3" />
+          Crear nuevo grupo
+        </button>
+      ) : (
+        <div className="space-y-2 p-3 border rounded-xl bg-muted/20">
+          <Input
+            autoFocus
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            placeholder="Nombre del grupo..."
+            className="h-7 text-xs"
+            onKeyDown={e => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false); }}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {GROUP_COLORS.map(c => (
+              <button key={c.key} type="button" onClick={() => setNewColor(c.key)}
+                className={`h-5 w-5 rounded-full ${c.dot} transition-all ${newColor === c.key ? "ring-2 ring-offset-1 ring-foreground scale-110" : "opacity-50 hover:opacity-100"}`}
+                title={c.label} />
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setCreating(false)}>Cancelar</Button>
+            <Button size="sm" className="h-6 px-2 text-xs" onClick={handleCreate} disabled={saving || !newName.trim()}>
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Crear"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
   const qc = useQueryClient();
@@ -91,17 +332,28 @@ export default function ClientsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterGroupId, setFilterGroupId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [generatingId, setGeneratingId] = useState<number | null>(null);
   const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; errors: string[] } | null>(null);
   const [generateResultClientId, setGenerateResultClientId] = useState<number | null>(null);
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
 
   const { data: clients = [], isLoading } = useQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/clients`);
+      const res = await fetch(`${BASE}/api/clients`, { credentials: "include" });
       if (!res.ok) throw new Error("Error al cargar clientes");
+      return res.json();
+    },
+  });
+
+  const { data: groups = [], refetch: refetchGroups } = useQuery<ClientGroup[]>({
+    queryKey: ["client-groups"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/clients/groups`, { credentials: "include" });
+      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -111,12 +363,14 @@ export default function ClientsPage() {
       const res = await fetch(`${BASE}/api/clients`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, cuit: data.cuit.replace(/\D/g, "") }),
+        credentials: "include",
+        body: JSON.stringify({
+          ...data,
+          cuit: data.cuit.replace(/\D/g, ""),
+          groupId: data.groupId || null,
+        }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Error al crear cliente");
-      }
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? "Error al crear cliente"); }
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["clients"] }); setDialogOpen(false); },
@@ -128,12 +382,14 @@ export default function ClientsPage() {
       const res = await fetch(`${BASE}/api/clients/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, cuit: data.cuit.replace(/\D/g, "") }),
+        credentials: "include",
+        body: JSON.stringify({
+          ...data,
+          cuit: data.cuit.replace(/\D/g, ""),
+          groupId: data.groupId || null,
+        }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Error al actualizar cliente");
-      }
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error ?? "Error al actualizar cliente"); }
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["clients"] }); setDialogOpen(false); },
@@ -142,7 +398,7 @@ export default function ClientsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`${BASE}/api/clients/${id}`, { method: "DELETE" });
+      await fetch(`${BASE}/api/clients/${id}`, { method: "DELETE", credentials: "include" });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["clients"] }); setConfirmDeleteId(null); },
   });
@@ -161,6 +417,7 @@ export default function ClientsPage() {
       email: c.email ?? "", phone: c.phone ?? "",
       status: c.status, notes: c.notes ?? "",
       taxTypes: c.taxAssignments.filter(t => t.enabled).map(t => t.taxType),
+      groupId: c.groupId ? String(c.groupId) : "",
     });
     setFormError(null);
     setDialogOpen(true);
@@ -189,7 +446,9 @@ export default function ClientsPage() {
     setGeneratingId(clientId);
     setGenerateResult(null);
     try {
-      const endpoint = regenerate ? `${BASE}/api/clients/${clientId}/regenerate-due-dates` : `${BASE}/api/clients/${clientId}/generate-due-dates`;
+      const endpoint = regenerate
+        ? `${BASE}/api/clients/${clientId}/regenerate-due-dates`
+        : `${BASE}/api/clients/${clientId}/generate-due-dates`;
       const res = await fetch(endpoint, { method: "POST" });
       const data = await res.json();
       setGenerateResult(data);
@@ -206,13 +465,18 @@ export default function ClientsPage() {
     let items = clients;
     if (search.trim()) {
       const q = search.toLowerCase();
-      items = items.filter(c =>
-        c.name.toLowerCase().includes(q) || c.cuit.includes(q)
-      );
+      items = items.filter(c => c.name.toLowerCase().includes(q) || c.cuit.includes(q));
     }
     if (filterStatus !== "all") items = items.filter(c => c.status === filterStatus);
+    if (filterGroupId !== null) {
+      if (filterGroupId === -1) {
+        items = items.filter(c => !c.groupId);
+      } else {
+        items = items.filter(c => c.groupId === filterGroupId);
+      }
+    }
     return items;
-  }, [clients, search, filterStatus]);
+  }, [clients, search, filterStatus, filterGroupId]);
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -223,41 +487,94 @@ export default function ClientsPage() {
             Gestión de clientes, CUIT e impuestos asignados. Motor AFIP para generación automática de vencimientos.
           </p>
         </div>
-        <Button onClick={openCreate} size="sm">
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
-          Nuevo cliente
-        </Button>
+        <div className="flex items-center gap-2">
+          {groups.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setGroupManagerOpen(true)}>
+              <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+              Grupos
+            </Button>
+          )}
+          <Button onClick={openCreate} size="sm">
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Nuevo cliente
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o CUIT..."
-            className="pl-9 h-8 text-sm"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="h-3.5 w-3.5" />
+      <div className="space-y-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o CUIT..."
+              className="pl-9 h-8 text-sm"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {["all", "active", "inactive"].map(s => (
+            <button
+              key={s}
+              onClick={() => setFilterStatus(s)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150
+                ${filterStatus === s
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
+                }`}
+            >
+              {s === "all" ? "Todos" : s === "active" ? "Activos" : "Inactivos"}
             </button>
-          )}
+          ))}
         </div>
-        {["all", "active", "inactive"].map(s => (
-          <button
-            key={s}
-            onClick={() => setFilterStatus(s)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150
-              ${filterStatus === s
-                ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                : "bg-muted/60 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
+
+        {/* Group filter chips */}
+        {groups.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Grupo:</span>
+            <button
+              onClick={() => setFilterGroupId(null)}
+              className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                filterGroupId === null
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted"
               }`}
-          >
-            {s === "all" ? "Todos" : s === "active" ? "Activos" : "Inactivos"}
-          </button>
-        ))}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setFilterGroupId(prev => prev === -1 ? null : -1)}
+              className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                filterGroupId === -1
+                  ? "bg-muted text-foreground border-foreground/30"
+                  : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted"
+              }`}
+            >
+              Sin grupo
+            </button>
+            {groups.map(g => {
+              const cfg = getGroupColor(g.color);
+              const active = filterGroupId === g.id;
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => setFilterGroupId(prev => prev === g.id ? null : g.id)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all ${
+                    active ? `${cfg.bg} ${cfg.text} border-current` : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted"
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+                  {g.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -267,142 +584,133 @@ export default function ClientsPage() {
       ) : filtered.length === 0 ? (
         <Empty className="border-2 border-dashed py-16">
           <EmptyHeader>
-            <EmptyMedia variant="icon"><Users /></EmptyMedia>
-            <EmptyTitle>Sin clientes</EmptyTitle>
-            <EmptyDescription>
-              {search || filterStatus !== "all"
-                ? "No hay clientes que coincidan con los filtros."
-                : "Agregá tu primer cliente para empezar a gestionar vencimientos AFIP automáticos."}
-            </EmptyDescription>
+            <EmptyMedia>
+              <Users className="h-8 w-8 text-muted-foreground/50" />
+            </EmptyMedia>
           </EmptyHeader>
-          {!search && filterStatus === "all" && (
-            <EmptyContent>
-              <Button onClick={openCreate} size="sm">
-                <Plus className="h-3.5 w-3.5 mr-1.5" /> Nuevo cliente
-              </Button>
-            </EmptyContent>
+          <EmptyContent>
+            <EmptyTitle>{search || filterStatus !== "all" || filterGroupId !== null ? "Sin resultados" : "No hay clientes"}</EmptyTitle>
+            <EmptyDescription>
+              {search || filterStatus !== "all" || filterGroupId !== null
+                ? "Probá cambiando los filtros."
+                : "Creá tu primer cliente para empezar a gestionar vencimientos AFIP."}
+            </EmptyDescription>
+          </EmptyContent>
+          {!search && filterStatus === "all" && filterGroupId === null && (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" />Nuevo cliente
+            </Button>
           )}
         </Empty>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {filtered.map(client => {
             const isExpanded = expandedId === client.id;
-            const taxLabels = client.taxAssignments.filter(t => t.enabled).map(t =>
-              TAX_TYPES.find(tt => tt.key === t.taxType)?.label ?? t.taxType
-            );
+            const assignedTaxes = client.taxAssignments.filter(t => t.enabled);
             const isGenerating = generatingId === client.id;
-            const result = generateResultClientId === client.id ? generateResult : null;
+            const lastResult = generateResultClientId === client.id ? generateResult : null;
 
             return (
-              <Card key={client.id} className="border-border/60 hover:border-border transition-colors">
-                <CardHeader className="pb-2 pt-4">
+              <Card key={client.id} className="overflow-hidden transition-shadow hover:shadow-md">
+                <CardHeader className="p-4 pb-2 space-y-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-semibold leading-tight truncate">{client.name}</h3>
-                        <Badge className={`text-[9px] px-1.5 py-0 border-0 ${STATUS_BADGE[client.status] ?? STATUS_BADGE.inactive}`}>
+                        <h3 className="font-semibold text-sm truncate">{client.name}</h3>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[client.status] ?? STATUS_BADGE.inactive}`}>
                           {client.status === "active" ? "Activo" : "Inactivo"}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <code className="text-xs font-mono text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
-                          {formatCuit(client.cuit)}
-                        </code>
-                        <span className="text-[10px] text-muted-foreground">
-                          Termina en <strong>{cuitLastDigit(client.cuit)}</strong>
                         </span>
+                        {client.group && <GroupBadge group={client.group} />}
                       </div>
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5">{formatCuit(client.cuit)}</p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost" size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                      <button
                         onClick={() => openEdit(client)}
+                        className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                        title="Editar"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      </button>
+                      <button
                         onClick={() => setConfirmDeleteId(client.id)}
+                        className="p-1.5 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                        title="Eliminar"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </CardHeader>
-
-                <CardContent className="pt-0 pb-3 space-y-2.5">
-                  {/* Tax assignments */}
-                  {taxLabels.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {taxLabels.map(label => (
-                        <span key={label} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/8 text-primary/80 border border-primary/15">
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground/60 italic">Sin impuestos asignados</p>
-                  )}
-
-                  {/* Optional details */}
+                <CardContent className="p-4 pt-2 space-y-3">
                   {(client.email || client.phone) && (
-                    <p className="text-[11px] text-muted-foreground">
-                      {[client.email, client.phone].filter(Boolean).join(" · ")}
-                    </p>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                      {client.email && <span className="truncate">{client.email}</span>}
+                      {client.phone && <span>{client.phone}</span>}
+                    </div>
                   )}
 
-                  {/* AFIP Engine actions */}
-                  <div className="flex items-center gap-2 pt-1 flex-wrap">
-                    <Button
-                      variant="outline" size="sm"
-                      className="h-7 text-[11px] gap-1"
-                      disabled={isGenerating || taxLabels.length === 0}
-                      onClick={() => handleGenerateDueDates(client.id, false)}
+                  {assignedTaxes.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">
+                        Impuestos asignados ({assignedTaxes.length})
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {assignedTaxes.slice(0, isExpanded ? undefined : 4).map(t => {
+                          const taxInfo = TAX_TYPES.find(tt => tt.key === t.taxType);
+                          return (
+                            <span key={t.id} className="px-1.5 py-0.5 rounded text-[10px] bg-primary/10 text-primary font-medium">
+                              {taxInfo?.label ?? t.taxType}
+                            </span>
+                          );
+                        })}
+                        {!isExpanded && assignedTaxes.length > 4 && (
+                          <button onClick={() => setExpandedId(client.id)} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                            +{assignedTaxes.length - 4} más
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {lastResult && (
+                    <div className={`text-xs rounded-lg px-3 py-2 ${lastResult.errors.length > 0 ? "bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300" : "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300"}`}>
+                      <span className="font-semibold">{lastResult.generated}</span> generados ·{" "}
+                      <span>{lastResult.skipped}</span> ya existían
+                      {lastResult.errors.length > 0 && (
+                        <span className="block mt-0.5 text-[10px] opacity-80">{lastResult.errors.slice(0, 2).join(", ")}</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 flex-wrap pt-1">
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : client.id)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
                     >
-                      <Zap className="h-3 w-3" />
-                      {isGenerating ? "Generando..." : "Generar vencimientos AFIP"}
-                    </Button>
-                    <Button
-                      variant="ghost" size="sm"
-                      className="h-7 text-[10px] gap-1 text-muted-foreground"
+                      {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      {isExpanded ? "Menos" : "Ver más"}
+                    </button>
+                    <button
+                      onClick={() => handleGenerateDueDates(client.id)}
                       disabled={isGenerating}
-                      onClick={() => handleGenerateDueDates(client.id, true)}
+                      className="ml-auto flex items-center gap-1 text-[10px] px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium disabled:opacity-50"
                     >
-                      <RefreshCw className={`h-3 w-3 ${isGenerating ? "animate-spin" : ""}`} />
-                      Regenerar
-                    </Button>
-                    {client.notes && (
-                      <button
-                        className="ml-auto flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                        onClick={() => setExpandedId(isExpanded ? null : client.id)}
-                      >
-                        Notas {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                      </button>
-                    )}
+                      {isGenerating ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                      {isGenerating ? "Generando..." : "Generar AFIP"}
+                    </button>
                   </div>
 
-                  {/* Generate result */}
-                  {result && (
-                    <div className={`text-[11px] rounded-lg px-3 py-2 flex items-center gap-2 ${result.errors.length > 0 ? "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400" : "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400"}`}>
-                      {result.errors.length === 0
-                        ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                        : <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
-                      <span>
-                        {result.generated > 0 ? `${result.generated} vencimientos generados.` : ""}
-                        {result.skipped > 0 ? ` ${result.skipped} ya existían.` : ""}
-                        {result.errors.length > 0 ? ` ${result.errors[0]}` : ""}
-                      </span>
-                      <button onClick={() => setGenerateResult(null)} className="ml-auto">
-                        <X className="h-3 w-3" />
-                      </button>
+                  {isExpanded && (
+                    <div className="space-y-2 border-t pt-3">
+                      {client.notes && (
+                        <p className="text-xs text-muted-foreground italic">{client.notes}</p>
+                      )}
+                      <div className="text-[10px] text-muted-foreground space-y-1">
+                        <p>CUIT: <span className="font-mono">{formatCuit(client.cuit)}</span> · Terminación: <strong>{cuitLastDigit(client.cuit)}</strong></p>
+                        <p>Creado: {new Date(client.createdAt).toLocaleDateString("es-AR")}</p>
+                      </div>
                     </div>
-                  )}
-
-                  {/* Notes expanded */}
-                  {isExpanded && client.notes && (
-                    <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">{client.notes}</p>
                   )}
                 </CardContent>
               </Card>
@@ -411,9 +719,9 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      {/* Create / Edit dialog */}
+      <Dialog open={dialogOpen} onOpenChange={v => !v && setDialogOpen(false)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
             <DialogDescription>
@@ -476,6 +784,18 @@ export default function ClientsPage() {
                   <option value="active">Activo</option>
                   <option value="inactive">Inactivo</option>
                 </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <span className="flex items-center gap-1"><FolderOpen className="h-3 w-3" />Grupo de clientes</span>
+                </label>
+                <GroupSelector
+                  groups={groups}
+                  value={form.groupId}
+                  onChange={id => setForm(f => ({ ...f, groupId: id }))}
+                  onGroupCreated={() => { qc.invalidateQueries({ queryKey: ["client-groups"] }); refetchGroups(); }}
+                />
               </div>
             </div>
 
@@ -559,7 +879,15 @@ export default function ClientsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Empty info strip */}
+      {/* Group Manager */}
+      <GroupManagerDialog
+        open={groupManagerOpen}
+        onClose={() => setGroupManagerOpen(false)}
+        groups={groups}
+        onRefresh={() => { qc.invalidateQueries({ queryKey: ["client-groups"] }); qc.invalidateQueries({ queryKey: ["clients"] }); refetchGroups(); }}
+      />
+
+      {/* Info strip */}
       {clients.length > 0 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-xl px-4 py-3 border border-border/40">
           <CalendarClock className="h-3.5 w-3.5 shrink-0" />

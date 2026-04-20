@@ -2,6 +2,21 @@ import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+// ── Client Groups ──────────────────────────────────────────────────────────────
+export const clientGroupsTable = pgTable("client_groups", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("blue"),
+  description: text("description"),
+  userId: text("user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const insertClientGroupSchema = createInsertSchema(clientGroupsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClientGroup = z.infer<typeof insertClientGroupSchema>;
+export type ClientGroup = typeof clientGroupsTable.$inferSelect;
+
 export const clientsTable = pgTable("clients", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -14,6 +29,7 @@ export const clientsTable = pgTable("clients", {
   alertsActive: boolean("alerts_active").notNull().default(true),     // nuevo
   responsible: text("responsible"),                  // nuevo: nombre del responsable interno
   notes: text("notes"),
+  groupId: integer("group_id"),                      // grupo de clientes (FK a client_groups)
   userId: text("user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
