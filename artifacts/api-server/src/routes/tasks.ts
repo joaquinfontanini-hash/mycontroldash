@@ -702,6 +702,50 @@ router.post("/tasks/:id/subtasks/:subId/complete", requireAuth, async (req: Requ
   }
 });
 
+// ── PATCH /tasks/:id/subtasks/:subId/status ───────────────────────────────────
+router.patch("/tasks/:id/subtasks/:subId/status", requireAuth, async (req: Request, res): Promise<void> => {
+  const parentId = parseInt(req.params["id"] as string);
+  const subId = parseInt(req.params["subId"] as string);
+  if (isNaN(parentId) || isNaN(subId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const userId = getCurrentUserId(req);
+  const role = (req as AuthenticatedRequest).dbUser.role;
+
+  const StatusBody = z.object({
+    status: z.enum(["pending", "in_progress", "completed"]),
+  });
+  const parsed = StatusBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Estado inválido" }); return; }
+
+  try {
+    const [subtask] = await db.select().from(tasksTable)
+      .where(and(eq(tasksTable.id, subId), eq(tasksTable.parentTaskId, parentId)));
+    if (!subtask) { res.status(404).json({ error: "Subtarea no encontrada" }); return; }
+    if (!canActOnTask(subtask, userId, role)) {
+      res.status(403).json({ error: "No tenés permiso" }); return;
+    }
+
+    const { status } = parsed.data;
+    const isCompleted = status === "completed";
+    const [updated] = await db.update(tasksTable)
+      .set({
+        status,
+        progress: isCompleted ? 100 : status === "in_progress" ? 50 : 0,
+        completedAt: isCompleted ? new Date() : null,
+      })
+      .where(eq(tasksTable.id, subId))
+      .returning();
+
+    await logHistory(subId, userId, "status_changed", { previous: subtask.status, next: status });
+
+    const [enriched] = await enrichTasks([updated]);
+    res.json(enriched);
+  } catch (err) {
+    logger.error({ err }, "subtasks/status error");
+    res.status(500).json({ error: "Error al actualizar subtarea" });
+  }
+});
+
 // ── DELETE /tasks/:id/subtasks/:subId ─────────────────────────────────────────
 router.delete("/tasks/:id/subtasks/:subId", requireAuth, async (req: Request, res): Promise<void> => {
   const parentId = parseInt(req.params["id"] as string);

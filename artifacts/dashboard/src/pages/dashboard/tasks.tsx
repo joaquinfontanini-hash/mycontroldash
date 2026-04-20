@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, CheckSquare, Clock, AlertCircle, MoreHorizontal, LayoutList, LayoutGrid,
   User, UserCheck, CheckCheck, XCircle, Archive, ArrowRightLeft, MessageSquare,
-  History, ChevronDown, Loader2, Search, Flag, X, ListChecks, Trash2,
+  History, ChevronDown, ChevronRight, Loader2, Search, Flag, X, ListChecks, Trash2,
 } from "lucide-react";
 
 import { BASE } from "@/lib/base-url";
@@ -1261,6 +1261,114 @@ function TaskActions({
   );
 }
 
+// ── Subtask Inline Panel (for task table row expansion) ───────────────────────
+
+const SUBTASK_STATUS_OPTS = [
+  { value: "pending",     label: "Pendiente",   color: "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800" },
+  { value: "in_progress", label: "En progreso", color: "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950/40 dark:border-blue-800" },
+  { value: "completed",   label: "Finalizado",  color: "text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800" },
+] as const;
+
+function normalizeSubStatus(s: string): "pending" | "in_progress" | "completed" {
+  if (s === "completed" || s === "done") return "completed";
+  if (s === "in_progress" || s === "in-progress") return "in_progress";
+  return "pending";
+}
+
+function SubtaskInlinePanel({ task }: { task: Task }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+
+  const { data: subtasks = [], isLoading } = useQuery<Task[]>({
+    queryKey: ["task-subtasks", task.id],
+    queryFn: () => fetchSubtasks(task.id),
+  });
+
+  const handleStatus = async (sub: Task, status: "pending" | "in_progress" | "completed") => {
+    setUpdatingId(sub.id);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/subtasks/${sub.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      qc.invalidateQueries({ queryKey: ["task-subtasks", task.id] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    } catch (e: unknown) {
+      toast({ title: "Error", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setUpdatingId(null); }
+  };
+
+  const done = subtasks.filter(s => normalizeSubStatus(s.status) === "completed").length;
+
+  return (
+    <div className="bg-muted/20 border-t border-b border-muted px-6 py-3">
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" /> Cargando subtareas…
+        </div>
+      ) : subtasks.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic py-1">Esta tarea no tiene subtareas.</p>
+      ) : (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 mb-2">
+            <ListChecks className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">
+              Subtareas — {done}/{subtasks.length} finalizadas
+            </span>
+            {subtasks.length > 0 && (
+              <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden max-w-24">
+                <div
+                  className="h-full bg-emerald-500 transition-all"
+                  style={{ width: `${Math.round((done / subtasks.length) * 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
+          <div className="divide-y divide-border/50 rounded-lg border overflow-hidden bg-background">
+            {subtasks.map(sub => {
+              const currentStatus = normalizeSubStatus(sub.status);
+              const colorCfg = SUBTASK_STATUS_OPTS.find(o => o.value === currentStatus);
+              const isUpdating = updatingId === sub.id;
+              return (
+                <div key={sub.id} className="flex items-center gap-3 px-3 py-2">
+                  <span className="flex-1 text-xs font-medium text-foreground truncate">{sub.title}</span>
+                  {sub.assigneeName && (
+                    <span className="text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline">
+                      {sub.assigneeName}
+                    </span>
+                  )}
+                  <div className="shrink-0">
+                    {isUpdating ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Select
+                        value={currentStatus}
+                        onValueChange={(v) => handleStatus(sub, v as "pending" | "in_progress" | "completed")}
+                      >
+                        <SelectTrigger className={`h-6 text-[11px] px-2 py-0 border rounded-full w-auto gap-1 font-medium ${colorCfg?.color ?? ""}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="end">
+                          {SUBTASK_STATUS_OPTS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Task Table ────────────────────────────────────────────────────────────────
 
 function TaskTable({ tasks, currentUser, users, onDetail, onProgress, onReject, onReassign, onRefresh }: {
@@ -1273,6 +1381,16 @@ function TaskTable({ tasks, currentUser, users, onDetail, onProgress, onReject, 
   onReassign: (t: Task) => void;
   onRefresh: () => void;
 }) {
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const toggleExpand = (id: number) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   if (tasks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
@@ -1297,47 +1415,71 @@ function TaskTable({ tasks, currentUser, users, onDetail, onProgress, onReject, 
             <th className="px-3 py-2.5 w-10" />
           </tr>
         </thead>
-        <tbody className="divide-y">
+        <tbody>
           {tasks.map(task => {
             const overdue = isOverdue(task);
+            const isExpanded = expandedIds.has(task.id);
             return (
-              <tr key={task.id} className="hover:bg-muted/30 transition-colors group">
-                <td className="px-3 py-2.5 whitespace-nowrap"><StatusBadge status={task.status} /></td>
-                <td className="px-3 py-2.5">
-                  <button onClick={() => onDetail(task)}
-                    className="text-left font-medium hover:underline underline-offset-2 line-clamp-1 max-w-xs text-sm">
-                    {task.title}
-                  </button>
-                  {task.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</p>
-                  )}
-                </td>
-                <td className="px-3 py-2.5 whitespace-nowrap"><PriorityBadge priority={task.priority} /></td>
-                <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{task.creatorName ?? "—"}</td>
-                <td className="px-3 py-2.5 whitespace-nowrap">
-                  <AssigneePopover task={task} users={users} currentUser={currentUser} onRefresh={onRefresh} />
-                </td>
-                <td className="px-3 py-2.5 w-28">
-                  <div className="flex items-center gap-1.5">
-                    <ProgressBar value={task.progress} className="flex-1" />
-                    <span className="text-xs tabular-nums text-muted-foreground w-6 text-right">{task.progress}%</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                  {task.dueDate ? (
-                    <span className={overdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}>
-                      {fmtDateShort(task.dueDate)}
-                      {overdue && " ⚠"}
-                    </span>
-                  ) : <span className="text-muted-foreground">—</span>}
-                </td>
-                <td className="px-3 py-2.5">
-                  <TaskActions task={task} currentUser={currentUser}
-                    onDetail={() => onDetail(task)} onProgress={() => onProgress(task)}
-                    onReject={() => onReject(task)} onReassign={() => onReassign(task)}
-                    onRefresh={onRefresh} />
-                </td>
-              </tr>
+              <Fragment key={task.id}>
+                <tr className={`hover:bg-muted/30 transition-colors group border-t first:border-t-0 ${isExpanded ? "bg-muted/10" : ""}`}>
+                  <td className="px-3 py-2.5 whitespace-nowrap"><StatusBadge status={task.status} /></td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-start gap-1.5">
+                      <button
+                        onClick={() => toggleExpand(task.id)}
+                        className="mt-0.5 shrink-0 h-4 w-4 rounded hover:bg-muted flex items-center justify-center text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                        title="Ver subtareas"
+                      >
+                        {isExpanded
+                          ? <ChevronDown className="h-3 w-3" />
+                          : <ChevronRight className="h-3 w-3" />
+                        }
+                      </button>
+                      <div className="min-w-0">
+                        <button onClick={() => onDetail(task)}
+                          className="text-left font-medium hover:underline underline-offset-2 line-clamp-1 max-w-xs text-sm">
+                          {task.title}
+                        </button>
+                        {task.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap"><PriorityBadge priority={task.priority} /></td>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{task.creatorName ?? "—"}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <AssigneePopover task={task} users={users} currentUser={currentUser} onRefresh={onRefresh} />
+                  </td>
+                  <td className="px-3 py-2.5 w-28">
+                    <div className="flex items-center gap-1.5">
+                      <ProgressBar value={task.progress} className="flex-1" />
+                      <span className="text-xs tabular-nums text-muted-foreground w-6 text-right">{task.progress}%</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                    {task.dueDate ? (
+                      <span className={overdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}>
+                        {fmtDateShort(task.dueDate)}
+                        {overdue && " ⚠"}
+                      </span>
+                    ) : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <TaskActions task={task} currentUser={currentUser}
+                      onDetail={() => onDetail(task)} onProgress={() => onProgress(task)}
+                      onReject={() => onReject(task)} onReassign={() => onReassign(task)}
+                      onRefresh={onRefresh} />
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr className="border-t border-muted/60">
+                    <td colSpan={8} className="p-0">
+                      <SubtaskInlinePanel task={task} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>
