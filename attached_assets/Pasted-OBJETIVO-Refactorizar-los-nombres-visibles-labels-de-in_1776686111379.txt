@@ -1,0 +1,89 @@
+OBJETIVO:
+Refactorizar los nombres visibles (labels) de indicadores económicos del módulo Dashboard para alinearlos con una nomenclatura más clara y profesional, sin alterar la lógica, datos ni estructura existente.
+
+ALCANCE:
+Afecta únicamente a los nombres visibles en UI (cards, widgets, gráficos, tablas, filtros, exportaciones y mobile).
+
+CAMBIOS A REALIZAR:
+
+Reemplazar los siguientes labels:
+
+1)
+"Inflación mensual (variación en %)"
+→ "IPC Mensual"
+
+2)
+"Inflación interanual (variación en % i.a.)"
+→ "IPC Interanual"
+
+3)
+"TAMAR en pesos de bancos privados (en % n.a.)"
+→ "Tasa Tamar"
+
+4)
+"BADLAR en pesos de bancos privados (en % n.a.)"
+→ "Tasa Badlar"
+
+
+REGLAS CRÍTICAS (NO ROMPER NADA):
+
+- NO modificar:
+  • endpoints API
+  • fetchers de datos
+  • keys internas (id, slug, code)
+  • lógica de cálculo
+  • estructuras de base de datos
+
+- SOLO cambiar:
+  • displayName
+  • label
+  • title
+  • nombre visible en UI
+
+IMPLEMENTACIÓN RECOMENDADA:
+
+1. Localizar archivo central de indicadores (ej: indicatorsConfig.ts / dashboardConfig.ts / constants.ts)
+
+2. Si existe estructura tipo:
+   {
+     key: "inflacion_mensual",
+     label: "Inflación mensual (variación en %)"
+   }
+
+   Cambiar a:
+   {
+     key: "inflacion_mensual",
+     label: "IPC Mensual"
+   }
+
+3. Si los nombres están hardcodeados en múltiples componentes:
+   → Centralizarlos en un único config (single source of truth)
+
+4. Aplicar cambios en:
+   - Dashboard principal
+   - Widgets
+   - Gráficos (titles + leyendas)
+   - Tablas
+   - Filtros
+   - Exportaciones (CSV / PDF)
+   - Vista mobile (layoutMobileJson si existe)
+
+5. Tooltips:
+   - Mantener el nombre técnico largo como descripción secundaria (si existe)
+   - Ejemplo:
+     title: "IPC Mensual"
+     tooltip: "Inflación mensual (variación en %)"
+
+6. Validar que:
+   - No haya strings duplicados
+   - No queden nombres viejos en ningún componente
+   - No se rompa renderizado
+
+CHECK FINAL:
+
+- Dashboard carga sin errores
+- Widgets muestran nuevos nombres
+- Gráficos reflejan los cambios
+- Exportaciones correctas
+- Mobile render correcto
+- Publicación OK (importantísimo validar en entorno published)
