@@ -155,50 +155,284 @@ function getDaysRemaining(dueDate: string): number {
 
 // ── KPI Bar ───────────────────────────────────────────────────────────────────
 
-type KpiFilter = "all" | "overdue" | "today" | "3days" | "rojo" | "amarillo" | "verde";
+type KpiFilter = "all" | "overdue" | "today" | "week" | "month";
 
-function KpiBar({ kpis, onRecalculate, isRecalculating, activeKpi, onKpiClick }: {
+// ── Custom Filter ─────────────────────────────────────────────────────────────
+
+type FilterField = "status" | "priority" | "trafficLight" | "category" | "source";
+
+interface FilterRule {
+  field: FilterField;
+  values: string[];
+}
+
+interface CustomFilter {
+  id: string;
+  name: string;
+  rules: FilterRule[];
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function loadCustomFilters(): CustomFilter[] {
+  try { return JSON.parse(localStorage.getItem("due-date-custom-filters") ?? "[]"); } catch { return []; }
+}
+function saveCustomFilters(filters: CustomFilter[]) {
+  localStorage.setItem("due-date-custom-filters", JSON.stringify(filters));
+}
+
+// ── Filter Builder Dialog ─────────────────────────────────────────────────────
+
+const FIELD_LABELS: Record<FilterField, string> = {
+  status: "Estado",
+  priority: "Prioridad",
+  trafficLight: "Semáforo",
+  category: "Categoría",
+  source: "Fuente",
+};
+
+const FIELD_OPTIONS: Record<FilterField, { value: string; label: string }[]> = {
+  status: [
+    { value: "pending", label: "Pendiente" },
+    { value: "done", label: "Completado" },
+    { value: "cancelled", label: "Cancelado" },
+  ],
+  priority: [
+    { value: "low", label: "Baja" },
+    { value: "medium", label: "Media" },
+    { value: "high", label: "Alta" },
+    { value: "critical", label: "Crítica" },
+  ],
+  trafficLight: [
+    { value: "rojo", label: "🔴 Rojo" },
+    { value: "amarillo", label: "🟡 Amarillo" },
+    { value: "verde", label: "🟢 Verde" },
+    { value: "gris", label: "⚪ Gris" },
+  ],
+  category: [],  // populated dynamically
+  source: [
+    { value: "afip-engine", label: "AFIP Engine" },
+    { value: "supplier-batch", label: "Proveedor" },
+    { value: "manual", label: "Manual" },
+  ],
+};
+
+function FilterBuilderDialog({
+  open, onClose, onSave, categories, dueDates,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (f: CustomFilter) => void;
+  categories: DueDateCategory[];
+  dueDates: DueDate[];
+}) {
+  const [name, setName] = useState("");
+  const [rules, setRules] = useState<FilterRule[]>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [matchCount, setMatchCount] = useState<number | null>(null);
+
+  const dynamicOptions = {
+    ...FIELD_OPTIONS,
+    category: [...new Set(dueDates.map(d => d.category).filter(Boolean))].sort().map(c => ({ value: c, label: c })),
+    source: [...new Set(dueDates.map(d => d.source ?? "manual").filter(Boolean))].map(s => {
+      const lbl = s === "afip-engine" ? "AFIP Engine" : s === "supplier-batch" ? "Proveedor" : s === "manual" ? "Manual" : s;
+      return { value: s, label: lbl };
+    }),
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    // Live preview: count matching items
+    let items = dueDates;
+    for (const rule of rules) {
+      if (rule.values.length === 0) continue;
+      items = items.filter(d => rule.values.includes((d as Record<string, unknown>)[rule.field] as string));
+    }
+    if (dateFrom) items = items.filter(d => d.dueDate >= dateFrom);
+    if (dateTo) items = items.filter(d => d.dueDate <= dateTo);
+    setMatchCount(items.length);
+  }, [rules, dateFrom, dateTo, open, dueDates]);
+
+  const toggleValue = (field: FilterField, value: string) => {
+    setRules(prev => {
+      const idx = prev.findIndex(r => r.field === field);
+      if (idx === -1) return [...prev, { field, values: [value] }];
+      const rule = prev[idx];
+      const newValues = rule.values.includes(value)
+        ? rule.values.filter(v => v !== value)
+        : [...rule.values, value];
+      if (newValues.length === 0) return prev.filter((_, i) => i !== idx);
+      return prev.map((r, i) => i === idx ? { ...r, values: newValues } : r);
+    });
+  };
+
+  const getValues = (field: FilterField) => rules.find(r => r.field === field)?.values ?? [];
+
+  const handleSave = () => {
+    if (!name.trim() && rules.length === 0 && !dateFrom && !dateTo) return;
+    const filter: CustomFilter = {
+      id: Date.now().toString(),
+      name: name.trim() || "Filtro personalizado",
+      rules,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    };
+    onSave(filter);
+    setName(""); setRules([]); setDateFrom(""); setDateTo("");
+    onClose();
+  };
+
+  const handleClose = () => {
+    setName(""); setRules([]); setDateFrom(""); setDateTo("");
+    onClose();
+  };
+
+  const fields: FilterField[] = ["status", "priority", "trafficLight", "category", "source"];
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && handleClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            Crear filtro personalizado
+          </DialogTitle>
+          <DialogDescription>
+            Combiná condiciones para guardar un filtro rápido. Dentro de cada campo, los valores son OR; entre campos, son AND.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Name */}
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Nombre del filtro</Label>
+            <Input placeholder="Ej: Vencidos críticos AFIP" value={name} onChange={e => setName(e.target.value)} className="h-8 text-sm" />
+          </div>
+
+          {/* Field conditions */}
+          {fields.map(field => {
+            const opts = dynamicOptions[field];
+            if (opts.length === 0) return null;
+            const selected = getValues(field);
+            return (
+              <div key={field} className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{FIELD_LABELS[field]}</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {opts.map(opt => {
+                    const active = selected.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => toggleValue(field, opt.value)}
+                        className={[
+                          "px-2.5 py-1 rounded-full text-xs border transition-all",
+                          active
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-muted/40 text-muted-foreground border-muted-foreground/20 hover:border-primary/40",
+                        ].join(" ")}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Date range */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rango de fechas</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-0.5">
+                <Label className="text-[10px] text-muted-foreground">Desde</Label>
+                <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 text-xs" />
+              </div>
+              <div className="space-y-0.5">
+                <Label className="text-[10px] text-muted-foreground">Hasta</Label>
+                <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 text-xs" />
+              </div>
+            </div>
+          </div>
+
+          {/* Match preview */}
+          {matchCount !== null && (
+            <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+              Vista previa: <span className="font-semibold text-foreground">{matchCount}</span> vencimiento{matchCount !== 1 ? "s" : ""} coinciden con estas condiciones.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={handleClose}>Cancelar</Button>
+          <Button size="sm" onClick={handleSave}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Guardar filtro
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function KpiBar({
+  kpis, dueDates, onRecalculate, isRecalculating, activeKpi, onKpiClick,
+  customFilters, activeCustomFilter, onCustomFilterClick, onDeleteCustomFilter, onCreateFilter,
+}: {
   kpis?: KPIs;
+  dueDates: DueDate[];
   onRecalculate: () => void;
   isRecalculating: boolean;
   activeKpi: KpiFilter;
   onKpiClick: (k: KpiFilter) => void;
+  customFilters: CustomFilter[];
+  activeCustomFilter: string | null;
+  onCustomFilterClick: (id: string) => void;
+  onDeleteCustomFilter: (id: string) => void;
+  onCreateFilter: () => void;
 }) {
   if (!kpis) return <Skeleton className="h-24 rounded-xl" />;
 
-  const tiles: { label: string; value: number; color: string; bg: string; activeBg: string; kpi: KpiFilter | null }[] = [
-    { label: "Este mes",    value: kpis.totalThisMonth,          color: "text-foreground",   bg: "bg-card border",                                                        activeBg: "ring-2 ring-primary",             kpi: null },
-    { label: "Vencidos",    value: kpis.overdue,                 color: "text-red-600",      bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60",                  activeBg: "ring-2 ring-red-500",             kpi: "overdue" },
-    { label: "Hoy",         value: kpis.dueToday,                color: "text-orange-600",   bg: "bg-orange-50 dark:bg-orange-900/20 border border-orange-200/60",         activeBg: "ring-2 ring-orange-500",          kpi: "today" },
-    { label: "Próx. 3d",    value: kpis.due3days,                color: "text-amber-600",    bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60",            activeBg: "ring-2 ring-amber-500",           kpi: "3days" },
-    { label: "🔴 Rojos",    value: kpis.byTrafficLight.rojo,     color: "text-red-600",      bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60",                  activeBg: "ring-2 ring-red-500",             kpi: "rojo" },
-    { label: "🟡 Amarillo", value: kpis.byTrafficLight.amarillo, color: "text-amber-600",    bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60",            activeBg: "ring-2 ring-amber-500",           kpi: "amarillo" },
-    { label: "🟢 Verdes",   value: kpis.byTrafficLight.verde,    color: "text-emerald-600",  bg: "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/60",      activeBg: "ring-2 ring-emerald-500",         kpi: "verde" },
-    { label: "Clientes ⚠",  value: kpis.clientsRojo + kpis.clientsAmarillo, color: "text-orange-600", bg: "bg-card border", activeBg: "ring-2 ring-orange-400",          kpi: null },
-    { label: "Errores",     value: kpis.errors,                  color: kpis.errors > 0 ? "text-red-600" : "text-muted-foreground", bg: "bg-card border", activeBg: "ring-2 ring-destructive", kpi: null },
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0]!;
+  const endOfWeek = new Date(today);
+  const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay(); // 1=Mon..7=Sun
+  endOfWeek.setDate(today.getDate() + (7 - dayOfWeek));
+  const endOfWeekStr = endOfWeek.toISOString().split("T")[0]!;
+  const monthStr = todayStr.slice(0, 7); // "YYYY-MM"
+
+  const thisWeekCount = dueDates.filter(d =>
+    d.status === "pending" && d.dueDate >= todayStr && d.dueDate <= endOfWeekStr
+  ).length;
+  const thisMonthCount = dueDates.filter(d =>
+    d.status === "pending" && d.dueDate.startsWith(monthStr)
+  ).length;
+
+  const tiles: { label: string; value: number; color: string; bg: string; activeBg: string; kpi: KpiFilter }[] = [
+    { label: "Vencidos",     value: kpis.overdue,   color: "text-red-600",     bg: "bg-red-50 dark:bg-red-900/20 border border-red-200/60",      activeBg: "ring-2 ring-red-500",    kpi: "overdue" },
+    { label: "Hoy",          value: kpis.dueToday,  color: "text-orange-600",  bg: "bg-orange-50 dark:bg-orange-900/20 border border-orange-200/60", activeBg: "ring-2 ring-orange-500", kpi: "today" },
+    { label: "Esta semana",  value: thisWeekCount,  color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60", activeBg: "ring-2 ring-amber-500",  kpi: "week" },
+    { label: "Este mes",     value: thisMonthCount, color: "text-blue-600 dark:text-blue-400",   bg: "bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60",   activeBg: "ring-2 ring-blue-500",   kpi: "month" },
   ];
 
   return (
-    <div className="space-y-2 pb-5">
-      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
+    <div className="space-y-3 pb-4">
+      {/* 4 KPI tiles */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {tiles.map(t => {
-          const isActive = t.kpi !== null && activeKpi === t.kpi;
-          const isClickable = t.kpi !== null;
+          const isActive = activeKpi === t.kpi;
           return (
             <button
               key={t.label}
-              onClick={() => {
-                if (!isClickable) return;
-                onKpiClick(isActive ? "all" : t.kpi!);
-              }}
-              disabled={!isClickable}
+              onClick={() => onKpiClick(isActive ? "all" : t.kpi)}
               className={[
-                "rounded-lg p-2.5 text-center transition-all",
+                "rounded-lg p-3 text-center transition-all cursor-pointer hover:scale-105 hover:shadow-md",
                 t.bg,
-                isClickable ? "cursor-pointer hover:scale-105 hover:shadow-md" : "cursor-default",
                 isActive ? t.activeBg : "",
               ].join(" ")}
-              title={isClickable ? (isActive ? "Quitar filtro" : `Filtrar: ${t.label}`) : undefined}
+              title={isActive ? "Quitar filtro" : `Filtrar: ${t.label}`}
             >
               <p className={`text-2xl font-bold tabular-nums leading-none ${t.color}`}>{t.value}</p>
               <p className="text-[10px] text-muted-foreground mt-1 leading-tight">{t.label}</p>
@@ -207,20 +441,58 @@ function KpiBar({ kpis, onRecalculate, isRecalculating, activeKpi, onKpiClick }:
           );
         })}
       </div>
-      <div className="flex items-center justify-between">
-        {activeKpi !== "all" ? (
+
+      {/* Custom filters row */}
+      <div className="flex items-center gap-2 flex-wrap min-h-[28px]">
+        {/* Create filter button */}
+        <button
+          onClick={onCreateFilter}
+          className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+        >
+          <Filter className="h-3 w-3" />
+          Crear filtro
+        </button>
+
+        {/* Saved custom filter chips */}
+        {customFilters.map(cf => {
+          const isActive = activeCustomFilter === cf.id;
+          return (
+            <div key={cf.id} className={[
+              "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all",
+              isActive
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-muted/50 text-muted-foreground border-muted-foreground/20 hover:border-primary/40",
+            ].join(" ")}>
+              <button onClick={() => onCustomFilterClick(cf.id)} className="flex items-center gap-1">
+                <Filter className="h-2.5 w-2.5" />
+                {cf.name}
+              </button>
+              <button
+                onClick={() => onDeleteCustomFilter(cf.id)}
+                className="ml-0.5 hover:text-destructive transition-colors"
+                title="Eliminar filtro"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </div>
+          );
+        })}
+
+        {/* Clear active KPI filter */}
+        {(activeKpi !== "all" || activeCustomFilter) && (
           <button
-            onClick={() => onKpiClick("all")}
-            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors px-2 py-1 rounded bg-primary/10 hover:bg-primary/20"
+            onClick={() => { onKpiClick("all"); if (activeCustomFilter) onCustomFilterClick(activeCustomFilter); }}
+            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 ml-auto"
           >
             <X className="h-3 w-3" />
             Quitar filtro
           </button>
-        ) : <span />}
+        )}
+
         <button
           onClick={onRecalculate}
           disabled={isRecalculating}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted/60"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted/60 ml-auto"
         >
           <RefreshCw className={`h-3 w-3 ${isRecalculating ? "animate-spin" : ""}`} />
           {isRecalculating ? "Recalculando..." : "Actualizar semáforos"}
@@ -813,6 +1085,35 @@ export default function DueDatesPage() {
   const [filterStatus, setFilterStatus] = useState<"pending" | "done" | "all">("pending");
   const [filterKpi, setFilterKpi] = useState<KpiFilter>("all");
 
+  // Custom filters (persisted in localStorage)
+  const [customFilters, setCustomFilters] = useState<CustomFilter[]>(loadCustomFilters);
+  const [activeCustomFilter, setActiveCustomFilter] = useState<string | null>(null);
+  const [filterBuilderOpen, setFilterBuilderOpen] = useState(false);
+
+  const handleSaveCustomFilter = (f: CustomFilter) => {
+    const updated = [...customFilters, f];
+    setCustomFilters(updated);
+    saveCustomFilters(updated);
+    setActiveCustomFilter(f.id);
+    setFilterKpi("all");
+  };
+
+  const handleDeleteCustomFilter = (id: string) => {
+    const updated = customFilters.filter(f => f.id !== id);
+    setCustomFilters(updated);
+    saveCustomFilters(updated);
+    if (activeCustomFilter === id) setActiveCustomFilter(null);
+  };
+
+  const handleCustomFilterClick = (id: string) => {
+    if (activeCustomFilter === id) {
+      setActiveCustomFilter(null);
+    } else {
+      setActiveCustomFilter(id);
+      setFilterKpi("all");
+    }
+  };
+
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const toggleSelect = (id: number) => setSelectedIds(prev => {
@@ -1049,6 +1350,12 @@ export default function DueDatesPage() {
 
     // KPI quick-filter takes precedence over other status/traffic-light filters
     if (filterKpi !== "all") {
+      const endOfWeek = new Date(today);
+      const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay();
+      endOfWeek.setDate(today.getDate() + (7 - dayOfWeek));
+      const endOfWeekStr = endOfWeek.toISOString().split("T")[0];
+      const monthStr = todayStr.slice(0, 7);
+
       switch (filterKpi) {
         case "overdue":
           items = items.filter(d => d.status === "pending" && d.dueDate < todayStr);
@@ -1056,18 +1363,24 @@ export default function DueDatesPage() {
         case "today":
           items = items.filter(d => d.status === "pending" && d.dueDate === todayStr);
           break;
-        case "3days":
-          items = items.filter(d => d.status === "pending" && d.dueDate > todayStr && d.dueDate <= in3dStr);
+        case "week":
+          items = items.filter(d => d.status === "pending" && d.dueDate >= todayStr && d.dueDate <= endOfWeekStr!);
           break;
-        case "rojo":
-          items = items.filter(d => d.trafficLight === "rojo");
+        case "month":
+          items = items.filter(d => d.status === "pending" && d.dueDate.startsWith(monthStr));
           break;
-        case "amarillo":
-          items = items.filter(d => d.trafficLight === "amarillo");
-          break;
-        case "verde":
-          items = items.filter(d => d.trafficLight === "verde");
-          break;
+      }
+    } else if (activeCustomFilter) {
+      // Apply custom filter rules
+      const cf = customFilters.find(f => f.id === activeCustomFilter);
+      if (cf) {
+        for (const rule of cf.rules) {
+          if (rule.values.length > 0) {
+            items = items.filter(d => rule.values.includes((d as Record<string, unknown>)[rule.field] as string));
+          }
+        }
+        if (cf.dateFrom) items = items.filter(d => d.dueDate >= cf.dateFrom!);
+        if (cf.dateTo) items = items.filter(d => d.dueDate <= cf.dateTo!);
       }
     } else {
       if (filterStatus !== "all") items = items.filter(d => d.status === filterStatus);
@@ -1081,7 +1394,7 @@ export default function DueDatesPage() {
       items = items.filter(d => d.title.toLowerCase().includes(q) || (d.description ?? "").toLowerCase().includes(q));
     }
     return items;
-  }, [dueDates, filterStatus, filterCategory, filterClient, filterTrafficLight, filterKpi, searchText]);
+  }, [dueDates, filterStatus, filterCategory, filterClient, filterTrafficLight, filterKpi, searchText, customFilters, activeCustomFilter]);
 
   // Sort: rojo first, then by date ascending
   const sorted = useMemo(() => {
@@ -1156,13 +1469,28 @@ export default function DueDatesPage() {
       {/* KPI Bar */}
       <KpiBar
         kpis={kpis}
+        dueDates={dueDates}
         onRecalculate={() => recalculateMutation.mutate()}
         isRecalculating={recalculateMutation.isPending}
         activeKpi={filterKpi}
         onKpiClick={(k) => {
           setFilterKpi(k);
-          if (k !== "all") setFilterTrafficLight("all");
+          if (k !== "all") { setFilterTrafficLight("all"); setActiveCustomFilter(null); }
         }}
+        customFilters={customFilters}
+        activeCustomFilter={activeCustomFilter}
+        onCustomFilterClick={handleCustomFilterClick}
+        onDeleteCustomFilter={handleDeleteCustomFilter}
+        onCreateFilter={() => setFilterBuilderOpen(true)}
+      />
+
+      {/* Filter Builder Dialog */}
+      <FilterBuilderDialog
+        open={filterBuilderOpen}
+        onClose={() => setFilterBuilderOpen(false)}
+        onSave={handleSaveCustomFilter}
+        categories={categories}
+        dueDates={dueDates}
       />
 
       {/* Tabs */}
