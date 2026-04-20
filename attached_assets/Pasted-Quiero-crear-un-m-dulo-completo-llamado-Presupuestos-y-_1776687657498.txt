@@ -1,0 +1,339 @@
+Quiero crear un módulo completo llamado “Presupuestos y Cobranzas” dentro del sistema.
+
+Este módulo debe unificar:
+
+* presupuestos tradicionales
+* cobranzas
+* contratos de largo plazo
+* cuotas recurrentes
+* actualización automática por IPC
+
+Debe integrarse completamente con:
+
+* módulo de Clientes
+* módulo de Dashboards
+* módulo de Finanzas
+
+Debe desarrollarse con calidad de sistema productivo real:
+
+* base de datos robusta
+* backend eficiente (sin filtrado en memoria)
+* frontend claro y usable
+* auditoría completa
+* sin duplicación de lógica
+
+==================================================
+
+1. TIPOS DE PRESUPUESTOS
+   ==================================================
+
+El sistema debe soportar:
+
+1. single
+
+* presupuesto tradicional de cobro único
+
+2. recurring_indexed
+
+* contrato/presupuesto de largo plazo
+* cobro periódico (ej: mensual)
+* actualización automática por IPC
+
+==================================================
+2) INTEGRACIÓN CON CLIENTES
+===========================
+
+* clientId obligatorio
+* no permitir clientes manuales
+* selector con autocomplete
+* bloquear clientes inactivos (salvo permisos)
+
+Dentro del cliente agregar pestaña:
+“Presupuestos y Cobranzas”
+
+Mostrar:
+
+* total presupuestado
+* total cobrado
+* saldo pendiente
+* vencidos
+* parciales
+* último pago
+* tabla de presupuestos
+* tabla de cuotas
+
+==================================================
+3) 5 REGLAS OBLIGATORIAS
+========================
+
+A) Historial de versiones
+B) Cobros parciales
+C) KPIs clickeables
+D) Vista dentro del cliente
+E) Semáforo de vencimientos
+
+==================================================
+4) MODELO DE DATOS
+==================
+
+A) quotes
+
+* id
+* quoteNumber
+* clientId
+* issueDate
+* dueDate
+* totalAmount
+* status
+* version
+* quoteType (single / recurring_indexed)
+
+Campos recurrentes:
+
+* contractStartDate
+* contractEndDate
+* billingFrequency
+* adjustmentFrequency
+* adjustmentIndex = IPC
+* adjustmentMode = apply_on_last_effective_amount
+* baseAmount
+* nextAdjustmentDate
+* lastAdjustmentDate
+
+B) quote_items
+
+C) quote_revisions
+
+D) payments
+
+E) quote_installments (CUOTAS)
+
+* id
+* quoteId
+* installmentNumber
+* periodStart
+* periodEnd
+* dueDate
+* baseAmount
+* adjustedAmount
+* appliedAdjustmentRate
+* status
+* paidAmount
+* balanceDue
+
+Estados:
+
+* pending
+* due
+* overdue
+* partially_paid
+* paid
+* cancelled
+
+F) quote_adjustments
+
+==================================================
+5) LÓGICA DE CUOTAS
+===================
+
+* generar cuotas automáticamente
+* ejemplo: 5 años mensual = 60 cuotas
+* cada cuota es independiente
+* se cobra individualmente
+
+==================================================
+6) REGLA CRÍTICA IPC (OBLIGATORIA)
+==================================
+
+Actualizar SOLO cuotas futuras no vencidas.
+
+NO actualizar:
+
+* cuotas pagadas
+* cuotas vencidas (aunque estén impagas)
+* pagos
+* historial
+
+SÍ actualizar:
+
+* cuotas con dueDate > fecha de ajuste
+
+Esto implica:
+
+* cuota vencida impaga → NO se actualiza
+* cuota pagada → NO se actualiza
+* cuota futura → SÍ se actualiza
+
+==================================================
+7) LÓGICA DE AJUSTE
+===================
+
+* tomar IPC acumulado
+* aplicar sobre último valor vigente
+* recalcular solo cuotas futuras
+* registrar en quote_adjustments
+
+==================================================
+8) COBRANZAS
+============
+
+* pagos sobre presupuesto o cuota
+* soportar pagos parciales
+* calcular saldo pendiente
+
+==================================================
+9) DASHBOARD DEL MÓDULO
+=======================
+
+KPIs clickeables:
+
+* total presupuestado
+* total cobrado
+* saldo pendiente
+* vencidos
+* parciales
+* cobranzas del mes
+* tasa de cobro
+
+Para recurrentes:
+
+* ingresos proyectados
+* cuotas pendientes
+* cuotas vencidas
+* próximos ajustes IPC
+
+==================================================
+10) INTEGRACIÓN CON DASHBOARD GLOBAL
+====================================
+
+* exponer datasets reutilizables
+* evitar duplicar lógica
+
+==================================================
+11) FRONTEND
+============
+
+* listado con filtros y semáforo
+* alta con tipo de presupuesto
+* detalle con historial, cuotas y pagos
+* registro de cobro
+
+==================================================
+12) AUDITORÍA
+=============
+
+Registrar:
+
+* cambios
+* pagos
+* ajustes IPC
+* usuarios
+
+==================================================
+13) PERMISOS
+============
+
+Controlar:
+
+* creación
+* edición
+* cobro
+* aprobación
+* rechazo
+* sobrecobro
+
+==================================================
+14) INTEGRACIÓN CON FINANZAS (CRÍTICA)
+======================================
+
+Este módulo debe alimentar el módulo de Finanzas.
+
+A) INGRESOS REALES
+
+* todo pago → ingreso real
+* vinculado a cliente y cuota/presupuesto
+
+B) INGRESOS PROYECTADOS
+
+1. Presupuestos simples:
+
+* aprobados
+* no cobrados
+
+2. Presupuestos recurrentes:
+
+* traer cuotas futuras NO pagadas
+* usar valor actualizado
+* imputar por mes
+
+IMPORTANTE:
+
+* NO proyectar contratos completos
+* proyectar cuota por cuota
+* NO incluir cuotas pagadas
+* NO incluir cuotas vencidas como proyección futura
+* cuotas vencidas → deuda, no proyección
+
+==================================================
+15) DASHBOARD FINANCIERO
+========================
+
+Mostrar:
+
+* ingreso real
+* ingreso proyectado
+* diferencia
+* flujo mensual
+* deuda pendiente
+* cuotas a vencer
+* cuotas vencidas
+
+KPIs:
+
+* ingreso real del mes
+* ingreso proyectado
+* desvío
+* deuda vencida
+* proyección 12 meses
+
+==================================================
+16) DATASETS PARA FINANZAS
+==========================
+
+Crear:
+
+* projected_revenue_by_month
+* collected_revenue_by_month
+* outstanding_receivables
+* future_installments
+* overdue_installments
+
+==================================================
+17) REGLA DE FUENTE ÚNICA
+=========================
+
+Presupuestos y Cobranzas es la fuente de verdad.
+
+Finanzas consume, no duplica.
+
+==================================================
+18) VERIFICACIONES FINALES
+==========================
+
+Verificar:
+
+* integración con clientes
+* cuotas generadas
+* pagos funcionando
+* historial de versiones
+* historial IPC
+* actualización solo en cuotas futuras
+* cuotas vencidas NO modificadas
+* KPIs clickeables
+* dashboard funcionando
+* integración con finanzas
+* proyección correcta
+* filtros en base de datos
+
+Si algo no está hecho, informarlo.
+No simular implementación.

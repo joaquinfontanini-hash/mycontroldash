@@ -1,12 +1,14 @@
 import { Router, type IRouter } from "express";
 import {
-  eq, desc, asc, and, or, ilike, sql, lt, lte, gte, gt, inArray, isNull, ne
+  eq, desc, asc, and, or, ilike, sql, lt, lte, gte, gt, inArray, isNull, ne, notInArray
 } from "drizzle-orm";
 import {
   db,
-  quotesTable, quoteItemsTable, quoteRevisionsTable, quotePaymentsTable, quoteActivityLogsTable,
+  quotesTable, quoteItemsTable, quoteRevisionsTable, quotePaymentsTable,
+  quoteActivityLogsTable, quoteInstallmentsTable, quoteAdjustmentsTable,
   clientsTable,
   type InsertQuote, type InsertQuoteItem, type InsertQuotePayment,
+  type InsertQuoteInstallment,
 } from "@workspace/db";
 import { requireAuth, getCurrentUserId } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
@@ -45,10 +47,17 @@ async function logActivity(
   });
 }
 
+// ── FIX Bug 4: recalcStatus también maneja approved→expired ──────────────────
 async function recalcStatus(quoteId: number): Promise<void> {
   const [quote] = await db.select().from(quotesTable).where(eq(quotesTable.id, quoteId));
   if (!quote) return;
-  if (quote.status === "rejected" || quote.status === "archived" || quote.archivedAt) return;
+  if (quote.status === "rejected" || quote.archivedAt) return;
+
+  // Para contratos recurrentes el estado lo manejan las cuotas
+  if (quote.quoteType === "recurring_indexed") {
+    await recalcRecurringStatus(quoteId);
+    return;
+  }
 
   const totalPaid = await db
     .select({ total: sql<string>`coalesce(sum(amount), 0)` })
@@ -64,13 +73,160 @@ async function recalcStatus(quoteId: number): Promise<void> {
     newStatus = "paid";
   } else if (paid > 0 && balance > 0) {
     newStatus = "partially_paid";
-  } else if (paid === 0 && quote.dueDate < today() && quote.status !== "approved" && quote.status !== "draft") {
-    newStatus = "expired";
+  } else if (paid === 0 && quote.dueDate < today()) {
+    // FIX: ya no excluye 'approved' — un presupuesto aprobado vencido pasa a expired
+    if (!["draft", "rejected", "paid"].includes(quote.status)) {
+      newStatus = "expired";
+    }
   }
 
   if (newStatus !== quote.status) {
     await db.update(quotesTable).set({ status: newStatus }).where(eq(quotesTable.id, quoteId));
   }
+}
+
+// Recalc estado para contratos recurrentes basado en cuotas
+async function recalcRecurringStatus(quoteId: number): Promise<void> {
+  const [quote] = await db.select().from(quotesTable).where(eq(quotesTable.id, quoteId));
+  if (!quote) return;
+
+  const installments = await db.select().from(quoteInstallmentsTable)
+    .where(eq(quoteInstallmentsTable.quoteId, quoteId));
+
+  if (!installments.length) return;
+
+  const todayStr = today();
+  const allPaid = installments.every(i => i.status === "paid" || i.status === "cancelled");
+  const anyPartial = installments.some(i => i.status === "partially_paid" || (parseFloat(i.paidAmount as string) > 0 && i.status !== "paid"));
+
+  if (allPaid) {
+    await db.update(quotesTable).set({ status: "paid" }).where(eq(quotesTable.id, quoteId));
+  } else if (anyPartial) {
+    await db.update(quotesTable).set({ status: "partially_paid" }).where(eq(quotesTable.id, quoteId));
+  }
+  // En contratos el vencimiento es del contrato completo (contractEndDate)
+}
+
+// ── generateInstallments — genera array de cuotas para contratos recurrentes ──
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function frequencyToMonths(freq: string): number {
+  switch (freq) {
+    case "monthly":    return 1;
+    case "quarterly":  return 3;
+    case "semiannual": return 6;
+    case "annual":     return 12;
+    default:           return 1;
+  }
+}
+
+function nextAdjDateFromFreq(fromDate: Date, adjustmentFreq: string): string {
+  const months = frequencyToMonths(adjustmentFreq);
+  return addMonths(fromDate, months).toISOString().slice(0, 10);
+}
+
+function generateInstallments(
+  quoteId: number,
+  contractStartDate: string,
+  contractEndDate: string,
+  billingFrequency: string,
+  baseAmount: number,
+): InsertQuoteInstallment[] {
+  const installments: InsertQuoteInstallment[] = [];
+  const stepMonths = frequencyToMonths(billingFrequency);
+  let periodStart = new Date(contractStartDate + "T00:00:00");
+  const end = new Date(contractEndDate + "T00:00:00");
+  let n = 1;
+
+  while (periodStart < end) {
+    const periodEnd = addMonths(periodStart, stepMonths);
+    const actualPeriodEnd = periodEnd > end ? end : periodEnd;
+    // La fecha de vencimiento es el último día del período (o fin de contrato)
+    const dueDateObj = new Date(actualPeriodEnd);
+    dueDateObj.setDate(dueDateObj.getDate() - 1); // último día inclusivo
+    const dueDate = dueDateObj < periodStart
+      ? periodStart.toISOString().slice(0, 10)
+      : dueDateObj.toISOString().slice(0, 10);
+
+    installments.push({
+      quoteId,
+      installmentNumber: n,
+      periodStart: periodStart.toISOString().slice(0, 10),
+      periodEnd: actualPeriodEnd.toISOString().slice(0, 10),
+      dueDate,
+      baseAmount: baseAmount.toString(),
+      adjustedAmount: baseAmount.toString(),
+      appliedAdjustmentRate: "0",
+      status: "pending",
+      paidAmount: "0",
+      balanceDue: baseAmount.toString(),
+    });
+
+    n++;
+    periodStart = periodEnd;
+    if (periodStart >= end) break;
+  }
+
+  return installments;
+}
+
+// ── Recalc estado de una cuota individual ─────────────────────────────────────
+async function recalcInstallmentStatus(installmentId: number): Promise<void> {
+  const [inst] = await db.select().from(quoteInstallmentsTable).where(eq(quoteInstallmentsTable.id, installmentId));
+  if (!inst) return;
+
+  const adjustedAmount = parseFloat(inst.adjustedAmount as string);
+  const paidAmount = parseFloat(inst.paidAmount as string);
+  const balance = adjustedAmount - paidAmount;
+  const todayStr = today();
+
+  let newStatus = inst.status;
+  if (paidAmount >= adjustedAmount && adjustedAmount > 0) {
+    newStatus = "paid";
+  } else if (paidAmount > 0 && balance > 0) {
+    newStatus = "partially_paid";
+  } else if (paidAmount === 0 && inst.dueDate < todayStr && inst.status === "pending") {
+    newStatus = "overdue";
+  } else if (paidAmount === 0 && inst.dueDate >= todayStr) {
+    if (inst.status === "overdue") newStatus = "pending"; // shouldn't happen but safety
+  }
+
+  if (newStatus !== inst.status) {
+    await db.update(quoteInstallmentsTable)
+      .set({ status: newStatus, balanceDue: balance.toString() })
+      .where(eq(quoteInstallmentsTable.id, installmentId));
+  } else if (balance.toString() !== (inst.balanceDue as string)) {
+    await db.update(quoteInstallmentsTable)
+      .set({ balanceDue: balance.toString() })
+      .where(eq(quoteInstallmentsTable.id, installmentId));
+  }
+}
+
+// ── Estado semáforo de cuotas (cron diario) ───────────────────────────────────
+export async function refreshInstallmentStatuses(userId?: string): Promise<void> {
+  const todayStr = today();
+  // Pasar pending → overdue donde ya venció
+  const cond = userId
+    ? and(eq(quotesTable.userId, userId), eq(quoteInstallmentsTable.status, "pending"), lt(quoteInstallmentsTable.dueDate, todayStr))
+    : and(eq(quoteInstallmentsTable.status, "pending"), lt(quoteInstallmentsTable.dueDate, todayStr));
+
+  await db.update(quoteInstallmentsTable)
+    .set({ status: "overdue" })
+    .where(
+      inArray(
+        quoteInstallmentsTable.quoteId,
+        db.select({ id: quotesTable.id }).from(quotesTable)
+          .leftJoin(quoteInstallmentsTable, eq(quoteInstallmentsTable.quoteId, quotesTable.id))
+          .where(and(
+            eq(quoteInstallmentsTable.status, "pending"),
+            lt(quoteInstallmentsTable.dueDate, todayStr),
+          )),
+      )
+    );
 }
 
 // Build shared "enriched quote" query
@@ -88,19 +244,29 @@ async function getQuoteDetail(quoteId: number, userId: string) {
 
   if (!quote) return null;
 
-  const [items, revisions, payments, activity, paidAgg] = await Promise.all([
+  const [items, revisions, payments, activity, paidAgg, installments, adjustments] = await Promise.all([
     db.select().from(quoteItemsTable).where(eq(quoteItemsTable.quoteId, quoteId)).orderBy(asc(quoteItemsTable.sortOrder)),
     db.select().from(quoteRevisionsTable).where(eq(quoteRevisionsTable.quoteId, quoteId)).orderBy(desc(quoteRevisionsTable.changedAt)),
     db.select().from(quotePaymentsTable).where(eq(quotePaymentsTable.quoteId, quoteId)).orderBy(desc(quotePaymentsTable.paymentDate)),
     db.select().from(quoteActivityLogsTable).where(eq(quoteActivityLogsTable.quoteId, quoteId)).orderBy(desc(quoteActivityLogsTable.performedAt)),
     db.select({ total: sql<string>`coalesce(sum(amount), 0)` }).from(quotePaymentsTable).where(eq(quotePaymentsTable.quoteId, quoteId)),
+    db.select().from(quoteInstallmentsTable).where(eq(quoteInstallmentsTable.quoteId, quoteId)).orderBy(asc(quoteInstallmentsTable.installmentNumber)),
+    db.select().from(quoteAdjustmentsTable).where(eq(quoteAdjustmentsTable.quoteId, quoteId)).orderBy(desc(quoteAdjustmentsTable.appliedAt)),
   ]);
 
   const totalPaid = parseFloat(paidAgg[0]?.total ?? "0");
   const totalAmount = parseFloat(quote.quote.totalAmount as string);
   const balance = totalAmount - totalPaid;
 
-  return { ...quote.quote, clientName: quote.clientName, clientCuit: quote.clientCuit, clientStatus: quote.clientStatus, items, revisions, payments, activity, totalPaid, balance };
+  return {
+    ...quote.quote,
+    clientName: quote.clientName,
+    clientCuit: quote.clientCuit,
+    clientStatus: quote.clientStatus,
+    items, revisions, payments, activity,
+    installments, adjustments,
+    totalPaid, balance,
+  };
 }
 
 // ── GET /quotes  (list with filters + pagination) ──────────────────────────────
@@ -108,7 +274,7 @@ router.get("/quotes", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserId(req);
     const {
-      clientId, status, currency, search,
+      clientId, status, currency, search, quoteType,
       issueDateFrom, issueDateTo, dueDateFrom, dueDateTo,
       page = "1", limit = "50", sortBy = "dueDate", sortDir = "asc",
     } = req.query as Record<string, string>;
@@ -119,6 +285,7 @@ router.get("/quotes", requireAuth, async (req, res): Promise<void> => {
 
     const conditions = [eq(quotesTable.userId, userId)];
     if (clientId) conditions.push(eq(quotesTable.clientId, parseInt(clientId)));
+    if (quoteType) conditions.push(eq(quotesTable.quoteType, quoteType));
     if (status) {
       const statuses = status.split(",").filter(Boolean);
       if (statuses.length === 1) {
@@ -145,11 +312,11 @@ router.get("/quotes", requireAuth, async (req, res): Promise<void> => {
     const where = and(...conditions);
 
     const sortCol = (() => {
-      if (sortBy === "dueDate")    return sortDir === "desc" ? desc(quotesTable.dueDate)    : asc(quotesTable.dueDate);
-      if (sortBy === "issueDate")  return sortDir === "desc" ? desc(quotesTable.issueDate)  : asc(quotesTable.issueDate);
-      if (sortBy === "totalAmount") return sortDir === "desc" ? desc(quotesTable.totalAmount) : asc(quotesTable.totalAmount);
-      if (sortBy === "status")     return sortDir === "desc" ? desc(quotesTable.status)     : asc(quotesTable.status);
-      if (sortBy === "client")     return sortDir === "desc" ? desc(clientsTable.name)      : asc(clientsTable.name);
+      if (sortBy === "dueDate")     return sortDir === "desc" ? desc(quotesTable.dueDate)     : asc(quotesTable.dueDate);
+      if (sortBy === "issueDate")   return sortDir === "desc" ? desc(quotesTable.issueDate)   : asc(quotesTable.issueDate);
+      if (sortBy === "totalAmount") return sortDir === "desc" ? desc(quotesTable.totalAmount)  : asc(quotesTable.totalAmount);
+      if (sortBy === "status")      return sortDir === "desc" ? desc(quotesTable.status)       : asc(quotesTable.status);
+      if (sortBy === "client")      return sortDir === "desc" ? desc(clientsTable.name)        : asc(clientsTable.name);
       return asc(quotesTable.dueDate);
     })();
 
@@ -167,10 +334,18 @@ router.get("/quotes", requireAuth, async (req, res): Promise<void> => {
           totalAmount: quotesTable.totalAmount,
           status: quotesTable.status,
           version: quotesTable.version,
+          quoteType: quotesTable.quoteType,
+          contractStartDate: quotesTable.contractStartDate,
+          contractEndDate: quotesTable.contractEndDate,
+          billingFrequency: quotesTable.billingFrequency,
+          nextAdjustmentDate: quotesTable.nextAdjustmentDate,
           archivedAt: quotesTable.archivedAt,
           createdAt: quotesTable.createdAt,
           totalPaid: sql<string>`coalesce((select sum(p.amount) from quote_payments p where p.quote_id = ${quotesTable.id}), 0)`,
           lastPaymentDate: sql<string | null>`(select max(p.payment_date) from quote_payments p where p.quote_id = ${quotesTable.id})`,
+          installmentsTotal: sql<number>`(select count(*) from quote_installments qi where qi.quote_id = ${quotesTable.id})`,
+          installmentsPending: sql<number>`(select count(*) from quote_installments qi where qi.quote_id = ${quotesTable.id} and qi.status in ('pending','due'))`,
+          installmentsOverdue: sql<number>`(select count(*) from quote_installments qi where qi.quote_id = ${quotesTable.id} and qi.status = 'overdue')`,
         })
         .from(quotesTable)
         .leftJoin(clientsTable, eq(quotesTable.clientId, clientsTable.id))
@@ -215,6 +390,9 @@ router.get("/quotes/kpis", requireAuth, async (req, res): Promise<void> => {
 
     const todayStr = today();
     const monthStart = todayStr.slice(0, 7) + "-01";
+    const in30days = new Date();
+    in30days.setDate(in30days.getDate() + 30);
+    const in30daysStr = in30days.toISOString().slice(0, 10);
 
     const [kpis] = await db
       .select({
@@ -225,6 +403,8 @@ router.get("/quotes/kpis", requireAuth, async (req, res): Promise<void> => {
         cantidadPendientes: sql<number>`count(*) filter (where status in ('draft','sent','approved') and archived_at is null)`,
         cantidadParciales: sql<number>`count(*) filter (where status = 'partially_paid' and archived_at is null)`,
         cantidadPagados: sql<number>`count(*) filter (where status = 'paid')`,
+        contratosActivos: sql<number>`count(*) filter (where quote_type = 'recurring_indexed' and status in ('approved','partially_paid') and archived_at is null and contract_end_date >= ${todayStr})`,
+        contratosProxVencer: sql<number>`count(*) filter (where quote_type = 'recurring_indexed' and contract_end_date >= ${todayStr} and contract_end_date <= ${in30daysStr} and archived_at is null)`,
       })
       .from(quotesTable)
       .where(where);
@@ -246,6 +426,18 @@ router.get("/quotes/kpis", requireAuth, async (req, res): Promise<void> => {
     const cobranzasMes = parseFloat(mesRows?.total ?? "0");
     const tasaCobro = totalPresupuestado > 0 ? (totalCobrado / totalPresupuestado) * 100 : 0;
 
+    // KPIs de cuotas (contratos recurrentes)
+    const [instKpis] = await db
+      .select({
+        cuotasPendientes: sql<number>`count(*) filter (where qi.status in ('pending','due'))`,
+        cuotasVencidas: sql<number>`count(*) filter (where qi.status = 'overdue')`,
+        cuotasParciales: sql<number>`count(*) filter (where qi.status = 'partially_paid')`,
+        ingresosProyMes: sql<string>`coalesce(sum(qi.adjusted_amount) filter (where qi.due_date >= ${monthStart} and qi.due_date < ${in30daysStr} and qi.status not in ('paid','cancelled')), 0)`,
+        proximoAjuste: sql<string | null>`min(q.next_adjustment_date) filter (where q.next_adjustment_date is not null and q.next_adjustment_date >= ${todayStr} and q.quote_type = 'recurring_indexed')`,
+      })
+      .from(quoteInstallmentsTable)
+      .leftJoin(quotesTable, and(eq(quoteInstallmentsTable.quoteId, quotesTable.id), eq(quotesTable.userId, userId)));
+
     res.json({
       totalPresupuestado,
       totalCobrado,
@@ -257,6 +449,14 @@ router.get("/quotes/kpis", requireAuth, async (req, res): Promise<void> => {
       cantidadPagados: Number(kpis?.cantidadPagados ?? 0),
       cobranzasMes,
       tasaCobro: Math.round(tasaCobro * 10) / 10,
+      // Recurrentes
+      contratosActivos: Number(kpis?.contratosActivos ?? 0),
+      contratosProxVencer: Number(kpis?.contratosProxVencer ?? 0),
+      cuotasPendientes: Number(instKpis?.cuotasPendientes ?? 0),
+      cuotasVencidas: Number(instKpis?.cuotasVencidas ?? 0),
+      cuotasParciales: Number(instKpis?.cuotasParciales ?? 0),
+      ingresosProyMes: parseFloat(instKpis?.ingresosProyMes ?? "0"),
+      proximoAjuste: instKpis?.proximoAjuste ?? null,
     });
   } catch (err) {
     logger.error({ err }, "quotes kpis error");
@@ -269,7 +469,6 @@ router.get("/quotes/dashboard-data", requireAuth, async (req, res): Promise<void
   try {
     const userId = getCurrentUserId(req);
 
-    // Cobranzas mensuales últimos 12 meses
     const cobranzasMensuales = await db
       .select({
         mes: sql<string>`to_char(payment_date::date, 'YYYY-MM')`,
@@ -284,7 +483,6 @@ router.get("/quotes/dashboard-data", requireAuth, async (req, res): Promise<void
       .groupBy(sql`to_char(payment_date::date, 'YYYY-MM')`)
       .orderBy(sql`to_char(payment_date::date, 'YYYY-MM')`);
 
-    // Distribución por estado
     const porEstado = await db
       .select({
         status: quotesTable.status,
@@ -295,7 +493,6 @@ router.get("/quotes/dashboard-data", requireAuth, async (req, res): Promise<void
       .where(eq(quotesTable.userId, userId))
       .groupBy(quotesTable.status);
 
-    // Top 10 clientes con mayor saldo pendiente
     const topDeudores = await db
       .select({
         clientId: quotesTable.clientId,
@@ -311,7 +508,6 @@ router.get("/quotes/dashboard-data", requireAuth, async (req, res): Promise<void
       .orderBy(sql`sum(q.total_amount) - coalesce((select sum(p.amount) from quote_payments p where p.quote_id = q.id), 0) desc`)
       .limit(10);
 
-    // Próximos vencimientos (30 días)
     const proxVencimientos = await db
       .select({
         id: quotesTable.id,
@@ -335,7 +531,33 @@ router.get("/quotes/dashboard-data", requireAuth, async (req, res): Promise<void
       .orderBy(asc(quotesTable.dueDate))
       .limit(20);
 
-    res.json({ cobranzasMensuales, porEstado, topDeudores, proxVencimientos });
+    // Cuotas próximas a vencer (30 días) de contratos recurrentes
+    const cuotasProximas = await db
+      .select({
+        id: quoteInstallmentsTable.id,
+        quoteId: quoteInstallmentsTable.quoteId,
+        installmentNumber: quoteInstallmentsTable.installmentNumber,
+        dueDate: quoteInstallmentsTable.dueDate,
+        adjustedAmount: quoteInstallmentsTable.adjustedAmount,
+        balanceDue: quoteInstallmentsTable.balanceDue,
+        status: quoteInstallmentsTable.status,
+        clientName: clientsTable.name,
+        quoteTitle: quotesTable.title,
+        quoteNumber: quotesTable.quoteNumber,
+      })
+      .from(quoteInstallmentsTable)
+      .leftJoin(quotesTable, eq(quoteInstallmentsTable.quoteId, quotesTable.id))
+      .leftJoin(clientsTable, eq(quotesTable.clientId, clientsTable.id))
+      .where(and(
+        eq(quotesTable.userId, userId),
+        gte(quoteInstallmentsTable.dueDate, today()),
+        lte(quoteInstallmentsTable.dueDate, sql`(current_date + interval '30 days')::text`),
+        inArray(quoteInstallmentsTable.status, ["pending", "due", "partially_paid"]),
+      ))
+      .orderBy(asc(quoteInstallmentsTable.dueDate))
+      .limit(20);
+
+    res.json({ cobranzasMensuales, porEstado, topDeudores, proxVencimientos, cuotasProximas });
   } catch (err) {
     logger.error({ err }, "quotes dashboard-data error");
     res.status(500).json({ error: "Error al cargar datos del dashboard" });
@@ -358,6 +580,7 @@ router.get("/quotes/client/:clientId", requireAuth, async (req, res): Promise<vo
         totalCobrado: sql<string>`coalesce((select sum(p.amount) from quote_payments p where p.quote_id = q.id), 0)`,
         cantidadVencidos: sql<number>`count(*) filter (where status = 'expired' or (due_date < ${todayStr} and status not in ('paid','rejected') and archived_at is null))`,
         cantidadParciales: sql<number>`count(*) filter (where status = 'partially_paid')`,
+        contratosActivos: sql<number>`count(*) filter (where quote_type = 'recurring_indexed' and status in ('approved','partially_paid') and contract_end_date >= ${todayStr})`,
       })
       .from(sql`quotes q`)
       .where(sql`q.client_id = ${clientId} and q.user_id = ${userId}`);
@@ -365,15 +588,13 @@ router.get("/quotes/client/:clientId", requireAuth, async (req, res): Promise<vo
     const totalPres = parseFloat(summary?.totalPresupuestado ?? "0");
     const totalCob = parseFloat(summary?.totalCobrado ?? "0");
 
-    // Último presupuesto
     const [lastQuote] = await db
-      .select({ id: quotesTable.id, quoteNumber: quotesTable.quoteNumber, issueDate: quotesTable.issueDate, title: quotesTable.title, totalAmount: quotesTable.totalAmount, status: quotesTable.status })
+      .select({ id: quotesTable.id, quoteNumber: quotesTable.quoteNumber, issueDate: quotesTable.issueDate, title: quotesTable.title, totalAmount: quotesTable.totalAmount, status: quotesTable.status, quoteType: quotesTable.quoteType })
       .from(quotesTable)
       .where(and(eq(quotesTable.clientId, clientId), eq(quotesTable.userId, userId)))
       .orderBy(desc(quotesTable.issueDate))
       .limit(1);
 
-    // Último pago
     const [lastPayment] = await db
       .select({ id: quotePaymentsTable.id, paymentDate: quotePaymentsTable.paymentDate, amount: quotePaymentsTable.amount, currency: quotePaymentsTable.currency })
       .from(quotePaymentsTable)
@@ -381,7 +602,6 @@ router.get("/quotes/client/:clientId", requireAuth, async (req, res): Promise<vo
       .orderBy(desc(quotePaymentsTable.paymentDate))
       .limit(1);
 
-    // Lista de presupuestos
     const quotes = await db
       .select({
         id: quotesTable.id,
@@ -393,19 +613,25 @@ router.get("/quotes/client/:clientId", requireAuth, async (req, res): Promise<vo
         status: quotesTable.status,
         currency: quotesTable.currency,
         version: quotesTable.version,
+        quoteType: quotesTable.quoteType,
+        contractStartDate: quotesTable.contractStartDate,
+        contractEndDate: quotesTable.contractEndDate,
+        billingFrequency: quotesTable.billingFrequency,
         archivedAt: quotesTable.archivedAt,
         totalPaid: sql<string>`coalesce((select sum(p.amount) from quote_payments p where p.quote_id = ${quotesTable.id}), 0)`,
         lastPaymentDate: sql<string | null>`(select max(p.payment_date) from quote_payments p where p.quote_id = ${quotesTable.id})`,
+        installmentsTotal: sql<number>`(select count(*) from quote_installments qi where qi.quote_id = ${quotesTable.id})`,
+        installmentsOverdue: sql<number>`(select count(*) from quote_installments qi where qi.quote_id = ${quotesTable.id} and qi.status = 'overdue')`,
       })
       .from(quotesTable)
       .where(and(eq(quotesTable.clientId, clientId), eq(quotesTable.userId, userId)))
       .orderBy(desc(quotesTable.issueDate));
 
-    // Pagos del cliente
     const payments = await db
       .select({
         id: quotePaymentsTable.id,
         quoteId: quotePaymentsTable.quoteId,
+        installmentId: quotePaymentsTable.installmentId,
         quoteNumber: quotesTable.quoteNumber,
         paymentDate: quotePaymentsTable.paymentDate,
         amount: quotePaymentsTable.amount,
@@ -427,6 +653,7 @@ router.get("/quotes/client/:clientId", requireAuth, async (req, res): Promise<vo
         saldoPendiente: totalPres - totalCob,
         cantidadVencidos: Number(summary?.cantidadVencidos ?? 0),
         cantidadParciales: Number(summary?.cantidadParciales ?? 0),
+        contratosActivos: Number(summary?.contratosActivos ?? 0),
         lastQuote: lastQuote ?? null,
         lastPayment: lastPayment ?? null,
       },
@@ -464,22 +691,41 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
     const userId = getCurrentUserId(req);
     const {
       clientId, title, description, currency, issueDate, dueDate,
-      subtotal, discountAmount, taxAmount, totalAmount, notes, status, items = [],
+      subtotal, discountAmount, taxAmount, totalAmount, notes, items = [],
+      // Campos recurrentes
+      quoteType = "single",
+      contractStartDate, contractEndDate, billingFrequency,
+      adjustmentFrequency, adjustmentIndex, adjustmentMode, baseAmount,
     } = req.body;
 
     if (!clientId) { res.status(400).json({ error: "El cliente es requerido" }); return; }
     if (!title?.trim()) { res.status(400).json({ error: "El título es requerido" }); return; }
     if (!currency?.trim()) { res.status(400).json({ error: "La moneda es requerida" }); return; }
     if (!issueDate) { res.status(400).json({ error: "La fecha de emisión es requerida" }); return; }
-    if (!dueDate) { res.status(400).json({ error: "La fecha de vencimiento es requerida" }); return; }
     if (parseFloat(totalAmount ?? 0) < 0) { res.status(400).json({ error: "El total no puede ser negativo" }); return; }
 
-    // Verificar que el cliente existe y pertenece al usuario
+    // FIX Bug 2: verificar ownership del cliente
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
     if (!client) { res.status(400).json({ error: "Cliente no encontrado" }); return; }
 
+    // Validaciones para recurrentes
+    if (quoteType === "recurring_indexed") {
+      if (!contractStartDate) { res.status(400).json({ error: "La fecha de inicio del contrato es requerida" }); return; }
+      if (!contractEndDate)   { res.status(400).json({ error: "La fecha de fin del contrato es requerida" }); return; }
+      if (!billingFrequency)  { res.status(400).json({ error: "La frecuencia de cobro es requerida" }); return; }
+      if (!baseAmount || parseFloat(baseAmount) <= 0) { res.status(400).json({ error: "El importe base de la cuota es requerido" }); return; }
+      if (contractStartDate >= contractEndDate) { res.status(400).json({ error: "La fecha fin debe ser posterior a la fecha inicio" }); return; }
+    } else {
+      if (!dueDate) { res.status(400).json({ error: "La fecha de vencimiento es requerida" }); return; }
+    }
+
     const quoteNumber = await generateQuoteNumber(userId);
 
+    // Para recurrentes el totalAmount = sum of all installments (se calcula después)
+    // dueDate para recurrentes = contractEndDate
+    const effectiveDueDate = quoteType === "recurring_indexed" ? contractEndDate : dueDate;
+
+    // FIX Bug 1: siempre crear como draft, ignorar status del body
     const [quote] = await db.insert(quotesTable).values({
       quoteNumber,
       clientId,
@@ -488,18 +734,31 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
       description: description ?? null,
       currency,
       issueDate,
-      dueDate,
+      dueDate: effectiveDueDate,
       subtotal: subtotal?.toString() ?? "0",
       discountAmount: discountAmount?.toString() ?? "0",
       taxAmount: taxAmount?.toString() ?? "0",
       totalAmount: totalAmount?.toString() ?? "0",
-      status: status ?? "draft",
+      status: "draft",  // FIX: siempre draft, nunca del body
       version: 1,
       notes: notes ?? null,
       createdBy: userId,
+      // Campos recurrentes
+      quoteType,
+      contractStartDate: quoteType === "recurring_indexed" ? contractStartDate : null,
+      contractEndDate:   quoteType === "recurring_indexed" ? contractEndDate   : null,
+      billingFrequency:  quoteType === "recurring_indexed" ? billingFrequency  : null,
+      adjustmentFrequency: adjustmentFrequency ?? null,
+      adjustmentIndex:   adjustmentIndex ?? "ipc",
+      adjustmentMode:    adjustmentMode ?? "apply_on_last_effective_amount",
+      baseAmount:        quoteType === "recurring_indexed" ? baseAmount?.toString() : null,
+      nextAdjustmentDate: (quoteType === "recurring_indexed" && adjustmentFrequency && contractStartDate)
+        ? nextAdjDateFromFreq(new Date(contractStartDate + "T00:00:00"), adjustmentFrequency)
+        : null,
+      installmentsGenerated: false,
     }).returning();
 
-    // Items
+    // Items (para single)
     if (items.length > 0) {
       await db.insert(quoteItemsTable).values(
         items.map((it: { description: string; quantity: number; unitPrice: number; lineTotal: number }, i: number) => ({
@@ -513,7 +772,29 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
       );
     }
 
-    await logActivity(quote!.id, clientId, userId, "created", `Presupuesto ${quoteNumber} creado`);
+    // Generar cuotas para recurrentes
+    if (quoteType === "recurring_indexed" && contractStartDate && contractEndDate && billingFrequency && baseAmount) {
+      const installs = generateInstallments(
+        quote!.id,
+        contractStartDate,
+        contractEndDate,
+        billingFrequency,
+        parseFloat(baseAmount),
+      );
+
+      if (installs.length > 0) {
+        await db.insert(quoteInstallmentsTable).values(installs);
+        // totalAmount = suma de todas las cuotas
+        const totalContrato = installs.reduce((acc, i) => acc + parseFloat(baseAmount), 0);
+        await db.update(quotesTable).set({
+          totalAmount: totalContrato.toFixed(2),
+          subtotal: totalContrato.toFixed(2),
+          installmentsGenerated: true,
+        }).where(eq(quotesTable.id, quote!.id));
+      }
+    }
+
+    await logActivity(quote!.id, clientId, userId, "created", `Presupuesto ${quoteNumber} creado (${quoteType === "recurring_indexed" ? "contrato recurrente" : "cobro único"})`);
 
     const detail = await getQuoteDetail(quote!.id, userId);
     res.status(201).json(detail);
@@ -543,18 +824,17 @@ router.put("/quotes/:id", requireAuth, async (req, res): Promise<void> => {
     const newTotal = parseFloat(totalAmount?.toString() ?? existing.totalAmount as string);
 
     const updates: Partial<InsertQuote> = {};
-    if (title !== undefined)         updates.title = title;
-    if (description !== undefined)   updates.description = description;
-    if (currency !== undefined)      updates.currency = currency;
-    if (issueDate !== undefined)     updates.issueDate = issueDate;
-    if (dueDate !== undefined)       updates.dueDate = dueDate;
-    if (subtotal !== undefined)      updates.subtotal = subtotal.toString();
+    if (title !== undefined)          updates.title = title;
+    if (description !== undefined)    updates.description = description;
+    if (currency !== undefined)       updates.currency = currency;
+    if (issueDate !== undefined)      updates.issueDate = issueDate;
+    if (dueDate !== undefined)        updates.dueDate = dueDate;
+    if (subtotal !== undefined)       updates.subtotal = subtotal.toString();
     if (discountAmount !== undefined) updates.discountAmount = discountAmount.toString();
-    if (taxAmount !== undefined)     updates.taxAmount = taxAmount.toString();
-    if (totalAmount !== undefined)   updates.totalAmount = totalAmount.toString();
-    if (notes !== undefined)         updates.notes = notes;
+    if (taxAmount !== undefined)      updates.taxAmount = taxAmount.toString();
+    if (totalAmount !== undefined)    updates.totalAmount = totalAmount.toString();
+    if (notes !== undefined)          updates.notes = notes;
 
-    // Si cambió el total, crear revisión
     if (Math.abs(newTotal - prevTotal) > 0.001) {
       await db.insert(quoteRevisionsTable).values({
         quoteId: id,
@@ -571,7 +851,6 @@ router.put("/quotes/:id", requireAuth, async (req, res): Promise<void> => {
       await db.update(quotesTable).set(updates).where(eq(quotesTable.id, id));
     }
 
-    // Reemplazar ítems
     if (items !== undefined) {
       await db.delete(quoteItemsTable).where(eq(quoteItemsTable.quoteId, id));
       if (items.length > 0) {
@@ -600,6 +879,17 @@ router.put("/quotes/:id", requireAuth, async (req, res): Promise<void> => {
 });
 
 // ── PATCH /quotes/:id/status ────────────────────────────────────────────────────
+// FIX Bug 3: máquina de estados con transiciones válidas
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  draft:           ["sent", "rejected", "approved"],
+  sent:            ["approved", "rejected", "draft"],
+  approved:        ["sent", "rejected", "paid", "partially_paid"],
+  rejected:        ["draft"],
+  expired:         ["draft", "approved"],
+  partially_paid:  ["paid"],
+  paid:            [],
+};
+
 router.patch("/quotes/:id/status", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = getCurrentUserId(req);
@@ -609,9 +899,21 @@ router.patch("/quotes/:id/status", requireAuth, async (req, res): Promise<void> 
     const [existing] = await db.select().from(quotesTable).where(and(eq(quotesTable.id, id), eq(quotesTable.userId, userId)));
     if (!existing) { res.status(404).json({ error: "Presupuesto no encontrado" }); return; }
 
-    const { status } = req.body;
-    const validStatuses = ["draft", "sent", "approved", "rejected", "expired", "partially_paid", "paid"];
+    const { status, force = false } = req.body;
+    const validStatuses = Object.keys(VALID_TRANSITIONS);
     if (!validStatuses.includes(status)) { res.status(400).json({ error: "Estado inválido" }); return; }
+
+    // FIX: validar transición a menos que sea forzada
+    if (!force) {
+      const allowed = VALID_TRANSITIONS[existing.status] ?? [];
+      if (!allowed.includes(status)) {
+        res.status(400).json({
+          error: `Transición inválida: ${existing.status} → ${status}`,
+          allowedTransitions: allowed,
+        });
+        return;
+      }
+    }
 
     const updates: Record<string, unknown> = { status };
     if (status === "approved") updates.approvedAt = new Date();
@@ -620,7 +922,7 @@ router.patch("/quotes/:id/status", requireAuth, async (req, res): Promise<void> 
     await db.update(quotesTable).set(updates).where(eq(quotesTable.id, id));
     await logActivity(id, existing.clientId, userId, "status_change", `Estado cambiado a ${status}`, { from: existing.status, to: status });
 
-    res.json({ ok: true });
+    res.json({ ok: true, from: existing.status, to: status });
   } catch (err) {
     logger.error({ err }, "quote status error");
     res.status(500).json({ error: "Error al cambiar estado" });
@@ -776,7 +1078,6 @@ router.post("/quotes/:id/payments", requireAuth, async (req, res): Promise<void>
     if (!paymentDate) { res.status(400).json({ error: "La fecha de pago es requerida" }); return; }
     if (!amount || parseFloat(amount) <= 0) { res.status(400).json({ error: "El importe debe ser mayor a 0" }); return; }
 
-    // Verificar que no exceda el saldo
     const [paidAgg] = await db
       .select({ total: sql<string>`coalesce(sum(amount), 0)` })
       .from(quotePaymentsTable)
@@ -836,6 +1137,232 @@ router.delete("/quotes/:id/payments/:paymentId", requireAuth, async (req, res): 
   } catch (err) {
     logger.error({ err }, "quote payment delete error");
     res.status(500).json({ error: "Error al eliminar cobro" });
+  }
+});
+
+// ── GET /quotes/:id/installments ────────────────────────────────────────────────
+router.get("/quotes/:id/installments", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserId(req);
+    const id = parseInt(req.params["id"] as string);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    // Verificar ownership
+    const [quote] = await db.select({ id: quotesTable.id, quoteType: quotesTable.quoteType })
+      .from(quotesTable)
+      .where(and(eq(quotesTable.id, id), eq(quotesTable.userId, userId)));
+    if (!quote) { res.status(404).json({ error: "Presupuesto no encontrado" }); return; }
+    if (quote.quoteType !== "recurring_indexed") {
+      res.status(400).json({ error: "Solo los contratos recurrentes tienen cuotas" });
+      return;
+    }
+
+    const { status } = req.query as Record<string, string>;
+    const conditions = [eq(quoteInstallmentsTable.quoteId, id)];
+    if (status) {
+      const statuses = status.split(",").filter(Boolean);
+      if (statuses.length > 0) conditions.push(inArray(quoteInstallmentsTable.status, statuses));
+    }
+
+    const installments = await db.select().from(quoteInstallmentsTable)
+      .where(and(...conditions))
+      .orderBy(asc(quoteInstallmentsTable.installmentNumber));
+
+    const todayStr = today();
+    const enriched = installments.map(i => ({
+      ...i,
+      isOverdue: i.dueDate < todayStr && !["paid", "cancelled"].includes(i.status),
+      isDueSoon: i.dueDate >= todayStr && i.dueDate <= new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    }));
+
+    // KPIs de cuotas
+    const total = enriched.length;
+    const paid = enriched.filter(i => i.status === "paid").length;
+    const overdue = enriched.filter(i => i.status === "overdue" || (i.isOverdue && i.status !== "paid")).length;
+    const pending = enriched.filter(i => i.status === "pending" || i.status === "due").length;
+    const totalPaid = enriched.reduce((acc, i) => acc + parseFloat(i.paidAmount as string), 0);
+    const totalAdjusted = enriched.reduce((acc, i) => acc + parseFloat(i.adjustedAmount as string), 0);
+
+    res.json({
+      installments: enriched,
+      summary: { total, paid, overdue, pending, totalPaid, totalAdjusted, balance: totalAdjusted - totalPaid },
+    });
+  } catch (err) {
+    logger.error({ err }, "installments list error");
+    res.status(500).json({ error: "Error al cargar cuotas" });
+  }
+});
+
+// ── POST /quotes/:id/installments/:installmentId/payments ────────────────────
+router.post("/quotes/:id/installments/:installmentId/payments", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserId(req);
+    const quoteId = parseInt(req.params["id"] as string);
+    const installmentId = parseInt(req.params["installmentId"] as string);
+    if (isNaN(quoteId) || isNaN(installmentId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const [quote] = await db.select().from(quotesTable).where(and(eq(quotesTable.id, quoteId), eq(quotesTable.userId, userId)));
+    if (!quote) { res.status(404).json({ error: "Presupuesto no encontrado" }); return; }
+    if (quote.status === "rejected") { res.status(400).json({ error: "No se puede cobrar un contrato rechazado" }); return; }
+
+    const [installment] = await db.select().from(quoteInstallmentsTable)
+      .where(and(eq(quoteInstallmentsTable.id, installmentId), eq(quoteInstallmentsTable.quoteId, quoteId)));
+    if (!installment) { res.status(404).json({ error: "Cuota no encontrada" }); return; }
+    if (installment.status === "paid") { res.status(400).json({ error: "La cuota ya está pagada" }); return; }
+    if (installment.status === "cancelled") { res.status(400).json({ error: "La cuota está cancelada" }); return; }
+
+    const { paymentDate, amount, currency, paymentMethod, reference, notes } = req.body;
+    if (!paymentDate) { res.status(400).json({ error: "La fecha de pago es requerida" }); return; }
+    if (!amount || parseFloat(amount) <= 0) { res.status(400).json({ error: "El importe debe ser mayor a 0" }); return; }
+
+    const adjustedAmount = parseFloat(installment.adjustedAmount as string);
+    const alreadyPaid = parseFloat(installment.paidAmount as string);
+    const balance = adjustedAmount - alreadyPaid;
+
+    if (parseFloat(amount) > balance + 0.01) {
+      res.status(400).json({ error: `El importe (${amount}) supera el saldo de la cuota (${balance.toFixed(2)})` });
+      return;
+    }
+
+    // Registrar el pago vinculado a la cuota
+    const [payment] = await db.insert(quotePaymentsTable).values({
+      quoteId,
+      installmentId,
+      clientId: quote.clientId,
+      userId,
+      paymentDate,
+      amount: amount.toString(),
+      currency: currency ?? quote.currency,
+      paymentMethod: paymentMethod ?? "transferencia",
+      reference: reference ?? null,
+      notes: notes ?? null,
+      createdBy: userId,
+    }).returning();
+
+    // Actualizar paidAmount y balanceDue de la cuota
+    const newPaid = (alreadyPaid + parseFloat(amount)).toFixed(2);
+    await db.update(quoteInstallmentsTable)
+      .set({ paidAmount: newPaid })
+      .where(eq(quoteInstallmentsTable.id, installmentId));
+
+    // Recalcular estado de la cuota
+    await recalcInstallmentStatus(installmentId);
+    await recalcStatus(quoteId);
+
+    await logActivity(quoteId, quote.clientId, userId, "installment_payment",
+      `Cuota #${installment.installmentNumber} cobrada: ${amount} ${currency ?? quote.currency}`,
+      { installmentId, installmentNumber: installment.installmentNumber, amount, paymentMethod });
+
+    res.status(201).json(payment);
+  } catch (err) {
+    logger.error({ err }, "installment payment error");
+    res.status(500).json({ error: "Error al registrar cobro de cuota" });
+  }
+});
+
+// ── POST /quotes/:id/apply-adjustment ───────────────────────────────────────────
+// Aplica ajuste IPC solo a cuotas futuras según la regla de integridad contable
+router.post("/quotes/:id/apply-adjustment", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserId(req);
+    const id = parseInt(req.params["id"] as string);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const [quote] = await db.select().from(quotesTable).where(and(eq(quotesTable.id, id), eq(quotesTable.userId, userId)));
+    if (!quote) { res.status(404).json({ error: "Presupuesto no encontrado" }); return; }
+    if (quote.quoteType !== "recurring_indexed") {
+      res.status(400).json({ error: "Solo se puede ajustar contratos recurrentes" });
+      return;
+    }
+    if (quote.status === "rejected" || quote.archivedAt) {
+      res.status(400).json({ error: "No se puede ajustar un contrato inactivo" });
+      return;
+    }
+
+    const { adjustmentRate, adjustmentDate, periodFrom, periodTo, notes, indexUsed = "ipc" } = req.body;
+
+    if (!adjustmentRate || isNaN(parseFloat(adjustmentRate))) {
+      res.status(400).json({ error: "La tasa de ajuste es requerida (ej: 0.034 para 3.4%)" });
+      return;
+    }
+    if (!adjustmentDate) { res.status(400).json({ error: "La fecha efectiva del ajuste es requerida" }); return; }
+    if (!periodFrom || !periodTo) { res.status(400).json({ error: "El período del índice (desde/hasta) es requerido" }); return; }
+
+    const rate = parseFloat(adjustmentRate);
+    if (rate <= -1) { res.status(400).json({ error: "La tasa no puede ser menor o igual a -100%" }); return; }
+
+    // REGLA CRÍTICA: Solo actualizar cuotas donde:
+    // - dueDate > adjustmentDate (cuotas futuras)
+    // - status NOT IN (paid, overdue, partially_paid, cancelled)
+    const futurePending = await db.select().from(quoteInstallmentsTable)
+      .where(and(
+        eq(quoteInstallmentsTable.quoteId, id),
+        gt(quoteInstallmentsTable.dueDate, adjustmentDate),
+        notInArray(quoteInstallmentsTable.status, ["paid", "overdue", "partially_paid", "cancelled"]),
+      ));
+
+    if (futurePending.length === 0) {
+      res.status(400).json({ error: "No hay cuotas futuras pendientes para ajustar" });
+      return;
+    }
+
+    // Calcular importe anterior (último adjustedAmount de las cuotas a ajustar)
+    const previousBaseAmount = parseFloat(futurePending[0]!.adjustedAmount as string);
+    const newBaseAmount = previousBaseAmount * (1 + rate);
+
+    // Aplicar ajuste a cada cuota elegible
+    for (const inst of futurePending) {
+      const prev = parseFloat(inst.adjustedAmount as string);
+      const newAdj = (prev * (1 + rate)).toFixed(2);
+      const newBalance = (parseFloat(newAdj) - parseFloat(inst.paidAmount as string)).toFixed(2);
+
+      await db.update(quoteInstallmentsTable)
+        .set({
+          adjustedAmount: newAdj,
+          appliedAdjustmentRate: rate.toString(),
+          balanceDue: newBalance,
+        })
+        .where(eq(quoteInstallmentsTable.id, inst.id));
+    }
+
+    // Actualizar nextAdjustmentDate y lastAdjustmentDate en el contrato
+    const nextAdj = quote.adjustmentFrequency
+      ? nextAdjDateFromFreq(new Date(adjustmentDate + "T00:00:00"), quote.adjustmentFrequency)
+      : null;
+
+    await db.update(quotesTable)
+      .set({ lastAdjustmentDate: adjustmentDate, nextAdjustmentDate: nextAdj })
+      .where(eq(quotesTable.id, id));
+
+    // Registrar historial de ajuste
+    const [adjustment] = await db.insert(quoteAdjustmentsTable).values({
+      quoteId: id,
+      adjustmentDate,
+      periodFrom,
+      periodTo,
+      adjustmentRate: rate.toString(),
+      indexUsed,
+      previousBaseAmount: previousBaseAmount.toFixed(2),
+      newBaseAmount: newBaseAmount.toFixed(2),
+      installmentsAffected: futurePending.length,
+      notes: notes ?? null,
+      appliedBy: userId,
+    }).returning();
+
+    await logActivity(id, quote.clientId, userId, "ipc_adjustment",
+      `Ajuste IPC ${(rate * 100).toFixed(2)}% aplicado a ${futurePending.length} cuota(s) futuras`,
+      { adjustmentDate, rate, affectedCount: futurePending.length, periodFrom, periodTo });
+
+    res.json({
+      ok: true,
+      adjustment,
+      installmentsAffected: futurePending.length,
+      previousBaseAmount,
+      newBaseAmount,
+    });
+  } catch (err) {
+    logger.error({ err }, "apply adjustment error");
+    res.status(500).json({ error: "Error al aplicar ajuste" });
   }
 });
 
