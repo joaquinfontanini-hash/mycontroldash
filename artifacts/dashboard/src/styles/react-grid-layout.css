@@ -30,22 +30,26 @@
 }
 
 .react-grid-item.react-grid-placeholder {
-  background: red;
-  opacity: 0.2;
+  background: hsl(var(--primary));
+  opacity: 0.12;
   transition-duration: 100ms;
   z-index: 2;
   user-select: none;
+  border-radius: 12px;
 }
 
 .react-grid-item.react-grid-placeholder.placeholder-resizing {
   transition: none;
 }
 
+/* Resize handle — always on top, shown on hover */
 .react-grid-item > .react-resizable-handle {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
+  z-index: 20;
   opacity: 0;
+  transition: opacity 150ms;
 }
 
 .react-grid-item:hover > .react-resizable-handle {
@@ -55,28 +59,29 @@
 .react-grid-item > .react-resizable-handle::after {
   content: "";
   position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 5px;
-  height: 5px;
-  border-right: 2px solid rgba(0, 0, 0, 0.4);
-  border-bottom: 2px solid rgba(0, 0, 0, 0.4);
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(128,128,128,0.7);
+  border-bottom: 2px solid rgba(128,128,128,0.7);
+  border-radius: 1px;
 }
 
 .react-resizable-hide > .react-resizable-handle {
   display: none;
 }
 
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se {
+  bottom: 0;
+  right: 0;
+  cursor: se-resize;
+}
 .react-grid-item > .react-resizable-handle.react-resizable-handle-sw {
   bottom: 0;
   left: 0;
   cursor: sw-resize;
   transform: rotate(90deg);
-}
-.react-grid-item > .react-resizable-handle.react-resizable-handle-se {
-  bottom: 0;
-  right: 0;
-  cursor: se-resize;
 }
 .react-grid-item > .react-resizable-handle.react-resizable-handle-nw {
   top: 0;
@@ -93,7 +98,7 @@
 .react-grid-item > .react-resizable-handle.react-resizable-handle-w,
 .react-grid-item > .react-resizable-handle.react-resizable-handle-e {
   top: 50%;
-  margin-top: -10px;
+  margin-top: -12px;
   cursor: ew-resize;
 }
 .react-grid-item > .react-resizable-handle.react-resizable-handle-w {
@@ -107,7 +112,7 @@
 .react-grid-item > .react-resizable-handle.react-resizable-handle-n,
 .react-grid-item > .react-resizable-handle.react-resizable-handle-s {
   left: 50%;
-  margin-left: -10px;
+  margin-left: -12px;
   cursor: ns-resize;
 }
 .react-grid-item > .react-resizable-handle.react-resizable-handle-n {
@@ -117,22 +122,4 @@
 .react-grid-item > .react-resizable-handle.react-resizable-handle-s {
   bottom: 0;
   transform: rotate(45deg);
-}
-
-/* Custom resize handle override for dark mode */
-.react-resizable-handle-se {
-  bottom: 4px;
-  right: 4px;
-  width: 16px;
-  height: 16px;
-  background-image: none !important;
-  border-right: 3px solid currentColor;
-  border-bottom: 3px solid currentColor;
-  opacity: 0.4;
-  border-radius: 2px;
-  padding: 0;
-}
-
-.react-resizable:hover .react-resizable-handle-se {
-  opacity: 0.8;
 }

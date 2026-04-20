@@ -524,11 +524,13 @@ const SUMMARY_LS_KEY = "dashboard-summary-layout-v1";
 const DEFAULT_SUMMARY_LAYOUT: Layout[] = [
   { i: "weather",      x: 0, y: 0,  w: 9, h: 4,  minH: 3, minW: 4 },
   { i: "dollar",       x: 0, y: 4,  w: 9, h: 8,  minH: 5, minW: 4 },
-  { i: "mini",         x: 0, y: 12, w: 9, h: 7,  minH: 4, minW: 4 },
+  { i: "emails",       x: 0, y: 12, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "tasks",        x: 3, y: 12, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "travel",       x: 6, y: 12, w: 3, h: 7,  minH: 4, minW: 2 },
   { i: "vencimientos", x: 9, y: 0,  w: 3, h: 19, minH: 6, minW: 2 },
 ];
 
-const SUMMARY_KEYS = ["weather", "dollar", "mini", "vencimientos"];
+const SUMMARY_KEYS = ["weather", "dollar", "emails", "tasks", "travel", "vencimientos"];
 
 function loadSummaryLayout(): Layout[] {
   try {
@@ -548,11 +550,9 @@ interface SummaryGridProps {
   summary: DashboardSummary | undefined;
   dueDates: DueDate[];
   dueDatesLoading: boolean;
-  visibleWidgets: WidgetDef[];
-  setConfigOpen: (open: boolean) => void;
 }
 
-function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading, visibleWidgets, setConfigOpen }: SummaryGridProps) {
+function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: SummaryGridProps) {
   const [layout, setLayout] = useState<Layout[]>(loadSummaryLayout);
 
   const handleLayoutChange = useCallback((newLayout: Layout[]) => {
@@ -603,42 +603,33 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading, visi
 
     dollar: <div className="h-full overflow-auto"><DollarWidget /></div>,
 
-    mini: (
-      <div className="h-full overflow-auto">
-        <div className="grid gap-3 sm:grid-cols-3 h-full">
-          {visibleWidgets.map(def => {
-            const val = def.value(summary, dueDates);
-            const sub = def.subtitle(summary, dueDates);
-            return (
-              <Card key={def.id} className="card-hover group">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {def.title}
-                  </CardTitle>
-                  <div className={`h-8 w-8 rounded-lg ${def.bg} flex items-center justify-center`}>
-                    <def.icon className={`h-4 w-4 ${def.accent}`} />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className={`text-3xl font-bold ${def.accent} mb-0.5`}>{val}</div>
-                  <p className="text-xs text-muted-foreground mb-4">{sub}</p>
-                  <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
-                    <Link href={def.href}>Ver detalle <ArrowRight className="ml-1 h-3 w-3" /></Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-          {visibleWidgets.length === 0 && (
-            <div className="col-span-3 py-10 text-center border-2 border-dashed border-border/40 rounded-xl">
-              <p className="text-sm text-muted-foreground mb-3">Todos los widgets están ocultos.</p>
-              <Button size="sm" variant="outline" className="text-xs" onClick={() => setConfigOpen(true)}>
-                <Settings2 className="h-3.5 w-3.5 mr-1.5" /> Configurar widgets
+    ...Object.fromEntries(
+      WIDGET_DEFS.map(def => {
+        const val = def.value(summary, dueDates);
+        const sub = def.subtitle(summary, dueDates);
+        return [
+          def.id,
+          <Card key={def.id} className="h-full flex flex-col card-hover">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {def.title}
+              </CardTitle>
+              <div className={`h-8 w-8 rounded-lg ${def.bg} flex items-center justify-center`}>
+                <def.icon className={`h-4 w-4 ${def.accent}`} />
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1 justify-between">
+              <div>
+                <div className={`text-3xl font-bold ${def.accent} mb-0.5`}>{val}</div>
+                <p className="text-xs text-muted-foreground mb-4">{sub}</p>
+              </div>
+              <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
+                <Link href={def.href}>Ver detalle <ArrowRight className="ml-1 h-3 w-3" /></Link>
               </Button>
-            </div>
-          )}
-        </div>
-      </div>
+            </CardContent>
+          </Card>,
+        ];
+      })
     ),
 
     vencimientos: (
@@ -872,8 +863,6 @@ export default function DashboardSummary() {
           summary={summary}
           dueDates={dueDates}
           dueDatesLoading={dueDatesLoading}
-          visibleWidgets={visibleWidgets}
-          setConfigOpen={setConfigOpen}
         />
       </div>
 
