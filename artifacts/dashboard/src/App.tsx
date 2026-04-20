@@ -187,7 +187,7 @@ function UserSyncEffect() {
 
 function LocalApp() {
   return (
-    <ThemeProvider defaultTheme="system" storageKey="dashboard-theme">
+    <ThemeProvider defaultTheme="blue-calm" storageKey="app-color-theme">
       <WouterRouter base="">
         <QueryClientProvider client={queryClient}>
           <LocalAuthBridge>
@@ -335,7 +335,7 @@ function ClerkProviderWithRoutes() {
 
 function ClerkApp() {
   return (
-    <ThemeProvider defaultTheme="system" storageKey="dashboard-theme">
+    <ThemeProvider defaultTheme="blue-calm" storageKey="app-color-theme">
       <WouterRouter base={basePath}>
         <ClerkProviderWithRoutes />
       </WouterRouter>

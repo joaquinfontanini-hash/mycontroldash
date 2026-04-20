@@ -20,6 +20,7 @@ The project is built as a monorepo using `pnpm workspaces`.
     - News categories offer extensive filter chips.
     - Fiscal monitor allows toggling between card and table views.
     - Responsive split-panel designs for chat and contacts modules.
+    - **Multi-Theme System**: 8 professional color themes implemented via CSS custom properties (`data-theme` attribute on `<html>`). Themes: blue-calm (default), soft-green, peach-soft, lavender-minimal, warm-sand, aqua-light, dark-elegant, clean-light. Storage key: `"app-color-theme"` in localStorage. Dark Elegant also applies `.dark` class for Tailwind dark: variants. Visual theme selector with color swatches available in the header via Palette icon. Files: `src/lib/themes.ts` (catalog), `src/components/theme-provider.tsx` (provider), `src/components/theme-selector.tsx` (UI), `src/index.css` (8 CSS blocks).
 - **Key Pages:** Dashboard with various modules (Tasks, News, Fiscal, Finance, Due Dates, Settings, Admin) and authentication pages.
 
 **Backend:**

@@ -2,15 +2,15 @@ import { ReactNode, useState, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTheme } from "@/components/theme-provider";
 import GlobalSearch, { useGlobalSearch } from "@/components/global-search";
 import AlertsBell from "@/components/alerts-bell";
 import { NotificationBell } from "@/components/notification-bell";
 import ModoHoy from "@/components/modo-hoy";
+import ThemeSelector from "@/components/theme-selector";
 import {
   LayoutDashboard, CheckSquare, Link as LinkIcon, Newspaper, Mail,
   CloudSun, Briefcase, Plane, CalendarClock, CalendarDays, Settings,
-  Shield, Search, LogOut, Moon, Sun, Menu, Users, Truck, Crown,
+  Shield, Search, LogOut, Menu, Users, Truck, Crown,
   DollarSign, Sparkles, RefreshCw, Brain, Target, Flag,
   ChevronLeft, ChevronRight, Pin, PinOff, PanelLeftClose, PanelLeft,
   MessageSquare, Contact, LayoutGrid, Gauge, FileText, Dumbbell,
@@ -357,7 +357,6 @@ function SidebarContent({
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const auth = useAuthContext();
-  const { theme, setTheme } = useTheme();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [modoHoyOpen, setModoHoyOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -489,16 +488,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </Button>
             <AlertsBell />
             <NotificationBell />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-lg"
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-            >
-              <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              <span className="sr-only">Tema</span>
-            </Button>
+            <ThemeSelector />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
