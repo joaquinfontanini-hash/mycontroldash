@@ -371,8 +371,9 @@ function BcraWidget() {
           {data.indicators.map(ind => {
             const colors = BCRA_COLORS[ind.key] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
             const hasValue = ind.value !== null && ind.status !== "error";
+            const unit = (ind.unit ?? "").replace(/\s*(i\.a\.|n\.a\.)\s*/gi, "").trim();
             const formatted = hasValue
-              ? `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(ind.value!)} ${ind.unit}`
+              ? `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(ind.value!)} ${unit}`
               : "—";
             return (
               <div
