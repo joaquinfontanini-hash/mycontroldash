@@ -1,3 +1,5 @@
+import "@/styles/react-grid-layout.css";
+import "@/styles/react-resizable.css";
 import { useQuery } from "@tanstack/react-query";
 import { useGetDashboardSummary, useGetWeather, type DashboardSummary } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,11 +9,15 @@ import {
   CloudRain, Sun, Cloud, ArrowRight, TrendingUp, RefreshCw,
   DollarSign, AlertCircle, CheckCircle2, CalendarClock,
   Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw,
+  Pencil, Check, GripVertical, X as XIcon,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useState, useMemo, useCallback, type ComponentType } from "react";
+import ReactGridLayout, { WidthProvider } from "react-grid-layout/legacy";
+import type { Layout } from "react-grid-layout/legacy";
+const GridLayout = WidthProvider(ReactGridLayout);
 
 import { BASE } from "@/lib/base-url";
 import {
@@ -511,6 +517,134 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
   );
 }
 
+// ── Modules Grid ─────────────────────────────────────────────────────────────
+
+const MODULES_LS_KEY = "modules-grid-layout-v1";
+
+const MODULES_ITEMS: { key: string; label: string; Component: ComponentType }[] = [
+  { key: "finanzas",   label: "Finanzas",   Component: FinanzasWidget },
+  { key: "decisiones", label: "Decisiones", Component: DecisionesWidget },
+  { key: "proyectos",  label: "Proyectos",  Component: ProyectosWidget },
+  { key: "clientes",   label: "Clientes",   Component: ClientesWidget },
+  { key: "objetivos",  label: "Objetivos",  Component: ObjetivosWidget },
+];
+
+const DEFAULT_MODULES_LAYOUT: Layout[] = [
+  { i: "finanzas",   x: 0, y: 0,  w: 6, h: 12, minW: 3, minH: 6 },
+  { i: "decisiones", x: 6, y: 0,  w: 6, h: 12, minW: 3, minH: 6 },
+  { i: "proyectos",  x: 0, y: 12, w: 4, h: 11, minW: 2, minH: 5 },
+  { i: "clientes",   x: 4, y: 12, w: 4, h: 11, minW: 2, minH: 5 },
+  { i: "objetivos",  x: 8, y: 12, w: 4, h: 11, minW: 2, minH: 5 },
+];
+
+function loadModulesLayout(): Layout[] {
+  try {
+    const raw = localStorage.getItem(MODULES_LS_KEY);
+    if (!raw) return DEFAULT_MODULES_LAYOUT;
+    const parsed = JSON.parse(raw) as Layout[];
+    const keys = MODULES_ITEMS.map(m => m.key);
+    if (parsed.length !== keys.length || !parsed.every(p => keys.includes(p.i))) {
+      return DEFAULT_MODULES_LAYOUT;
+    }
+    return parsed;
+  } catch { return DEFAULT_MODULES_LAYOUT; }
+}
+
+function ModulesGrid() {
+  const [layout, setLayout] = useState<Layout[]>(loadModulesLayout);
+  const [editing, setEditing] = useState(false);
+  const [stagingLayout, setStagingLayout] = useState<Layout[]>(layout);
+
+  const startEdit = useCallback(() => {
+    setStagingLayout(layout);
+    setEditing(true);
+  }, [layout]);
+
+  const saveEdit = useCallback(() => {
+    setLayout(stagingLayout);
+    localStorage.setItem(MODULES_LS_KEY, JSON.stringify(stagingLayout));
+    setEditing(false);
+  }, [stagingLayout]);
+
+  const cancelEdit = useCallback(() => {
+    setStagingLayout(layout);
+    setEditing(false);
+  }, [layout]);
+
+  const resetLayout = useCallback(() => {
+    setStagingLayout(DEFAULT_MODULES_LAYOUT);
+  }, []);
+
+  const currentLayout = editing ? stagingLayout : layout;
+
+  return (
+    <div className="space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-border/60" />
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-1">Módulos</span>
+        <div className="h-px flex-1 bg-border/60" />
+        {!editing ? (
+          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 text-muted-foreground" onClick={startEdit}>
+            <Pencil className="h-3 w-3" /> Editar disposición
+          </Button>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground" onClick={resetLayout}>
+              <RotateCcw className="h-3 w-3" /> Reset
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground" onClick={cancelEdit}>
+              <XIcon className="h-3 w-3" /> Cancelar
+            </Button>
+            <Button variant="default" size="sm" className="h-7 text-xs gap-1.5" onClick={saveEdit}>
+              <Check className="h-3 w-3" /> Guardar
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <p className="text-[11px] text-muted-foreground text-center bg-primary/5 border border-primary/20 rounded-lg py-1.5 px-3">
+          Arrastrá los widgets desde el encabezado · Redimensionalos desde la esquina inferior derecha
+        </p>
+      )}
+
+      {/* Grid */}
+      <div className={editing ? "ring-1 ring-primary/20 ring-offset-2 rounded-xl" : ""}>
+        <GridLayout
+          layout={currentLayout}
+          cols={12}
+          rowHeight={30}
+          margin={[12, 12]}
+          containerPadding={[0, 0]}
+          isDraggable={editing}
+          isResizable={editing}
+          draggableHandle=".drag-handle"
+          onLayoutChange={(newLayout) => { if (editing) setStagingLayout(newLayout); }}
+          resizeHandles={["se"]}
+          className="modules-grid"
+        >
+          {MODULES_ITEMS.map(({ key, label, Component }) => (
+            <div key={key} className="group/widget">
+              <div className={`h-full flex flex-col rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden transition-shadow ${editing ? "ring-1 ring-primary/30 cursor-default" : ""}`}>
+                {editing && (
+                  <div className="drag-handle flex items-center gap-1.5 px-3 py-1.5 bg-primary/5 border-b border-primary/20 cursor-grab active:cursor-grabbing select-none shrink-0">
+                    <GripVertical className="h-3.5 w-3.5 text-primary/60" />
+                    <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">{label}</span>
+                  </div>
+                )}
+                <div className="flex-1 overflow-auto min-h-0">
+                  <Component />
+                </div>
+              </div>
+            </div>
+          ))}
+        </GridLayout>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function DashboardSummary() {
@@ -683,22 +817,9 @@ export default function DashboardSummary() {
         </div>
       </div>
 
-      {/* ── Módulos ─────────────────────────────────────────── */}
-      <div className="space-y-4 max-w-6xl mt-6">
-        <div className="flex items-center gap-2">
-          <div className="h-px flex-1 bg-border/60" />
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">Módulos</span>
-          <div className="h-px flex-1 bg-border/60" />
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <FinanzasWidget />
-          <DecisionesWidget />
-        </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <ProyectosWidget />
-          <ClientesWidget />
-          <ObjetivosWidget />
-        </div>
+      {/* ── Módulos Grid ─────────────────────────────────────── */}
+      <div className="max-w-6xl mt-6">
+        <ModulesGrid />
       </div>
     </>
   );
