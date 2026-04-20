@@ -291,18 +291,38 @@ export default function FiscalPage() {
 
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
         {[
-          { label: "Total visible", value: displayedMetrics.total, color: "text-foreground", bg: "bg-muted/60" },
-          { label: "Alto Impacto", value: displayedMetrics.highImpact, color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-900/20" },
-          { label: "Requiere Acción", value: displayedMetrics.requiresAction, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
-          { label: "Calidad promedio", value: displayedMetrics.avgQualityScore != null ? `${displayedMetrics.avgQualityScore}` : "–", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-        ].map(m => (
-          <Card key={m.label} className={`${m.bg} border-0`}>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground mb-1">{m.label}</p>
-              <p className={`text-2xl font-bold ${m.color}`}>{m.value}</p>
-            </CardContent>
-          </Card>
-        ))}
+          { label: "Total visible",   value: displayedMetrics.total,          color: "text-foreground",                         bg: "bg-muted/60",                       filterKey: "all",           ring: "ring-2 ring-foreground/30" },
+          { label: "Alto Impacto",    value: displayedMetrics.highImpact,     color: "text-red-600 dark:text-red-400",          bg: "bg-red-50 dark:bg-red-900/20",      filterKey: "high",          ring: "ring-2 ring-red-500" },
+          { label: "Requiere Acción", value: displayedMetrics.requiresAction, color: "text-amber-600 dark:text-amber-400",      bg: "bg-amber-50 dark:bg-amber-900/20",  filterKey: "requiresAction",ring: "ring-2 ring-amber-500" },
+          { label: "Calidad promedio",value: displayedMetrics.avgQualityScore != null ? `${displayedMetrics.avgQualityScore}` : "–", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20", filterKey: null, ring: "" },
+        ].map(m => {
+          const isActive = m.filterKey !== null && quickFilter === m.filterKey;
+          const isClickable = m.filterKey !== null;
+          return (
+            <button
+              key={m.label}
+              onClick={() => {
+                if (!isClickable) return;
+                setQuickFilter(isActive ? "all" : m.filterKey!);
+              }}
+              disabled={!isClickable}
+              className={[
+                "text-left rounded-xl transition-all",
+                m.bg,
+                isClickable ? "cursor-pointer hover:scale-[1.03] hover:shadow-md" : "cursor-default",
+                isActive ? m.ring : "",
+              ].join(" ")}
+            >
+              <div className="p-4">
+                <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                  {m.label}
+                  {isClickable && <span className="text-[9px] opacity-40">{isActive ? "· activo" : "· filtrar"}</span>}
+                </p>
+                <p className={`text-2xl font-bold ${m.color}`}>{m.value}</p>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {metrics && (metrics.needsReview ?? 0) > 0 && (
