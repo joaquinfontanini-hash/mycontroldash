@@ -3,6 +3,7 @@ import { refreshWeather } from "../services/weather.service.js";
 import { refreshNews } from "../services/news.service.js";
 import { refreshFiscalSources } from "../services/fiscal.service.js";
 import { refreshCurrencyRates } from "../services/currency.service.js";
+import { refreshBcraIndicators } from "../services/bcra.service.js";
 import { updateAllTrafficLights } from "../services/afip-engine.js";
 import { runDailyAlertJob } from "../services/email-alert.service.js";
 import { runDueProfiles } from "../services/travelSearchService.js";
@@ -68,6 +69,14 @@ export function startScheduler() {
     }).catch(err => logger.error({ err }, "Cron semáforos recalculation failed"));
   });
 
+  // BCRA indicators: daily at 08:30
+  cron.schedule("30 8 * * *", async () => {
+    await withJobLog(JOB_NAMES.BCRA, async () => {
+      const fetched = await refreshBcraIndicators();
+      return { records: fetched, result: undefined };
+    }).catch(err => logger.error({ err }, "Cron BCRA indicators refresh failed"));
+  });
+
   // Email alerts: daily at 08:00
   cron.schedule("0 8 * * *", async () => {
     await withJobLog(JOB_NAMES.EMAIL_ALERTS, async () => {
@@ -83,5 +92,5 @@ export function startScheduler() {
     await runDueProfiles().catch(err => logger.error({ err }, "Cron travel search failed"));
   });
 
-  logger.info("Scheduler started: weather(2h), news(1h), fiscal(3h), currency(30m), semáforos(7:00), alerts(8:00), travel(1h)");
+  logger.info("Scheduler started: weather(2h), news(1h), fiscal(3h), currency(30m), semáforos(7:00), alerts(8:00), bcra(8:30), travel(1h)");
 }

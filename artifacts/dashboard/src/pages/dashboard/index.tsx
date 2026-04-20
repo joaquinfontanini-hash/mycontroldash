@@ -34,6 +34,19 @@ interface DolarRate {
   status: "ok" | "error" | "stale"; fetchedAt: string;
 }
 
+interface BcraIndicator {
+  key: string; label: string; tooltip: string;
+  value: number | null; date: string | null; unit: string;
+  status: "ok" | "stale" | "error";
+}
+
+interface BcraData {
+  indicators: BcraIndicator[];
+  fetchedAt: string | null;
+  isStale: boolean;
+  source: string;
+}
+
 interface DueDate {
   id: number; title: string; category: string; dueDate: string;
   description?: string | null;
@@ -129,6 +142,12 @@ async function fetchCurrency(): Promise<DolarRate[]> {
 async function fetchDueDates(): Promise<DueDate[]> {
   const res = await fetch(`${BASE}/api/due-dates`);
   if (!res.ok) throw new Error("Error al cargar vencimientos");
+  return res.json();
+}
+
+async function fetchBcraIndicators(): Promise<BcraData> {
+  const res = await fetch(`${BASE}/api/bcra/indicators`);
+  if (!res.ok) throw new Error("Error al cargar indicadores BCRA");
   return res.json();
 }
 
@@ -251,6 +270,126 @@ function DollarWidget() {
                   </p>
                 )}
                 {rate.status === "error" && <p className="text-[10px] text-destructive mt-1">Sin datos</p>}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── BCRA Indicators Widget ────────────────────────────────────────────────────
+
+const BCRA_COLORS: Record<string, { accent: string; bg: string; border: string }> = {
+  ipc_mensual:    { accent: "text-rose-600 dark:text-rose-400",    bg: "bg-rose-50 dark:bg-rose-950/40",    border: "border-l-rose-500" },
+  ipc_interanual: { accent: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/40", border: "border-l-orange-500" },
+  tamar:          { accent: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-50 dark:bg-blue-950/40",    border: "border-l-blue-500" },
+  badlar:         { accent: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/40", border: "border-l-violet-500" },
+};
+
+function BcraWidget() {
+  const [refreshing, setRefreshing] = useState(false);
+  const { data, isLoading, error, refetch } = useQuery<BcraData>({
+    queryKey: ["bcra-indicators"],
+    queryFn: fetchBcraIndicators,
+    staleTime: 25 * 60 * 1000,
+  });
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch(`${BASE}/api/bcra/refresh`, { method: "POST" });
+      refetch();
+    } finally { setRefreshing(false); }
+  };
+
+  const lastUpdate = data?.fetchedAt
+    ? new Date(data.fetchedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  if (isLoading) {
+    return (
+      <Card className="border-l-4 border-l-slate-300">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <Card className="border-l-4 border-l-destructive/50">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            <span className="text-sm">No se pudieron cargar los indicadores BCRA.</span>
+            <Button variant="ghost" size="sm" onClick={handleRefresh} className="ml-auto h-7 text-xs">
+              <RefreshCw className="h-3 w-3 mr-1" /> Reintentar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-l-4 border-l-slate-400">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Indicadores BCRA
+              </p>
+              <div className="flex items-center gap-1.5">
+                {lastUpdate && <p className="text-[10px] text-muted-foreground">Actualizado {lastUpdate}</p>}
+                {data.isStale && (
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                    Dato anterior
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {data.indicators.map(ind => {
+            const colors = BCRA_COLORS[ind.key] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
+            const hasValue = ind.value !== null && ind.status !== "error";
+            const formatted = hasValue
+              ? `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(ind.value!)} ${ind.unit}`
+              : "—";
+            return (
+              <div
+                key={ind.key}
+                className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}
+                title={ind.tooltip}
+              >
+                <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{ind.label}</p>
+                <p className={`text-lg font-bold ${colors.accent} leading-none`}>{formatted}</p>
+                {ind.date && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {new Date(ind.date + "T12:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
+                  </p>
+                )}
+                {ind.status === "error" && !hasValue && (
+                  <p className="text-[10px] text-destructive mt-1">Sin datos</p>
+                )}
               </div>
             );
           })}
@@ -524,13 +663,14 @@ const SUMMARY_LS_KEY = "dashboard-summary-layout-v1";
 const DEFAULT_SUMMARY_LAYOUT: Layout[] = [
   { i: "weather",      x: 0, y: 0,  w: 9, h: 4,  minH: 3, minW: 4 },
   { i: "dollar",       x: 0, y: 4,  w: 9, h: 8,  minH: 5, minW: 4 },
-  { i: "emails",       x: 0, y: 12, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "tasks",        x: 3, y: 12, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "travel",       x: 6, y: 12, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "vencimientos", x: 9, y: 0,  w: 3, h: 19, minH: 6, minW: 2 },
+  { i: "bcra",         x: 0, y: 12, w: 9, h: 7,  minH: 5, minW: 4 },
+  { i: "emails",       x: 0, y: 19, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "tasks",        x: 3, y: 19, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "travel",       x: 6, y: 19, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "vencimientos", x: 9, y: 0,  w: 3, h: 26, minH: 6, minW: 2 },
 ];
 
-const SUMMARY_KEYS = ["weather", "dollar", "emails", "tasks", "travel", "vencimientos"];
+const SUMMARY_KEYS = ["weather", "dollar", "bcra", "emails", "tasks", "travel", "vencimientos"];
 
 function loadSummaryLayout(): Layout[] {
   try {
@@ -602,6 +742,8 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: Su
     ) : null,
 
     dollar: <div className="h-full overflow-auto"><DollarWidget /></div>,
+
+    bcra: <div className="h-full overflow-auto"><BcraWidget /></div>,
 
     ...Object.fromEntries(
       WIDGET_DEFS.map(def => {

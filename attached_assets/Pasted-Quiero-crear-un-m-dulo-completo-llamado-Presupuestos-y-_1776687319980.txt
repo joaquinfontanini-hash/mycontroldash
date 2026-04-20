@@ -1,0 +1,325 @@
+Quiero crear un módulo completo llamado “Presupuestos y Cobranzas” dentro del sistema.
+
+Este módulo debe unificar:
+- presupuestos tradicionales
+- cobranzas
+- contratos de largo plazo
+- cuotas recurrentes
+- actualización automática por IPC
+
+Debe estar completamente integrado con:
+- módulo de Clientes
+- módulo de Dashboards
+
+Debe desarrollarse con calidad de sistema productivo real:
+- base de datos robusta
+- backend eficiente
+- frontend usable
+- validaciones
+- auditoría completa
+- sin lógica duplicada
+- sin filtrado en memoria
+
+==================================================
+1) TIPOS DE PRESUPUESTOS
+==================================================
+
+El sistema debe soportar dos tipos:
+
+1. single
+- presupuesto tradicional de cobro único
+
+2. recurring_indexed
+- contrato/presupuesto de largo plazo
+- con cobro periódico (ej: mensual)
+- con actualización automática por IPC
+
+==================================================
+2) INTEGRACIÓN CON CLIENTES
+==================================================
+
+- Todos los presupuestos deben tener clientId obligatorio
+- No permitir carga manual de clientes
+- Selector con autocomplete
+- Bloquear clientes inactivos salvo permisos especiales
+
+Dentro de la ficha del cliente agregar pestaña:
+“Presupuestos y Cobranzas”
+
+Mostrar:
+- total presupuestado
+- total cobrado
+- saldo pendiente
+- vencidos
+- parciales
+- último pago
+- tabla de presupuestos
+- tabla de cuotas (si aplica)
+
+==================================================
+3) 5 REGLAS OBLIGATORIAS
+==================================================
+
+A) Historial de versiones (quote_revisions)
+B) Cobros parciales
+C) KPIs clickeables
+D) Vista dentro del cliente
+E) Semáforo de vencimientos
+
+==================================================
+4) MODELO DE DATOS
+==================================================
+
+A) quotes
+- id
+- quoteNumber
+- clientId
+- issueDate
+- dueDate
+- totalAmount
+- status
+- version
+- quoteType (single / recurring_indexed)
+
+Campos para recurrentes:
+- contractStartDate
+- contractEndDate
+- billingFrequency (monthly / quarterly / semiannual / annual)
+- adjustmentFrequency (quarterly / semiannual)
+- adjustmentIndex (IPC)
+- adjustmentMode (apply_on_last_effective_amount)
+- baseAmount
+- nextAdjustmentDate
+- lastAdjustmentDate
+
+B) quote_items
+
+C) quote_revisions
+
+D) payments
+
+E) quote_installments (CUOTAS)
+- id
+- quoteId
+- installmentNumber
+- periodStart
+- periodEnd
+- dueDate
+- baseAmount
+- adjustedAmount
+- appliedAdjustmentRate
+- status
+- paidAmount
+- balanceDue
+
+Estados:
+- pending
+- due
+- overdue
+- partially_paid
+- paid
+- cancelled
+
+F) quote_adjustments
+- historial de ajustes IPC
+
+==================================================
+5) LÓGICA DE CUOTAS
+==================================================
+
+Para presupuestos recurring_indexed:
+
+- generar automáticamente cuotas según vigencia y frecuencia
+- ejemplo: 5 años mensual = 60 cuotas
+
+Cada cuota es independiente:
+- tiene importe propio
+- tiene estado propio
+- se cobra individualmente
+
+==================================================
+6) REGLA CRÍTICA DE ACTUALIZACIÓN POR IPC
+==================================================
+
+ESTA ES UNA DEFINICIÓN OBLIGATORIA Y NO DEBE ROMPERSE:
+
+La actualización por IPC debe aplicarse únicamente sobre cuotas futuras no vencidas.
+
+NO actualizar:
+- cuotas pagadas
+- cuotas vencidas (aunque estén impagas)
+- pagos ya registrados
+- historial
+
+SÍ actualizar:
+- cuotas pendientes futuras (a vencer)
+
+Regla exacta:
+
+Actualizar solo cuotas donde:
+- dueDate > fecha efectiva del ajuste
+
+No actualizar cuotas donde:
+- dueDate <= fecha de ajuste
+- status = paid
+- status = overdue
+- status = partially_paid
+
+Esto implica:
+
+- cuota vencida impaga → NO se actualiza
+- cuota pagada → NO se actualiza
+- cuota futura → SÍ se actualiza
+
+Objetivo:
+- mantener integridad contable
+- evitar inconsistencias
+- preservar historial real
+
+==================================================
+7) LÓGICA DE AJUSTE
+==================================================
+
+Cuando se aplica IPC:
+
+- tomar IPC acumulado del período (trimestral o semestral)
+- aplicar sobre el último valor vigente
+- recalcular solo cuotas futuras
+- guardar historial en quote_adjustments
+
+Registrar:
+- fecha
+- porcentaje aplicado
+- importe anterior
+- importe nuevo
+- cuotas afectadas
+
+==================================================
+8) COBRANZAS
+==================================================
+
+- registrar pagos sobre:
+  - presupuesto (single)
+  - cuotas (recurring)
+
+Permitir:
+- pagos parciales
+- múltiples pagos
+
+Calcular:
+- total cobrado
+- saldo pendiente
+
+Validaciones:
+- no sobrecobro sin permiso
+- no pagos negativos
+
+==================================================
+9) DASHBOARD DEL MÓDULO
+==================================================
+
+KPIs clickeables:
+
+- total presupuestado
+- total cobrado
+- saldo pendiente
+- vencidos
+- parciales
+- cobranzas del mes
+- tasa de cobro
+
+Para recurrentes agregar:
+- ingresos proyectados mensuales
+- cuotas pendientes
+- cuotas vencidas
+- próximos ajustes IPC
+- contratos activos
+- contratos próximos a vencer
+
+Gráficos:
+- cobranzas por mes
+- deuda por cliente
+- evolución de cuotas ajustadas
+- proyección de ingresos
+
+==================================================
+10) INTEGRACIÓN CON DASHBOARD GLOBAL
+==================================================
+
+Exponer datasets para:
+- widgets reutilizables
+- KPIs globales
+- gráficos
+
+Evitar lógica duplicada.
+
+==================================================
+11) FRONTEND
+==================================================
+
+A) Listado general
+- presupuestos + cuotas
+- filtros completos
+- semáforo
+
+B) Alta de presupuesto
+- selector tipo (single / recurrente)
+- configuración completa
+
+C) Detalle
+- resumen
+- historial
+- cuotas
+- pagos
+- ajustes
+
+D) Cobro
+- registrar pago
+- ver impacto en saldo
+
+==================================================
+12) AUDITORÍA
+==================================================
+
+Registrar:
+- createdBy
+- updatedAt
+- cambios
+- pagos
+- ajustes IPC
+
+Timeline completo.
+
+==================================================
+13) PERMISOS
+==================================================
+
+Controlar:
+- creación
+- edición
+- cobro
+- aprobación
+- rechazo
+- sobrecobro
+- acceso a dashboard
+
+==================================================
+14) VERIFICACIONES FINALES
+==================================================
+
+Antes de finalizar verificar:
+
+- integración con clientes
+- cuotas generadas correctamente
+- pagos funcionando
+- historial de versiones
+- historial de ajustes IPC
+- actualización SOLO en cuotas futuras
+- cuotas vencidas NO modificadas
+- KPIs clickeables
+- dashboard funcionando
+- filtros en base de datos
+- permisos activos
+
+Si algo no está hecho, informarlo.
+No simular implementación.

@@ -35,6 +35,7 @@ import inAppNotificationsRouter from "./in-app-notifications";
 import preferencesRouter from "./preferences";
 import studioRouter from "./studio";
 import quotesRouter from "./quotes";
+import bcraRouter from "./bcra";
 
 const router: IRouter = Router();
 
@@ -45,6 +46,7 @@ router.use(modulesRouter);
 router.use(registrationRequestsRouter);
 router.use(syncRouter);
 router.use(currencyRouter);
+router.use(bcraRouter);
 router.use(externalSourcesRouter);
 router.use(securityLogsRouter);
 router.use(settingsRouter);

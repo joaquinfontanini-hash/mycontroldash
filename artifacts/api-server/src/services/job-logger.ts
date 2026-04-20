@@ -11,6 +11,7 @@ export const JOB_NAMES = {
   SEMAFOROS:   "semaforos",
   EMAIL_ALERTS:"email_alerts",
   CURRENCY:    "currency",
+  BCRA:        "bcra",
 } as const;
 
 export async function startJob(jobName: string): Promise<number> {
