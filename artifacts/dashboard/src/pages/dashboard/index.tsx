@@ -262,7 +262,7 @@ function DollarWidget() {
             {displayRates.map(rate => {
               const colors = DOLAR_COLORS[rate.type] ?? { accent: "text-foreground", bg: "bg-muted/40", border: "border-l-muted" };
               return (
-                <div key={rate.type} className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}>
+                <div key={rate.type} className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border} text-center`}>
                   <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{rate.label}</p>
                   <p className={`text-lg font-bold ${colors.accent} leading-none`}>{formatRate(rate.sell ?? rate.avg)}</p>
                   {rate.buy !== null && rate.sell !== null && (
@@ -381,7 +381,7 @@ function BcraWidget() {
               return (
                 <div
                   key={ind.key}
-                  className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border}`}
+                  className={`rounded-lg p-3 ${colors.bg} border border-border/50 border-l-2 ${colors.border} text-center`}
                   title={ind.tooltip}
                 >
                   <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{ind.label}</p>
