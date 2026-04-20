@@ -14,7 +14,7 @@ import {
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useState, useMemo, useCallback, type ComponentType } from "react";
+import { useState, useMemo, useCallback, type ComponentType, type ReactNode } from "react";
 import ReactGridLayout, { WidthProvider } from "react-grid-layout/legacy";
 import type { Layout } from "react-grid-layout/legacy";
 const GridLayout = WidthProvider(ReactGridLayout);
@@ -517,6 +517,176 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
   );
 }
 
+// ── Summary Grid ─────────────────────────────────────────────────────────────
+
+const SUMMARY_LS_KEY = "dashboard-summary-layout-v1";
+
+const DEFAULT_SUMMARY_LAYOUT: Layout[] = [
+  { i: "weather",      x: 0, y: 0,  w: 9, h: 4,  minH: 3, minW: 4 },
+  { i: "dollar",       x: 0, y: 4,  w: 9, h: 8,  minH: 5, minW: 4 },
+  { i: "mini",         x: 0, y: 12, w: 9, h: 7,  minH: 4, minW: 4 },
+  { i: "vencimientos", x: 9, y: 0,  w: 3, h: 19, minH: 6, minW: 2 },
+];
+
+const SUMMARY_KEYS = ["weather", "dollar", "mini", "vencimientos"];
+
+function loadSummaryLayout(): Layout[] {
+  try {
+    const raw = localStorage.getItem(SUMMARY_LS_KEY);
+    if (!raw) return DEFAULT_SUMMARY_LAYOUT;
+    const parsed = JSON.parse(raw) as Layout[];
+    if (!Array.isArray(parsed) || parsed.length !== SUMMARY_KEYS.length || !parsed.every(p => SUMMARY_KEYS.includes(p.i))) {
+      return DEFAULT_SUMMARY_LAYOUT;
+    }
+    return parsed;
+  } catch { return DEFAULT_SUMMARY_LAYOUT; }
+}
+
+interface SummaryGridProps {
+  today: { condition: string; conditionIcon: string; tempMin: number; tempMax: number; rainProbability: number } | null;
+  tomorrow: { condition: string; conditionIcon: string; tempMin: number; tempMax: number } | null;
+  summary: DashboardSummary | undefined;
+  dueDates: DueDate[];
+  dueDatesLoading: boolean;
+  visibleWidgets: WidgetDef[];
+  setConfigOpen: (open: boolean) => void;
+}
+
+function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading, visibleWidgets, setConfigOpen }: SummaryGridProps) {
+  const [layout, setLayout] = useState<Layout[]>(loadSummaryLayout);
+
+  const handleLayoutChange = useCallback((newLayout: Layout[]) => {
+    setLayout(newLayout);
+    localStorage.setItem(SUMMARY_LS_KEY, JSON.stringify(newLayout));
+  }, []);
+
+  const resetLayout = useCallback(() => {
+    setLayout(DEFAULT_SUMMARY_LAYOUT);
+    localStorage.setItem(SUMMARY_LS_KEY, JSON.stringify(DEFAULT_SUMMARY_LAYOUT));
+  }, []);
+
+  const panels: Record<string, ReactNode> = {
+    weather: today ? (
+      <Card className="h-full border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent overflow-auto">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-4">
+              <WeatherIcon icon={today.conditionIcon} className="h-10 w-10 text-amber-500 shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Clima Neuquén — Hoy</p>
+                <p className="font-semibold">{today.condition}</p>
+                <div className="flex items-center gap-2 text-sm mt-0.5">
+                  <span className="text-blue-500 font-medium">{today.tempMin}°</span>
+                  <span className="text-muted-foreground">/</span>
+                  <span className="text-red-500 font-medium">{today.tempMax}°C</span>
+                  <span className="text-muted-foreground ml-2">Lluvia: {today.rainProbability}%</span>
+                </div>
+              </div>
+            </div>
+            {tomorrow && (
+              <div className="hidden sm:flex items-center gap-3 text-sm text-muted-foreground">
+                <div className="text-right">
+                  <p className="text-xs uppercase tracking-wide font-medium">Mañana</p>
+                  <p className="text-foreground font-medium">{tomorrow.condition}</p>
+                  <p className="text-xs">{tomorrow.tempMin}° / {tomorrow.tempMax}°C</p>
+                </div>
+                <WeatherIcon icon={tomorrow.conditionIcon} className="h-8 w-8 text-muted-foreground" />
+              </div>
+            )}
+            <Button asChild variant="ghost" size="sm" className="shrink-0">
+              <Link href="/dashboard/weather">Ver pronóstico <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    ) : null,
+
+    dollar: <div className="h-full overflow-auto"><DollarWidget /></div>,
+
+    mini: (
+      <div className="h-full overflow-auto">
+        <div className="grid gap-3 sm:grid-cols-3 h-full">
+          {visibleWidgets.map(def => {
+            const val = def.value(summary, dueDates);
+            const sub = def.subtitle(summary, dueDates);
+            return (
+              <Card key={def.id} className="card-hover group">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {def.title}
+                  </CardTitle>
+                  <div className={`h-8 w-8 rounded-lg ${def.bg} flex items-center justify-center`}>
+                    <def.icon className={`h-4 w-4 ${def.accent}`} />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-3xl font-bold ${def.accent} mb-0.5`}>{val}</div>
+                  <p className="text-xs text-muted-foreground mb-4">{sub}</p>
+                  <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
+                    <Link href={def.href}>Ver detalle <ArrowRight className="ml-1 h-3 w-3" /></Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+          {visibleWidgets.length === 0 && (
+            <div className="col-span-3 py-10 text-center border-2 border-dashed border-border/40 rounded-xl">
+              <p className="text-sm text-muted-foreground mb-3">Todos los widgets están ocultos.</p>
+              <Button size="sm" variant="outline" className="text-xs" onClick={() => setConfigOpen(true)}>
+                <Settings2 className="h-3.5 w-3.5 mr-1.5" /> Configurar widgets
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+
+    vencimientos: (
+      <div className="h-full overflow-auto">
+        <VencimientosWidget dueDates={dueDates} isLoading={dueDatesLoading} />
+      </div>
+    ),
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* tiny reset */}
+      <div className="flex justify-end">
+        <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1 text-muted-foreground/40 hover:text-muted-foreground" onClick={resetLayout}>
+          <RotateCcw className="h-2.5 w-2.5" /> Restablecer disposición
+        </Button>
+      </div>
+
+      <GridLayout
+        layout={layout}
+        cols={12}
+        rowHeight={30}
+        margin={[12, 12]}
+        containerPadding={[0, 0]}
+        isDraggable={true}
+        isResizable={true}
+        draggableHandle=".drag-handle"
+        onLayoutChange={handleLayoutChange}
+        resizeHandles={["se"]}
+        className="summary-grid"
+      >
+        {SUMMARY_KEYS.map(key => (
+          <div key={key} className="group/widget">
+            <div className="h-full flex flex-col overflow-hidden rounded-xl">
+              <div className="drag-handle flex items-center justify-center h-4 shrink-0 cursor-grab active:cursor-grabbing select-none opacity-0 group-hover/widget:opacity-100 transition-opacity bg-muted/40 border-b border-border/30 rounded-t-xl">
+                <GripHorizontal className="h-3 w-3 text-muted-foreground/50" />
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {panels[key]}
+              </div>
+            </div>
+          </div>
+        ))}
+      </GridLayout>
+    </div>
+  );
+}
+
 // ── Modules Grid ─────────────────────────────────────────────────────────────
 
 const MODULES_LS_KEY = "modules-grid-layout-v1";
@@ -669,118 +839,46 @@ export default function DashboardSummary() {
         onChange={handleWidgetChange}
       />
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_288px] max-w-6xl">
-        {/* ── Left column ──────────────────────────────────────── */}
-        <div className="space-y-5 min-w-0">
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
-              <p className="text-muted-foreground mt-1 text-sm">
-                {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
-                <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                Panel activo
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => setConfigOpen(true)}
-                title="Personalizar widgets"
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          {today && (
-            <Card className="border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <WeatherIcon icon={today.conditionIcon} className="h-10 w-10 text-amber-500" />
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Clima Neuquén — Hoy</p>
-                      <p className="font-semibold">{today.condition}</p>
-                      <div className="flex items-center gap-2 text-sm mt-0.5">
-                        <span className="text-blue-500 font-medium">{today.tempMin}°</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-red-500 font-medium">{today.tempMax}°C</span>
-                        <span className="text-muted-foreground ml-2">Lluvia: {today.rainProbability}%</span>
-                      </div>
-                    </div>
-                  </div>
-                  {tomorrow && (
-                    <div className="hidden sm:flex items-center gap-3 text-sm text-muted-foreground">
-                      <div className="text-right">
-                        <p className="text-xs uppercase tracking-wide font-medium">Mañana</p>
-                        <p className="text-foreground font-medium">{tomorrow.condition}</p>
-                        <p className="text-xs">{tomorrow.tempMin}° / {tomorrow.tempMax}°C</p>
-                      </div>
-                      <WeatherIcon icon={tomorrow.conditionIcon} className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                  )}
-                  <Button asChild variant="ghost" size="sm" className="shrink-0">
-                    <Link href="/dashboard/weather">
-                      Ver pronóstico <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <DollarWidget />
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            {visibleWidgets.map(def => {
-              const val = def.value(summary, dueDates);
-              const sub = def.subtitle(summary, dueDates);
-              return (
-                <Card key={def.id} className="card-hover group">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      {def.title}
-                    </CardTitle>
-                    <div className={`h-8 w-8 rounded-lg ${def.bg} flex items-center justify-center`}>
-                      <def.icon className={`h-4 w-4 ${def.accent}`} />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`text-3xl font-bold ${def.accent} mb-0.5`}>{val}</div>
-                    <p className="text-xs text-muted-foreground mb-4">{sub}</p>
-                    <Button asChild variant="outline" size="sm" className="w-full text-xs h-7">
-                      <Link href={def.href}>
-                        Ver detalle <ArrowRight className="ml-1 h-3 w-3" />
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-
-            {visibleWidgets.length === 0 && (
-              <div className="col-span-3 py-10 text-center border-2 border-dashed border-border/40 rounded-xl">
-                <p className="text-sm text-muted-foreground mb-3">Todos los widgets están ocultos.</p>
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => setConfigOpen(true)}>
-                  <Settings2 className="h-3.5 w-3.5 mr-1.5" /> Configurar widgets
-                </Button>
-              </div>
-            )}
-          </div>
+      {/* ── Header ───────────────────────────────────────────── */}
+      <div className="flex items-start justify-between max-w-6xl">
+        <div>
+          <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            {new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          </p>
         </div>
-
-        {/* ── Right sidebar: Vencimientos ─────────────────────── */}
-        <div className="self-start lg:sticky lg:top-[76px]">
-          <VencimientosWidget dueDates={dueDates} isLoading={dueDatesLoading} />
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            Panel activo
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => setConfigOpen(true)}
+            title="Personalizar widgets"
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
+      {/* ── Summary Grid ─────────────────────────────────────── */}
+      <div className="max-w-6xl">
+        <SummaryGrid
+          today={today}
+          tomorrow={tomorrow}
+          summary={summary}
+          dueDates={dueDates}
+          dueDatesLoading={dueDatesLoading}
+          visibleWidgets={visibleWidgets}
+          setConfigOpen={setConfigOpen}
+        />
+      </div>
+
       {/* ── Módulos Grid ─────────────────────────────────────── */}
-      <div className="max-w-6xl mt-6">
+      <div className="max-w-6xl mt-2">
         <ModulesGrid />
       </div>
     </>
