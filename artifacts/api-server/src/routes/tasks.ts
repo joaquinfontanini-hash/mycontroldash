@@ -1,5 +1,5 @@
 import { Router, type IRouter, Request } from "express";
-import { eq, and, or, desc, inArray } from "drizzle-orm";
+import { eq, and, or, desc, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, tasksTable, taskCommentsTable, taskHistoryTable, usersTable } from "@workspace/db";
 import { requireAuth, getCurrentUserId, AuthenticatedRequest } from "../middleware/require-auth.js";
@@ -139,7 +139,10 @@ router.get("/tasks", requireAuth, async (req: Request, res): Promise<void> => {
   const search = query.success ? query.data.search?.toLowerCase().trim() : undefined;
 
   try {
-    let tasks = await db.select().from(tasksTable).orderBy(desc(tasksTable.updatedAt));
+    // Only top-level tasks (no subtasks) in the main list
+    let tasks = await db.select().from(tasksTable)
+      .where(isNull(tasksTable.parentTaskId))
+      .orderBy(desc(tasksTable.updatedAt));
 
     // Visibility filter
     if (role !== "super_admin" && role !== "admin") {
@@ -583,6 +586,146 @@ router.post("/tasks/:id/reassign", requireAuth, async (req: Request, res): Promi
   } catch (err) {
     logger.error({ err }, "tasks/reassign error");
     res.status(500).json({ error: "Error al reasignar tarea" });
+  }
+});
+
+// ── GET /tasks/:id/subtasks ───────────────────────────────────────────────────
+router.get("/tasks/:id/subtasks", requireAuth, async (req: Request, res): Promise<void> => {
+  const id = parseInt(req.params["id"] as string);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const userId = getCurrentUserId(req);
+  const role = (req as AuthenticatedRequest).dbUser.role;
+
+  try {
+    const [parent] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+    if (!parent) { res.status(404).json({ error: "Tarea no encontrada" }); return; }
+    if (!isTaskVisible(parent, userId, role)) { res.status(404).json({ error: "Tarea no encontrada" }); return; }
+
+    const subtasks = await db.select().from(tasksTable)
+      .where(eq(tasksTable.parentTaskId, id))
+      .orderBy(tasksTable.createdAt);
+
+    const enriched = await enrichTasks(subtasks);
+    res.json(enriched);
+  } catch (err) {
+    logger.error({ err }, "tasks/subtasks get error");
+    res.status(500).json({ error: "Error al cargar subtareas" });
+  }
+});
+
+// ── POST /tasks/:id/subtasks ──────────────────────────────────────────────────
+router.post("/tasks/:id/subtasks", requireAuth, async (req: Request, res): Promise<void> => {
+  const id = parseInt(req.params["id"] as string);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const userId = getCurrentUserId(req);
+  const role = (req as AuthenticatedRequest).dbUser.role;
+
+  const parsed = CreateTaskBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  try {
+    const [parent] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+    if (!parent) { res.status(404).json({ error: "Tarea no encontrada" }); return; }
+    if (!isTaskVisible(parent, userId, role)) { res.status(404).json({ error: "Tarea no encontrada" }); return; }
+    if (!canActOnTask(parent, userId, role)) {
+      res.status(403).json({ error: "No tenés permiso para agregar subtareas" });
+      return;
+    }
+
+    const { assignedToUserId, requiresAcceptance, ...rest } = parsed.data;
+
+    let status = "pending";
+    if (assignedToUserId) {
+      status = requiresAcceptance ? "pending_acceptance" : "in_progress";
+    }
+
+    const [subtask] = await db.insert(tasksTable).values({
+      ...rest,
+      userId,
+      assignedToUserId: assignedToUserId ?? null,
+      requiresAcceptance: requiresAcceptance ?? false,
+      parentTaskId: id,
+      status,
+      progress: 0,
+    }).returning();
+
+    await logHistory(subtask.id, userId, "created", {
+      next: subtask.title,
+      comment: `Subtarea de tarea #${id}${assignedToUserId ? ` · Asignada a usuario ${assignedToUserId}` : ""}`,
+    });
+
+    const [enriched] = await enrichTasks([subtask]);
+    res.status(201).json(enriched);
+  } catch (err) {
+    logger.error({ err }, "tasks/subtasks create error");
+    res.status(500).json({ error: "Error al crear subtarea" });
+  }
+});
+
+// ── PATCH /tasks/:id/subtasks/:subId/complete ─────────────────────────────────
+router.post("/tasks/:id/subtasks/:subId/complete", requireAuth, async (req: Request, res): Promise<void> => {
+  const parentId = parseInt(req.params["id"] as string);
+  const subId = parseInt(req.params["subId"] as string);
+  if (isNaN(parentId) || isNaN(subId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const userId = getCurrentUserId(req);
+  const role = (req as AuthenticatedRequest).dbUser.role;
+
+  try {
+    const [subtask] = await db.select().from(tasksTable)
+      .where(and(eq(tasksTable.id, subId), eq(tasksTable.parentTaskId, parentId)));
+    if (!subtask) { res.status(404).json({ error: "Subtarea no encontrada" }); return; }
+    if (!canActOnTask(subtask, userId, role)) {
+      res.status(403).json({ error: "No tenés permiso" }); return;
+    }
+
+    const isDone = subtask.status === "completed" || subtask.status === "done";
+    const [updated] = await db.update(tasksTable)
+      .set(isDone
+        ? { status: "in_progress", progress: 0, completedAt: null }
+        : { status: "completed", progress: 100, completedAt: new Date() })
+      .where(eq(tasksTable.id, subId))
+      .returning();
+
+    await logHistory(subId, userId, isDone ? "status_changed" : "completed", {
+      previous: subtask.status,
+      next: updated.status,
+    });
+
+    const [enriched] = await enrichTasks([updated]);
+    res.json(enriched);
+  } catch (err) {
+    logger.error({ err }, "subtasks/complete error");
+    res.status(500).json({ error: "Error al actualizar subtarea" });
+  }
+});
+
+// ── DELETE /tasks/:id/subtasks/:subId ─────────────────────────────────────────
+router.delete("/tasks/:id/subtasks/:subId", requireAuth, async (req: Request, res): Promise<void> => {
+  const parentId = parseInt(req.params["id"] as string);
+  const subId = parseInt(req.params["subId"] as string);
+  if (isNaN(parentId) || isNaN(subId)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+  const userId = getCurrentUserId(req);
+  const role = (req as AuthenticatedRequest).dbUser.role;
+
+  try {
+    const [subtask] = await db.select().from(tasksTable)
+      .where(and(eq(tasksTable.id, subId), eq(tasksTable.parentTaskId, parentId)));
+    if (!subtask) { res.status(404).json({ error: "Subtarea no encontrada" }); return; }
+    if (!canEditTask(subtask, userId, role)) {
+      res.status(403).json({ error: "No tenés permiso para eliminar esta subtarea" }); return;
+    }
+
+    await db.delete(taskHistoryTable).where(eq(taskHistoryTable.taskId, subId));
+    await db.delete(taskCommentsTable).where(eq(taskCommentsTable.taskId, subId));
+    await db.delete(tasksTable).where(eq(tasksTable.id, subId));
+    res.sendStatus(204);
+  } catch (err) {
+    logger.error({ err }, "subtasks/delete error");
+    res.status(500).json({ error: "Error al eliminar subtarea" });
   }
 });
 

@@ -32,7 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, CheckSquare, Clock, AlertCircle, MoreHorizontal, LayoutList, LayoutGrid,
   User, UserCheck, CheckCheck, XCircle, Archive, ArrowRightLeft, MessageSquare,
-  History, ChevronDown, Loader2, Search, Flag, X,
+  History, ChevronDown, Loader2, Search, Flag, X, ListChecks, Trash2,
 } from "lucide-react";
 
 import { BASE } from "@/lib/base-url";
@@ -66,6 +66,7 @@ type Task = {
   requiresAcceptance: boolean;
   rejectionReason?: string | null;
   initialObservations?: string | null;
+  parentTaskId?: number | null;
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -222,6 +223,7 @@ const fetchCurrentUser = () => apiFetch<CurrentUser>("/api/users/me");
 const fetchAssignableUsers = () => apiFetch<AssignableUser[]>("/api/users/assignable");
 const fetchComments = (id: number) => apiFetch<TaskComment[]>(`/api/tasks/${id}/comments`);
 const fetchHistory = (id: number) => apiFetch<TaskHistoryItem[]>(`/api/tasks/${id}/history`);
+const fetchSubtasks = (id: number) => apiFetch<Task[]>(`/api/tasks/${id}/subtasks`);
 
 // ── Assignee Popover ──────────────────────────────────────────────────────────
 // Inline, clickable assignee cell — shows a popover to assign, reassign or
@@ -678,6 +680,183 @@ function ReassignModal({ task, users, currentUserId, onClose, onReassigned }: {
   );
 }
 
+// ── Subtasks Section ──────────────────────────────────────────────────────────
+
+function SubtasksSection({
+  task, users, canAct,
+}: {
+  task: Task;
+  users: AssignableUser[];
+  canAct: boolean;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newAssignee, setNewAssignee] = useState<string>("none");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+
+  const { data: subtasks = [], isLoading } = useQuery<Task[]>({
+    queryKey: ["task-subtasks", task.id],
+    queryFn: () => fetchSubtasks(task.id),
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["task-subtasks", task.id] });
+
+  const handleAdd = async () => {
+    if (!newTitle.trim()) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/subtasks`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          assignedToUserId: newAssignee === "none" ? null : newAssignee,
+        }),
+      });
+      setNewTitle("");
+      setNewAssignee("none");
+      setAdding(false);
+      refresh();
+    } catch (e: unknown) {
+      toast({ title: "Error", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setSaving(false); }
+  };
+
+  const handleToggle = async (sub: Task) => {
+    setTogglingId(sub.id);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/subtasks/${sub.id}/complete`, { method: "POST" });
+      refresh();
+    } catch (e: unknown) {
+      toast({ title: "Error", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setTogglingId(null); }
+  };
+
+  const handleDelete = async (subId: number) => {
+    setDeletingId(subId);
+    try {
+      await apiFetch(`/api/tasks/${task.id}/subtasks/${subId}`, { method: "DELETE" });
+      refresh();
+    } catch (e: unknown) {
+      toast({ title: "Error", variant: "destructive", description: e instanceof Error ? e.message : "" });
+    } finally { setDeletingId(null); }
+  };
+
+  const done = subtasks.filter(s => s.status === "completed" || s.status === "done").length;
+
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold flex items-center gap-1.5">
+          <ListChecks className="h-4 w-4 text-muted-foreground" />
+          Subtareas
+          {subtasks.length > 0 && (
+            <span className="text-xs font-normal text-muted-foreground">({done}/{subtasks.length})</span>
+          )}
+        </h3>
+        {canAct && !adding && (
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAdding(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1" />Agregar
+          </Button>
+        )}
+      </div>
+
+      {/* Progress bar for subtasks */}
+      {subtasks.length > 0 && (
+        <div className="h-1 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-emerald-500 transition-all duration-300"
+            style={{ width: `${Math.round((done / subtasks.length) * 100)}%` }}
+          />
+        </div>
+      )}
+
+      {isLoading && <p className="text-xs text-muted-foreground">Cargando…</p>}
+
+      {/* Subtask list */}
+      {subtasks.length > 0 && (
+        <div className="space-y-1">
+          {subtasks.map(sub => {
+            const isDone = sub.status === "completed" || sub.status === "done";
+            return (
+              <div key={sub.id} className="flex items-center gap-2 group py-1 px-1.5 rounded-lg hover:bg-muted/40 transition-colors">
+                <button
+                  onClick={() => handleToggle(sub)}
+                  disabled={togglingId === sub.id}
+                  className="shrink-0 flex items-center justify-center h-4 w-4 rounded border border-muted-foreground/40 hover:border-primary transition-colors"
+                  style={{ background: isDone ? "rgb(16 185 129)" : undefined, borderColor: isDone ? "rgb(16 185 129)" : undefined }}
+                >
+                  {isDone && <CheckCheck className="h-2.5 w-2.5 text-white" />}
+                  {togglingId === sub.id && <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />}
+                </button>
+                <span className={`flex-1 text-xs leading-snug ${isDone ? "line-through text-muted-foreground" : ""}`}>
+                  {sub.title}
+                </span>
+                {sub.assigneeName && (
+                  <span className="text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-full shrink-0">
+                    {sub.assigneeName}
+                  </span>
+                )}
+                <button
+                  onClick={() => handleDelete(sub.id)}
+                  disabled={deletingId === sub.id}
+                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {deletingId === sub.id
+                    ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    : <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive transition-colors" />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add subtask inline form */}
+      {adding && (
+        <div className="space-y-2 pt-1 pb-0.5 border rounded-lg px-3 py-2.5 bg-muted/30">
+          <Input
+            autoFocus
+            placeholder="Título de la subtarea…"
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            className="h-7 text-xs"
+            onKeyDown={e => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") setAdding(false); }}
+          />
+          <Select value={newAssignee} onValueChange={setNewAssignee}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Sin asignar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sin asignar</SelectItem>
+              {users.map(u => (
+                <SelectItem key={u.id} value={String(u.id)}>
+                  {u.name ?? u.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex gap-1.5 justify-end">
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAdding(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" className="h-6 px-2 text-xs" onClick={handleAdd} disabled={saving || !newTitle.trim()}>
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Guardar"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && subtasks.length === 0 && !adding && (
+        <p className="text-xs text-muted-foreground italic">Sin subtareas. {canAct && "Hacé click en \"Agregar\" para crear una."}</p>
+      )}
+    </div>
+  );
+}
+
 // ── Task Detail Sheet ─────────────────────────────────────────────────────────
 
 function TaskDetailSheet({
@@ -832,6 +1011,13 @@ function TaskDetailSheet({
               <p className="font-medium">{fmtDate(task.updatedAt)}</p>
             </div>
           </div>
+
+          {/* Subtasks */}
+          <SubtasksSection
+            task={task}
+            users={users}
+            canAct={canAct}
+          />
 
           {/* Action buttons */}
           {canAct && (

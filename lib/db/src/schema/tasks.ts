@@ -30,6 +30,7 @@ export const tasksTable = pgTable("tasks", {
   requiresAcceptance: boolean("requires_acceptance").notNull().default(false),
   rejectionReason: text("rejection_reason"),
   initialObservations: text("initial_observations"),
+  parentTaskId: integer("parent_task_id"),  // subtask parent reference
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
