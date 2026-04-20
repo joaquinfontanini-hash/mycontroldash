@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ interface QuoteRow {
   status: QuoteStatus;
   version: number;
   quoteType: QuoteType;
+  contractType: string | null;
   contractStartDate: string | null;
   contractEndDate: string | null;
   billingFrequency: BillingFrequency | null;
@@ -79,6 +81,7 @@ interface QuoteDetail extends QuoteRow {
   clientCuit?: string;
   clientStatus?: string;
   baseAmount?: string | null;
+  currentAmount?: string | null;
   adjustmentFrequency?: string | null;
   adjustmentIndex?: string | null;
   lastAdjustmentDate?: string | null;
@@ -361,8 +364,9 @@ function QuoteForm({
   }));
 
   const [recurring, setRecurring] = useState({
+    contractType:      (editQuote as QuoteDetail)?.contractType ?? "fixed_term",
     contractStartDate: (editQuote as QuoteDetail)?.contractStartDate ?? today(),
-    contractEndDate:   (editQuote as QuoteDetail)?.contractEndDate   ?? addMonths(today(), 24),
+    contractEndDate:   (editQuote as QuoteDetail)?.contractEndDate   ?? addMonths(today(), 12),
     billingFrequency:  (editQuote as QuoteDetail)?.billingFrequency  ?? "monthly",
     adjustmentFrequency: (editQuote as QuoteDetail)?.adjustmentFrequency ?? "quarterly",
     adjustmentIndex:   (editQuote as QuoteDetail)?.adjustmentIndex   ?? "ipc",
@@ -402,7 +406,12 @@ function QuoteForm({
             ...form,
             clientId: parseInt(form.clientId),
             quoteType,
-            ...recurring,
+            contractType: recurring.contractType,
+            contractStartDate: recurring.contractStartDate,
+            contractEndDate: recurring.contractType === "indefinite" ? null : recurring.contractEndDate,
+            billingFrequency: recurring.billingFrequency,
+            adjustmentFrequency: recurring.adjustmentFrequency,
+            adjustmentIndex: recurring.adjustmentIndex,
             baseAmount: parseFloat(recurring.baseAmount),
             subtotal: 0,
             discountAmount: 0,
@@ -445,8 +454,11 @@ function QuoteForm({
     if (!form.title.trim()) { setError("El título es requerido"); return; }
     if (quoteType === "recurring_indexed") {
       if (!recurring.baseAmount || parseFloat(recurring.baseAmount) <= 0) { setError("El importe base es requerido"); return; }
-      if (!recurring.contractStartDate || !recurring.contractEndDate) { setError("Las fechas del contrato son requeridas"); return; }
-      if (recurring.contractStartDate >= recurring.contractEndDate) { setError("La fecha fin debe ser posterior a la fecha inicio"); return; }
+      if (!recurring.contractStartDate) { setError("La fecha de inicio del contrato es requerida"); return; }
+      if (recurring.contractType === "fixed_term") {
+        if (!recurring.contractEndDate) { setError("La fecha de fin es requerida para contratos de plazo fijo"); return; }
+        if (recurring.contractStartDate >= recurring.contractEndDate) { setError("La fecha fin debe ser posterior a la fecha inicio"); return; }
+      }
     }
     mutation.mutate();
   };
@@ -550,6 +562,26 @@ function QuoteForm({
                 <Repeat className="w-4 h-4" /> Configuración del contrato
               </p>
 
+              {/* Tipo de contrato */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRecurring(p => ({ ...p, contractType: "fixed_term" }))}
+                  className={`border rounded-lg px-3 py-2.5 text-left text-sm transition-all ${recurring.contractType === "fixed_term" ? "border-violet-500 bg-violet-50 dark:bg-violet-900/30 ring-2 ring-violet-200 dark:ring-violet-800" : "border-border hover:border-violet-300"}`}
+                >
+                  <div className="font-medium text-sm">Plazo fijo</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">Fecha de inicio y fin definidas</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRecurring(p => ({ ...p, contractType: "indefinite" }))}
+                  className={`border rounded-lg px-3 py-2.5 text-left text-sm transition-all ${recurring.contractType === "indefinite" ? "border-violet-500 bg-violet-50 dark:bg-violet-900/30 ring-2 ring-violet-200 dark:ring-violet-800" : "border-border hover:border-violet-300"}`}
+                >
+                  <div className="font-medium text-sm">Indefinido</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">Sin fecha de vencimiento · extensión rolling</div>
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label>Fecha de emisión</Label>
@@ -566,10 +598,20 @@ function QuoteForm({
                   <Label>Inicio de vigencia</Label>
                   <Input type="date" value={recurring.contractStartDate} onChange={e => setRecurring(p => ({ ...p, contractStartDate: e.target.value }))} />
                 </div>
-                <div className="space-y-1">
-                  <Label>Fin de vigencia</Label>
-                  <Input type="date" value={recurring.contractEndDate} onChange={e => setRecurring(p => ({ ...p, contractEndDate: e.target.value }))} />
-                </div>
+                {recurring.contractType === "fixed_term" && (
+                  <div className="space-y-1">
+                    <Label>Fin de vigencia</Label>
+                    <Input type="date" value={recurring.contractEndDate} onChange={e => setRecurring(p => ({ ...p, contractEndDate: e.target.value }))} />
+                  </div>
+                )}
+                {recurring.contractType === "indefinite" && (
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Sin fecha de fin</Label>
+                    <div className="flex items-center h-9 px-3 border rounded-md bg-muted/40 text-xs text-muted-foreground">
+                      Se generan 12 meses · extensible
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -598,11 +640,12 @@ function QuoteForm({
                 </div>
               </div>
 
-              {recurring.contractStartDate && recurring.contractEndDate && recurring.billingFrequency && recurring.baseAmount && (
+              {recurring.contractStartDate && recurring.billingFrequency && recurring.baseAmount && (
                 <div className="text-xs text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded px-3 py-2">
-                  Se generarán cuotas automáticamente de {FREQ_LABELS[recurring.billingFrequency]?.toLowerCase()} entre{" "}
-                  {fmtDate(recurring.contractStartDate)} y {fmtDate(recurring.contractEndDate)}.
-                  Ajuste IPC {FREQ_LABELS[recurring.adjustmentFrequency]?.toLowerCase()} sobre cuotas futuras.
+                  {recurring.contractType === "indefinite"
+                    ? <>Se generarán <b>12 cuotas {FREQ_LABELS[recurring.billingFrequency]?.toLowerCase()}</b> desde {fmtDate(recurring.contractStartDate)} (extensibles). Ajuste IPC {FREQ_LABELS[recurring.adjustmentFrequency]?.toLowerCase()} sobre cuotas futuras.</>
+                    : <>Se generarán cuotas automáticamente de {FREQ_LABELS[recurring.billingFrequency]?.toLowerCase()} entre{" "}{fmtDate(recurring.contractStartDate)}{recurring.contractEndDate ? ` y ${fmtDate(recurring.contractEndDate)}` : ""}. Ajuste IPC {FREQ_LABELS[recurring.adjustmentFrequency]?.toLowerCase()} sobre cuotas futuras.</>
+                  }
                 </div>
               )}
             </div>
@@ -658,7 +701,10 @@ function QuoteForm({
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleSubmit} disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-            {quoteType === "recurring_indexed" ? "Crear contrato y generar cuotas" : "Guardar borrador"}
+            {quoteType === "recurring_indexed"
+              ? (recurring.contractType === "indefinite" ? "Crear contrato indefinido (12 meses)" : "Crear contrato y generar cuotas")
+              : "Guardar borrador"
+            }
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1070,9 +1116,30 @@ function ApplyAdjustmentModal({
 
 function InstallmentsTab({ quote }: { quote: QuoteDetail }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [payInstallment, setPayInstallment] = useState<QuoteInstallment | null>(null);
   const [showAdjust, setShowAdjust] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
+
+  const extendMutation = useMutation({
+    mutationFn: async (months: number) => {
+      const r = await fetch(`${BASE}/api/quotes/${quote.id}/extend-installments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ months }),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Error al extender"); }
+      return r.json();
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["quote-installments", quote.id] });
+      qc.invalidateQueries({ queryKey: ["quote", quote.id] });
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+      toast({ title: "Contrato extendido", description: `${data.newInstallments} cuotas generadas hasta ${fmtDate(data.newLastDueDate)}` });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const { data, isLoading } = useQuery<{ installments: QuoteInstallment[]; summary: { total: number; paid: number; overdue: number; pending: number; totalPaid: number; totalAdjusted: number; balance: number } }>({
     queryKey: ["quote-installments", quote.id, statusFilter],
@@ -1154,6 +1221,17 @@ function InstallmentsTab({ quote }: { quote: QuoteDetail }) {
             onClick={() => setShowAdjust(true)}
           >
             <Zap className="w-3.5 h-3.5" /> Aplicar ajuste IPC
+          </Button>
+        )}
+        {!quote.archivedAt && quote.contractType === "indefinite" && (
+          <Button
+            size="sm" variant="outline"
+            className="h-8 text-xs gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+            onClick={() => extendMutation.mutate(12)}
+            disabled={extendMutation.isPending}
+          >
+            {extendMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Extender 12 meses
           </Button>
         )}
       </div>
@@ -1386,6 +1464,11 @@ function QuoteDetailSheet({
                         <Repeat className="w-2.5 h-2.5" /> Recurrente
                       </Badge>
                     )}
+                    {isRecurring && quote.contractType === "indefinite" && (
+                      <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-0">
+                        Indefinido
+                      </Badge>
+                    )}
                     <StatusBadge status={quote.status} />
                     <Semaphore quote={quote} />
                   </div>
@@ -1442,7 +1525,13 @@ function QuoteDetailSheet({
                       <>
                         <div className="space-y-0.5">
                           <p className="text-xs text-muted-foreground">Vigencia del contrato</p>
-                          <p className="font-medium">{fmtDate(quote.contractStartDate)} — {fmtDate(quote.contractEndDate)}</p>
+                          <p className="font-medium">
+                            {fmtDate(quote.contractStartDate)} —{" "}
+                            {quote.contractType === "indefinite"
+                              ? <span className="text-emerald-600 dark:text-emerald-400 font-medium">Sin fecha de fin</span>
+                              : fmtDate(quote.contractEndDate)
+                            }
+                          </p>
                         </div>
                         <div className="space-y-0.5">
                           <p className="text-xs text-muted-foreground">Frecuencia de cobro</p>

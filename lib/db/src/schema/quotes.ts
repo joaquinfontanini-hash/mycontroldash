@@ -36,13 +36,15 @@ export const quotesTable = pgTable("quotes", {
 
   // ── Campos para contratos recurrentes (quoteType = recurring_indexed) ──────
   quoteType:             text("quote_type").notNull().default("single"),  // single | recurring_indexed
+  contractType:          text("contract_type"),          // fixed_term | indefinite
   contractStartDate:     text("contract_start_date"),    // YYYY-MM-DD — inicio vigencia
-  contractEndDate:       text("contract_end_date"),      // YYYY-MM-DD — fin vigencia
+  contractEndDate:       text("contract_end_date"),      // YYYY-MM-DD — fin vigencia (null para indefinidos)
   billingFrequency:      text("billing_frequency"),      // monthly | quarterly | semiannual | annual
   adjustmentFrequency:   text("adjustment_frequency"),   // quarterly | semiannual | annual
   adjustmentIndex:       text("adjustment_index"),       // ipc | icl | custom
   adjustmentMode:        text("adjustment_mode"),        // apply_on_last_effective_amount
-  baseAmount:            numeric("base_amount", { precision: 18, scale: 2 }),  // monto de 1ra cuota
+  baseAmount:            numeric("base_amount",    { precision: 18, scale: 2 }),  // monto original de 1ra cuota
+  currentAmount:         numeric("current_amount", { precision: 18, scale: 2 }),  // monto vigente (actualizado por IPC)
   nextAdjustmentDate:    text("next_adjustment_date"),   // YYYY-MM-DD
   lastAdjustmentDate:    text("last_adjustment_date"),   // YYYY-MM-DD
   installmentsGenerated: boolean("installments_generated").notNull().default(false),

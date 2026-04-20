@@ -145,9 +145,8 @@ function generateInstallments(
   while (periodStart < end) {
     const periodEnd = addMonths(periodStart, stepMonths);
     const actualPeriodEnd = periodEnd > end ? end : periodEnd;
-    // La fecha de vencimiento es el último día del período (o fin de contrato)
     const dueDateObj = new Date(actualPeriodEnd);
-    dueDateObj.setDate(dueDateObj.getDate() - 1); // último día inclusivo
+    dueDateObj.setDate(dueDateObj.getDate() - 1);
     const dueDate = dueDateObj < periodStart
       ? periodStart.toISOString().slice(0, 10)
       : dueDateObj.toISOString().slice(0, 10);
@@ -169,6 +168,52 @@ function generateInstallments(
     n++;
     periodStart = periodEnd;
     if (periodStart >= end) break;
+  }
+
+  return installments;
+}
+
+// ── generateRollingInstallments — contratos indefinidos (sin fecha de fin) ────
+// Genera `monthsAhead` cuotas hacia adelante desde `fromDate`.
+// `startN` = número de cuota inicial (para extensiones).
+// `currentAmount` = importe vigente (post-IPC si hubo ajustes).
+function generateRollingInstallments(
+  quoteId: number,
+  fromDate: string,
+  billingFrequency: string,
+  currentAmount: number,
+  monthsAhead: number,
+  startN: number,
+): InsertQuoteInstallment[] {
+  const installments: InsertQuoteInstallment[] = [];
+  const stepMonths = frequencyToMonths(billingFrequency);
+  let periodStart = new Date(fromDate + "T00:00:00");
+  let n = startN;
+
+  for (let i = 0; i < monthsAhead; i++) {
+    const periodEnd = addMonths(periodStart, stepMonths);
+    const dueDateObj = new Date(periodEnd);
+    dueDateObj.setDate(dueDateObj.getDate() - 1);
+    const dueDate = dueDateObj < periodStart
+      ? periodStart.toISOString().slice(0, 10)
+      : dueDateObj.toISOString().slice(0, 10);
+
+    installments.push({
+      quoteId,
+      installmentNumber: n,
+      periodStart: periodStart.toISOString().slice(0, 10),
+      periodEnd: periodEnd.toISOString().slice(0, 10),
+      dueDate,
+      baseAmount: currentAmount.toString(),
+      adjustedAmount: currentAmount.toString(),
+      appliedAdjustmentRate: "0",
+      status: "pending",
+      paidAmount: "0",
+      balanceDue: currentAmount.toString(),
+    });
+
+    n++;
+    periodStart = periodEnd;
   }
 
   return installments;
@@ -715,6 +760,7 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
       subtotal, discountAmount, taxAmount, totalAmount, notes, items = [],
       // Campos recurrentes
       quoteType = "single",
+      contractType = "fixed_term",   // fixed_term | indefinite
       contractStartDate, contractEndDate, billingFrequency,
       adjustmentFrequency, adjustmentIndex, adjustmentMode, baseAmount,
     } = req.body;
@@ -732,10 +778,12 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
     // Validaciones para recurrentes
     if (quoteType === "recurring_indexed") {
       if (!contractStartDate) { res.status(400).json({ error: "La fecha de inicio del contrato es requerida" }); return; }
-      if (!contractEndDate)   { res.status(400).json({ error: "La fecha de fin del contrato es requerida" }); return; }
       if (!billingFrequency)  { res.status(400).json({ error: "La frecuencia de cobro es requerida" }); return; }
       if (!baseAmount || parseFloat(baseAmount) <= 0) { res.status(400).json({ error: "El importe base de la cuota es requerido" }); return; }
-      if (contractStartDate >= contractEndDate) { res.status(400).json({ error: "La fecha fin debe ser posterior a la fecha inicio" }); return; }
+      if (contractType === "fixed_term") {
+        if (!contractEndDate) { res.status(400).json({ error: "La fecha de fin es requerida para contratos de plazo fijo" }); return; }
+        if (contractStartDate >= contractEndDate) { res.status(400).json({ error: "La fecha fin debe ser posterior a la fecha inicio" }); return; }
+      }
     } else {
       if (!dueDate) { res.status(400).json({ error: "La fecha de vencimiento es requerida" }); return; }
     }
@@ -743,8 +791,23 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
     const quoteNumber = await generateQuoteNumber(userId);
 
     // Para recurrentes el totalAmount = sum of all installments (se calcula después)
-    // dueDate para recurrentes = contractEndDate
-    const effectiveDueDate = quoteType === "recurring_indexed" ? contractEndDate : dueDate;
+    // dueDate para recurrentes:
+    //   fixed_term → contractEndDate
+    //   indefinite → 12 meses desde contractStartDate (se recalcula cuando se extienda)
+    const ROLLING_MONTHS = 12;
+    const indefinite = quoteType === "recurring_indexed" && contractType === "indefinite";
+    let effectiveDueDate: string;
+    if (quoteType === "recurring_indexed") {
+      if (indefinite) {
+        const d = new Date(contractStartDate + "T00:00:00");
+        d.setMonth(d.getMonth() + ROLLING_MONTHS);
+        effectiveDueDate = d.toISOString().slice(0, 10);
+      } else {
+        effectiveDueDate = contractEndDate;
+      }
+    } else {
+      effectiveDueDate = dueDate;
+    }
 
     // FIX Bug 1: siempre crear como draft, ignorar status del body
     const [quote] = await db.insert(quotesTable).values({
@@ -760,19 +823,21 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
       discountAmount: discountAmount?.toString() ?? "0",
       taxAmount: taxAmount?.toString() ?? "0",
       totalAmount: totalAmount?.toString() ?? "0",
-      status: "draft",  // FIX: siempre draft, nunca del body
+      status: "draft",
       version: 1,
       notes: notes ?? null,
       createdBy: userId,
       // Campos recurrentes
       quoteType,
+      contractType: quoteType === "recurring_indexed" ? contractType : null,
       contractStartDate: quoteType === "recurring_indexed" ? contractStartDate : null,
-      contractEndDate:   quoteType === "recurring_indexed" ? contractEndDate   : null,
+      contractEndDate:   (!indefinite && quoteType === "recurring_indexed") ? contractEndDate : null,
       billingFrequency:  quoteType === "recurring_indexed" ? billingFrequency  : null,
       adjustmentFrequency: adjustmentFrequency ?? null,
       adjustmentIndex:   adjustmentIndex ?? "ipc",
       adjustmentMode:    adjustmentMode ?? "apply_on_last_effective_amount",
       baseAmount:        quoteType === "recurring_indexed" ? baseAmount?.toString() : null,
+      currentAmount:     quoteType === "recurring_indexed" ? baseAmount?.toString() : null,
       nextAdjustmentDate: (quoteType === "recurring_indexed" && adjustmentFrequency && contractStartDate)
         ? nextAdjDateFromFreq(new Date(contractStartDate + "T00:00:00"), adjustmentFrequency)
         : null,
@@ -794,28 +859,46 @@ router.post("/quotes", requireAuth, async (req, res): Promise<void> => {
     }
 
     // Generar cuotas para recurrentes
-    if (quoteType === "recurring_indexed" && contractStartDate && contractEndDate && billingFrequency && baseAmount) {
-      const installs = generateInstallments(
-        quote!.id,
-        contractStartDate,
-        contractEndDate,
-        billingFrequency,
-        parseFloat(baseAmount),
-      );
+    if (quoteType === "recurring_indexed" && contractStartDate && billingFrequency && baseAmount) {
+      let installs: InsertQuoteInstallment[];
+
+      if (indefinite) {
+        // Contratos indefinidos: rolling, 12 meses desde el inicio
+        installs = generateRollingInstallments(
+          quote!.id,
+          contractStartDate,
+          billingFrequency,
+          parseFloat(baseAmount),
+          ROLLING_MONTHS,
+          1,
+        );
+      } else {
+        // Contratos de plazo fijo: hasta la fecha fin
+        installs = generateInstallments(
+          quote!.id,
+          contractStartDate,
+          contractEndDate,
+          billingFrequency,
+          parseFloat(baseAmount),
+        );
+      }
 
       if (installs.length > 0) {
         await db.insert(quoteInstallmentsTable).values(installs);
-        // totalAmount = suma de todas las cuotas
-        const totalContrato = installs.reduce((acc, i) => acc + parseFloat(baseAmount), 0);
+        const totalContrato = installs.length * parseFloat(baseAmount);
+        const lastInst = installs[installs.length - 1]!;
         await db.update(quotesTable).set({
           totalAmount: totalContrato.toFixed(2),
           subtotal: totalContrato.toFixed(2),
           installmentsGenerated: true,
+          // Para indefinidos, actualizamos dueDate al último vencimiento generado
+          dueDate: indefinite ? lastInst.dueDate : effectiveDueDate,
         }).where(eq(quotesTable.id, quote!.id));
       }
     }
 
-    await logActivity(quote!.id, clientId, userId, "created", `Presupuesto ${quoteNumber} creado (${quoteType === "recurring_indexed" ? "contrato recurrente" : "cobro único"})`);
+    await logActivity(quote!.id, clientId, userId, "created",
+      `Presupuesto ${quoteNumber} creado (${quoteType === "recurring_indexed" ? (indefinite ? "contrato indefinido" : "contrato plazo fijo") : "cobro único"})`);
 
     const detail = await getQuoteDetail(quote!.id, userId);
     res.status(201).json(detail);
@@ -1346,13 +1429,17 @@ router.post("/quotes/:id/apply-adjustment", requireAuth, async (req, res): Promi
         .where(eq(quoteInstallmentsTable.id, inst.id));
     }
 
-    // Actualizar nextAdjustmentDate y lastAdjustmentDate en el contrato
+    // Actualizar nextAdjustmentDate, lastAdjustmentDate y currentAmount en el contrato
     const nextAdj = quote.adjustmentFrequency
       ? nextAdjDateFromFreq(new Date(adjustmentDate + "T00:00:00"), quote.adjustmentFrequency)
       : null;
 
     await db.update(quotesTable)
-      .set({ lastAdjustmentDate: adjustmentDate, nextAdjustmentDate: nextAdj })
+      .set({
+        lastAdjustmentDate: adjustmentDate,
+        nextAdjustmentDate: nextAdj,
+        currentAmount: newBaseAmount.toFixed(2),  // monto vigente post-IPC
+      })
       .where(eq(quotesTable.id, id));
 
     // Registrar historial de ajuste
@@ -1384,6 +1471,98 @@ router.post("/quotes/:id/apply-adjustment", requireAuth, async (req, res): Promi
   } catch (err) {
     logger.error({ err }, "apply adjustment error");
     res.status(500).json({ error: "Error al aplicar ajuste" });
+  }
+});
+
+// ── POST /quotes/:id/extend-installments ──────────────────────────────────────
+// Solo para contratos indefinidos. Genera los próximos N meses de cuotas
+// a partir del vencimiento de la última cuota existente.
+router.post("/quotes/:id/extend-installments", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const userId = getCurrentUserId(req);
+    const id = parseInt(req.params["id"] as string);
+    if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+
+    const [quote] = await db.select().from(quotesTable)
+      .where(and(eq(quotesTable.id, id), eq(quotesTable.userId, userId)));
+    if (!quote) { res.status(404).json({ error: "Contrato no encontrado" }); return; }
+    if (quote.quoteType !== "recurring_indexed") {
+      res.status(400).json({ error: "Solo aplica a contratos recurrentes" }); return;
+    }
+    if (quote.contractType !== "indefinite") {
+      res.status(400).json({ error: "Solo se puede extender contratos indefinidos" }); return;
+    }
+    if (!quote.billingFrequency) {
+      res.status(400).json({ error: "El contrato no tiene frecuencia de cobro configurada" }); return;
+    }
+
+    const ROLLING_MONTHS = (req.body.months as number) ?? 12;
+
+    // Obtener la última cuota generada (por periodEnd más reciente)
+    const [lastInst] = await db.select()
+      .from(quoteInstallmentsTable)
+      .where(eq(quoteInstallmentsTable.quoteId, id))
+      .orderBy(desc(quoteInstallmentsTable.installmentNumber))
+      .limit(1);
+
+    if (!lastInst) { res.status(400).json({ error: "El contrato no tiene cuotas generadas" }); return; }
+
+    // Usar currentAmount si existe (post-IPC), sino baseAmount
+    const effectiveAmount = parseFloat(
+      (quote.currentAmount ?? quote.baseAmount ?? "0") as string
+    );
+    if (effectiveAmount <= 0) {
+      res.status(400).json({ error: "El importe base no es válido" }); return;
+    }
+
+    // Generar desde el periodEnd de la última cuota
+    const fromDate = lastInst.periodEnd;
+    const startN = lastInst.installmentNumber + 1;
+
+    const newInstalls = generateRollingInstallments(
+      id,
+      fromDate,
+      quote.billingFrequency,
+      effectiveAmount,
+      ROLLING_MONTHS,
+      startN,
+    );
+
+    if (newInstalls.length === 0) {
+      res.status(400).json({ error: "No se generaron cuotas nuevas" }); return;
+    }
+
+    await db.insert(quoteInstallmentsTable).values(newInstalls);
+
+    // Actualizar dueDate del contrato al último vencimiento generado
+    const newLastInst = newInstalls[newInstalls.length - 1]!;
+    const newTotalInstalls = lastInst.installmentNumber + newInstalls.length;
+    const perCuota = effectiveAmount;
+    const currentTotal = parseFloat(quote.totalAmount as string ?? "0");
+    const addedTotal = newInstalls.length * perCuota;
+
+    await db.update(quotesTable)
+      .set({
+        dueDate: newLastInst.dueDate,
+        totalAmount: (currentTotal + addedTotal).toFixed(2),
+        subtotal: (currentTotal + addedTotal).toFixed(2),
+      })
+      .where(eq(quotesTable.id, id));
+
+    await logActivity(id, quote.clientId, userId, "installments_extended",
+      `Extendidas ${newInstalls.length} cuotas hasta ${newLastInst.dueDate} (total: ${newTotalInstalls} cuotas)`,
+      { fromDate, newInstallments: newInstalls.length, newLastDueDate: newLastInst.dueDate });
+
+    res.json({
+      ok: true,
+      newInstallments: newInstalls.length,
+      fromDate,
+      newLastDueDate: newLastInst.dueDate,
+      startN,
+    });
+  } catch (err) {
+    logger.error({ err }, "extend installments error");
+    res.status(500).json({ error: "Error al extender cuotas" });
   }
 });
 
