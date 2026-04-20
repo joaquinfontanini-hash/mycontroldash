@@ -35,3 +35,21 @@ export type DailyGoal = typeof dailyGoalsTable.$inferSelect;
 export const insertStrategyGoalSchema = createInsertSchema(strategyGoalsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertStrategyGoal = z.infer<typeof insertStrategyGoalSchema>;
 export type StrategyGoal = typeof strategyGoalsTable.$inferSelect;
+
+// ── Project Tasks (tareas dentro de un proyecto/objetivo estratégico) ──────────
+export const projectTasksTable = pgTable("project_tasks", {
+  id: serial("id").primaryKey(),
+  goalId: integer("goal_id").notNull(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull(),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  status: text("status").notNull().default("todo"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const insertProjectTaskSchema = createInsertSchema(projectTasksTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
+export type ProjectTask = typeof projectTasksTable.$inferSelect;

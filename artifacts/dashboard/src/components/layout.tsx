@@ -74,7 +74,7 @@ const ALL_NAV_ITEMS = [
   { href: "/dashboard/tax-calendars", label: "Calendarios", icon: CalendarDays, moduleKey: "tax-calendars" },
   { href: "/dashboard/finance", label: "Finanzas", icon: DollarSign, moduleKey: "finance" },
   { href: "/dashboard/goals", label: "Objetivos", icon: Target, moduleKey: "goals" },
-  { href: "/dashboard/strategy", label: "Estrategia", icon: Flag, moduleKey: "strategy" },
+  { href: "/dashboard/strategy", label: "Proyectos", icon: Flag, moduleKey: "strategy" },
   { href: "/dashboard/decisions", label: "Decisiones", icon: Brain, moduleKey: "decisions" },
   { href: "/dashboard/contacts", label: "Contactos", icon: Contact, moduleKey: "contacts" },
   { href: "/dashboard/chat", label: "Chat", icon: MessageSquare, moduleKey: "chat" },

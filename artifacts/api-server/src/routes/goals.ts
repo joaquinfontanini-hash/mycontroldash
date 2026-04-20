@@ -1,6 +1,6 @@
 import { Router, type IRouter, Request, Response } from "express";
 import { eq, and, desc, asc } from "drizzle-orm";
-import { db, dailyGoalsTable, strategyGoalsTable } from "@workspace/db";
+import { db, dailyGoalsTable, strategyGoalsTable, projectTasksTable } from "@workspace/db";
 import { requireAuth, assertOwnership, getCurrentUserId } from "../middleware/require-auth.js";
 import { logger } from "../lib/logger.js";
 
@@ -119,7 +119,14 @@ router.get("/strategy-goals", requireAuth, async (req: Request, res: Response): 
     const goals = await db.select().from(strategyGoalsTable)
       .where(eq(strategyGoalsTable.userId, userId))
       .orderBy(asc(strategyGoalsTable.startDate));
-    res.json(goals);
+    const allTasks = await db.select().from(projectTasksTable)
+      .where(eq(projectTasksTable.userId, userId))
+      .orderBy(asc(projectTasksTable.startDate));
+    const result = goals.map(g => ({
+      ...g,
+      tasks: allTasks.filter(t => t.goalId === g.id),
+    }));
+    res.json(result);
   } catch (err) {
     logger.error({ err }, "strategy goals fetch error");
     res.status(500).json({ error: "Error al cargar estrategia" });
@@ -186,11 +193,101 @@ router.delete("/strategy-goals/:id", requireAuth, async (req: Request, res: Resp
     if (!existing) { res.status(404).json({ error: "No encontrado" }); return; }
     if (!assertOwnership(req, res, existing.userId)) return;
 
+    await db.delete(projectTasksTable).where(eq(projectTasksTable.goalId, id));
     await db.delete(strategyGoalsTable).where(eq(strategyGoalsTable.id, id));
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "strategy goal delete error");
     res.status(500).json({ error: "Error al eliminar objetivo" });
+  }
+});
+
+// ── Project Tasks ─────────────────────────────────────────────────────────────
+
+router.get("/strategy-goals/:id/tasks", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const goalId = parseInt(req.params.id as string, 10);
+  if (isNaN(goalId)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const userId = getCurrentUserId(req);
+    const tasks = await db.select().from(projectTasksTable)
+      .where(and(eq(projectTasksTable.goalId, goalId), eq(projectTasksTable.userId, userId)))
+      .orderBy(asc(projectTasksTable.startDate));
+    res.json(tasks);
+  } catch (err) {
+    logger.error({ err }, "project tasks fetch error");
+    res.status(500).json({ error: "Error al cargar tareas" });
+  }
+});
+
+router.post("/strategy-goals/:id/tasks", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const goalId = parseInt(req.params.id as string, 10);
+  if (isNaN(goalId)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const userId = getCurrentUserId(req);
+    const [goal] = await db.select().from(strategyGoalsTable).where(eq(strategyGoalsTable.id, goalId));
+    if (!goal) { res.status(404).json({ error: "Proyecto no encontrado" }); return; }
+    if (!assertOwnership(req, res, goal.userId)) return;
+
+    const { title, startDate, endDate, status, notes } = req.body ?? {};
+    if (!title || !startDate || !endDate) {
+      res.status(400).json({ error: "title, startDate y endDate son requeridos" }); return;
+    }
+    const [task] = await db.insert(projectTasksTable).values({
+      goalId, userId, title, startDate, endDate,
+      status: ["todo", "in-progress", "done"].includes(status) ? status : "todo",
+      notes: notes ?? null,
+    }).returning();
+    res.status(201).json(task);
+  } catch (err) {
+    logger.error({ err }, "project task create error");
+    res.status(500).json({ error: "Error al crear tarea" });
+  }
+});
+
+router.patch("/strategy-goals/:id/tasks/:taskId", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const goalId = parseInt(req.params.id as string, 10);
+  const taskId = parseInt(req.params.taskId as string, 10);
+  if (isNaN(goalId) || isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const userId = getCurrentUserId(req);
+    const [task] = await db.select().from(projectTasksTable)
+      .where(and(eq(projectTasksTable.id, taskId), eq(projectTasksTable.goalId, goalId)));
+    if (!task) { res.status(404).json({ error: "Tarea no encontrada" }); return; }
+    if (task.userId !== userId) { res.status(403).json({ error: "Sin permiso" }); return; }
+
+    const { title, startDate, endDate, status, notes } = req.body ?? {};
+    const updates: Record<string, unknown> = {};
+    if (typeof title === "string") updates.title = title;
+    if (typeof startDate === "string") updates.startDate = startDate;
+    if (typeof endDate === "string") updates.endDate = endDate;
+    if (["todo", "in-progress", "done"].includes(status)) updates.status = status;
+    if (notes !== undefined) updates.notes = notes;
+
+    const [updated] = await db.update(projectTasksTable).set(updates as any)
+      .where(eq(projectTasksTable.id, taskId)).returning();
+    res.json(updated);
+  } catch (err) {
+    logger.error({ err }, "project task update error");
+    res.status(500).json({ error: "Error al actualizar tarea" });
+  }
+});
+
+router.delete("/strategy-goals/:id/tasks/:taskId", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const goalId = parseInt(req.params.id as string, 10);
+  const taskId = parseInt(req.params.taskId as string, 10);
+  if (isNaN(goalId) || isNaN(taskId)) { res.status(400).json({ error: "ID inválido" }); return; }
+  try {
+    const userId = getCurrentUserId(req);
+    const [task] = await db.select().from(projectTasksTable)
+      .where(and(eq(projectTasksTable.id, taskId), eq(projectTasksTable.goalId, goalId)));
+    if (!task) { res.status(404).json({ error: "Tarea no encontrada" }); return; }
+    if (task.userId !== userId) { res.status(403).json({ error: "Sin permiso" }); return; }
+
+    await db.delete(projectTasksTable).where(eq(projectTasksTable.id, taskId));
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "project task delete error");
+    res.status(500).json({ error: "Error al eliminar tarea" });
   }
 });
 
