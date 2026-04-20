@@ -283,6 +283,7 @@ function ClerkProviderWithRoutes() {
     <ClerkProvider
       publishableKey={clerkPubKey!}
       proxyUrl={clerkProxyUrl}
+      afterSignOutUrl="/sign-in"
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >

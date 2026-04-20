@@ -519,8 +519,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => auth.signOut()}
-                  className="text-destructive focus:text-destructive"
+                  onClick={() => { void auth.signOut(); }}
+                  className="text-destructive focus:text-destructive cursor-pointer"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
                   Cerrar Sesión
