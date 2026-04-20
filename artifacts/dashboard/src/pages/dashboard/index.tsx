@@ -401,8 +401,18 @@ const VENC_TABS = [
 function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLoading: boolean }) {
   const [activeTab, setActiveTab] = useState("all");
 
+  const thisMonth = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }, []);
+
+  const thisMonthPending = useMemo(() =>
+    dueDates.filter(d => d.status === "pending" && d.dueDate.startsWith(thisMonth)),
+    [dueDates, thisMonth]
+  );
+
   const pending = useMemo(() => {
-    let items = dueDates.filter(d => d.status === "pending");
+    let items = thisMonthPending;
     if (activeTab !== "all") {
       items = items.filter(d => {
         const cat = d.category?.toLowerCase() ?? "";
@@ -414,15 +424,14 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
       });
     }
     return items.sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 10);
-  }, [dueDates, activeTab]);
+  }, [thisMonthPending, activeTab]);
 
   const critical = useMemo(() =>
-    dueDates.filter(d => {
-      if (d.status !== "pending") return false;
+    thisMonthPending.filter(d => {
       const u = getUrgency(d.dueDate, d.status);
       return u === "overdue" || u === "today";
     }).length,
-    [dueDates]
+    [thisMonthPending]
   );
 
   return (
@@ -448,8 +457,8 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
         <div className="flex gap-1 overflow-x-auto scrollbar-none mt-1.5 pb-0.5">
           {VENC_TABS.map(tab => {
             const count = tab.key === "all"
-              ? dueDates.filter(d => d.status === "pending").length
-              : dueDates.filter(d => d.status === "pending" && (d.category?.toLowerCase() === tab.key || d.category?.toLowerCase() === tab.key.replace("_", " "))).length;
+              ? thisMonthPending.length
+              : thisMonthPending.filter(d => d.category?.toLowerCase() === tab.key || d.category?.toLowerCase() === tab.key.replace("_", " ")).length;
             return (
               <button
                 key={tab.key}
@@ -521,10 +530,10 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
                 </Link>
               );
             })}
-            {dueDates.filter(d => d.status === "pending").length > 10 && (
+            {thisMonthPending.length > 10 && (
               <Button asChild variant="ghost" size="sm" className="w-full h-7 text-[10px] text-muted-foreground mt-0.5">
                 <Link href="/dashboard/due-dates">
-                  +{dueDates.filter(d => d.status === "pending").length - 10} más
+                  +{thisMonthPending.length - 10} más este mes
                 </Link>
               </Button>
             )}
