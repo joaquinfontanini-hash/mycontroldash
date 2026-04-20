@@ -663,19 +663,17 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
 
 // ── Summary Grid ─────────────────────────────────────────────────────────────
 
-const SUMMARY_LS_KEY = "dashboard-summary-layout-v1";
+const SUMMARY_LS_KEY = "dashboard-summary-layout-v2";
 
 const DEFAULT_SUMMARY_LAYOUT: Layout[] = [
-  { i: "weather",      x: 0, y: 0,  w: 9, h: 4,  minH: 3, minW: 4 },
-  { i: "dollar",       x: 0, y: 4,  w: 9, h: 8,  minH: 5, minW: 4 },
-  { i: "bcra",         x: 0, y: 12, w: 9, h: 7,  minH: 5, minW: 4 },
-  { i: "emails",       x: 0, y: 19, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "tasks",        x: 3, y: 19, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "travel",       x: 6, y: 19, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "vencimientos", x: 9, y: 0,  w: 3, h: 26, minH: 6, minW: 2 },
+  { i: "weather",      x: 0, y: 0, w: 9, h: 4,  minH: 3, minW: 4 },
+  { i: "emails",       x: 0, y: 4, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "tasks",        x: 3, y: 4, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "travel",       x: 6, y: 4, w: 3, h: 7,  minH: 4, minW: 2 },
+  { i: "vencimientos", x: 9, y: 0, w: 3, h: 11, minH: 6, minW: 2 },
 ];
 
-const SUMMARY_KEYS = ["weather", "dollar", "bcra", "emails", "tasks", "travel", "vencimientos"];
+const SUMMARY_KEYS = ["weather", "emails", "tasks", "travel", "vencimientos"];
 
 function loadSummaryLayout(): Layout[] {
   try {
@@ -746,10 +744,6 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: Su
       </Card>
     ) : null,
 
-    dollar: <div className="h-full overflow-auto"><DollarWidget /></div>,
-
-    bcra: <div className="h-full overflow-auto"><BcraWidget /></div>,
-
     ...Object.fromEntries(
       WIDGET_DEFS.map(def => {
         const val = def.value(summary, dueDates);
@@ -787,7 +781,11 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: Su
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {/* Cotizaciones e indicadores BCRA — altura automática */}
+      <DollarWidget />
+      <BcraWidget />
+
       {/* tiny reset */}
       <div className="flex justify-end">
         <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1 text-muted-foreground/40 hover:text-muted-foreground" onClick={resetLayout}>
