@@ -566,7 +566,7 @@ function QuoteForm({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setRecurring(p => ({ ...p, contractType: "fixed_term" }))}
+                  onClick={() => { setRecurring(p => ({ ...p, contractType: "fixed_term" })); setError(""); }}
                   className={`border rounded-lg px-3 py-2.5 text-left text-sm transition-all ${recurring.contractType === "fixed_term" ? "border-violet-500 bg-violet-50 dark:bg-violet-900/30 ring-2 ring-violet-200 dark:ring-violet-800" : "border-border hover:border-violet-300"}`}
                 >
                   <div className="font-medium text-sm">Plazo fijo</div>
@@ -574,7 +574,7 @@ function QuoteForm({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRecurring(p => ({ ...p, contractType: "indefinite" }))}
+                  onClick={() => { setRecurring(p => ({ ...p, contractType: "indefinite" })); setError(""); }}
                   className={`border rounded-lg px-3 py-2.5 text-left text-sm transition-all ${recurring.contractType === "indefinite" ? "border-violet-500 bg-violet-50 dark:bg-violet-900/30 ring-2 ring-violet-200 dark:ring-violet-800" : "border-border hover:border-violet-300"}`}
                 >
                   <div className="font-medium text-sm">Indefinido</div>
