@@ -76,7 +76,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   expense: "text-rose-600 dark:text-rose-400",
 };
 
-function FinanzasWidget() {
+export function FinanzasWidget() {
   const { data, isLoading } = useQuery<FinanceSummary>({
     queryKey: ["finance-summary-overview"],
     queryFn: () => fetch(`${BASE}/api/finance/summary`, { credentials: "include" }).then(r => r.ok ? r.json() : null),
@@ -185,7 +185,7 @@ const CAT_COLORS: Record<string, string> = {
   salud:       "bg-rose-500",
 };
 
-function ProyectosWidget() {
+export function ProyectosWidget() {
   const { isSignedIn } = useAuth();
   const { data: goals = [], isLoading } = useQuery<StrategyGoal[]>({
     queryKey: ["strategy-goals"],
@@ -287,7 +287,7 @@ const GROUP_DOT: Record<string, string> = {
   cyan:    "bg-cyan-500",    pink:    "bg-pink-500",
 };
 
-function ClientesWidget() {
+export function ClientesWidget() {
   const { isSignedIn } = useAuth();
   const { data: clients = [], isLoading } = useQuery<Client[]>({
     queryKey: ["clients"],
@@ -425,7 +425,7 @@ const LEVEL_LABEL: Record<DecisionLevel, string> = {
   critical: "Crítico", high: "Alto", medium: "Medio", info: "Info",
 };
 
-function DecisionesWidget() {
+export function DecisionesWidget() {
   const { decisions } = useDecisionEngine();
 
   const critical = decisions.filter(d => d.level === "critical");
@@ -527,7 +527,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   low:      "text-muted-foreground",
 };
 
-function ObjetivosWidget() {
+export function ObjetivosWidget() {
   const { isSignedIn } = useAuth();
   const today = todayStr();
 

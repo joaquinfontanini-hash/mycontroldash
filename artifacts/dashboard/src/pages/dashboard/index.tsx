@@ -3,9 +3,9 @@ import { useGetDashboardSummary, useGetWeather, type DashboardSummary } from "@w
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Mail, CheckSquare, Briefcase, Plane, Newspaper, CloudSun,
+  Mail, CheckSquare, Plane, CloudSun,
   CloudRain, Sun, Cloud, ArrowRight, TrendingUp, RefreshCw,
-  DollarSign, AlertCircle, CalendarClock, CheckCircle2,
+  DollarSign, AlertCircle, CheckCircle2, CalendarClock,
   Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -14,6 +14,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useState, useMemo, useCallback, type ComponentType } from "react";
 
 import { BASE } from "@/lib/base-url";
+import {
+  FinanzasWidget, ProyectosWidget, ClientesWidget,
+  DecisionesWidget, ObjetivosWidget,
+} from "@/pages/dashboard/modules-overview";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,7 +44,7 @@ const LS_KEY = "dashboard-widget-config-v1";
 
 interface WidgetConfig { order: string[]; hidden: string[] }
 
-const DEFAULT_WIDGET_ORDER = ["emails", "tasks", "fiscal", "travel", "news", "vencimientos"];
+const DEFAULT_WIDGET_ORDER = ["emails", "tasks", "travel"];
 const DEFAULT_CONFIG: WidgetConfig = { order: DEFAULT_WIDGET_ORDER, hidden: [] };
 
 interface WidgetDef {
@@ -76,16 +80,6 @@ const WIDGET_DEFS: WidgetDef[] = [
     bg: "bg-amber-50 dark:bg-amber-950/40",
   },
   {
-    id: "fiscal",
-    title: "Monitor Fiscal",
-    icon: Briefcase,
-    value: (s) => s?.fiscalUpdatesCount ?? "—",
-    subtitle: (s) => `${s?.fiscalRequireAction ?? 0} requieren acción`,
-    href: "/dashboard/fiscal",
-    accent: "text-red-600 dark:text-red-400",
-    bg: "bg-red-50 dark:bg-red-950/40",
-  },
-  {
     id: "travel",
     title: "Ofertas de viaje",
     icon: Plane,
@@ -94,33 +88,6 @@ const WIDGET_DEFS: WidgetDef[] = [
     href: "/dashboard/travel",
     accent: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-50 dark:bg-emerald-950/40",
-  },
-  {
-    id: "news",
-    title: "Noticias",
-    icon: Newspaper,
-    value: (s) => s?.newsCount ?? "—",
-    subtitle: () => "Artículos relevantes",
-    href: "/dashboard/news",
-    accent: "text-violet-600 dark:text-violet-400",
-    bg: "bg-violet-50 dark:bg-violet-950/40",
-  },
-  {
-    id: "vencimientos",
-    title: "Vencimientos",
-    icon: CalendarClock,
-    value: (_s, dd) => dd.filter(d => d.status === "pending").length,
-    subtitle: (_s, dd) => {
-      const critical = dd.filter(d => {
-        if (d.status !== "pending") return false;
-        const diff = Math.floor((new Date(d.dueDate + "T00:00:00").getTime() - new Date().setHours(0,0,0,0)) / 86400000);
-        return diff <= 0;
-      }).length;
-      return critical > 0 ? `${critical} crítico${critical > 1 ? "s" : ""}` : "Pendientes";
-    },
-    href: "/dashboard/due-dates",
-    accent: "text-rose-600 dark:text-rose-400",
-    bg: "bg-rose-50 dark:bg-rose-950/40",
   },
 ];
 
@@ -672,7 +639,7 @@ export default function DashboardSummary() {
 
           <DollarWidget />
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             {visibleWidgets.map(def => {
               const val = def.value(summary, dueDates);
               const sub = def.subtitle(summary, dueDates);
@@ -713,6 +680,24 @@ export default function DashboardSummary() {
         {/* ── Right sidebar: Vencimientos ─────────────────────── */}
         <div className="self-start lg:sticky lg:top-[76px]">
           <VencimientosWidget dueDates={dueDates} isLoading={dueDatesLoading} />
+        </div>
+      </div>
+
+      {/* ── Módulos ─────────────────────────────────────────── */}
+      <div className="space-y-4 max-w-6xl mt-6">
+        <div className="flex items-center gap-2">
+          <div className="h-px flex-1 bg-border/60" />
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">Módulos</span>
+          <div className="h-px flex-1 bg-border/60" />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <FinanzasWidget />
+          <DecisionesWidget />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <ProyectosWidget />
+          <ClientesWidget />
+          <ObjetivosWidget />
         </div>
       </div>
     </>
