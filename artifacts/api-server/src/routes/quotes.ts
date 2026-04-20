@@ -645,6 +645,26 @@ router.get("/quotes/client/:clientId", requireAuth, async (req, res): Promise<vo
       .where(and(eq(quotePaymentsTable.clientId, clientId), eq(quotePaymentsTable.userId, userId)))
       .orderBy(desc(quotePaymentsTable.paymentDate));
 
+    const installments = await db
+      .select({
+        id: quoteInstallmentsTable.id,
+        quoteId: quoteInstallmentsTable.quoteId,
+        quoteNumber: quotesTable.quoteNumber,
+        installmentNumber: quoteInstallmentsTable.installmentNumber,
+        periodStart: quoteInstallmentsTable.periodStart,
+        periodEnd: quoteInstallmentsTable.periodEnd,
+        dueDate: quoteInstallmentsTable.dueDate,
+        adjustedAmount: quoteInstallmentsTable.adjustedAmount,
+        status: quoteInstallmentsTable.status,
+        paidAmount: quoteInstallmentsTable.paidAmount,
+        balanceDue: quoteInstallmentsTable.balanceDue,
+      })
+      .from(quoteInstallmentsTable)
+      .innerJoin(quotesTable, eq(quoteInstallmentsTable.quoteId, quotesTable.id))
+      .where(and(eq(quotesTable.clientId, clientId), eq(quotesTable.userId, userId)))
+      .orderBy(quoteInstallmentsTable.dueDate)
+      .limit(30);
+
     res.json({
       summary: {
         totalPresupuestos: Number(summary?.totalPresupuestos ?? 0),
@@ -663,6 +683,7 @@ router.get("/quotes/client/:clientId", requireAuth, async (req, res): Promise<vo
         balance: parseFloat(q.totalAmount as string) - parseFloat(q.totalPaid ?? "0"),
       })),
       payments,
+      installments,
     });
   } catch (err) {
     logger.error({ err }, "quotes client summary error");

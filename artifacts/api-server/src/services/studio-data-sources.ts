@@ -17,6 +17,7 @@ import {
   auditLogsTable,
   quotesTable,
   quotePaymentsTable,
+  quoteInstallmentsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, isNull, ne, sql, lt } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
@@ -60,6 +61,11 @@ export const DATA_SOURCE_CATALOG: DataSourceMeta[] = [
   { key: "quotes.monthly.payments",    label: "Presupuestos — Cobranzas por mes",description: "Evolución mensual de cobranzas",              category: "presupuestos", supportsSnapshot: true },
   { key: "quotes.by.status",           label: "Presupuestos — Por estado",       description: "Distribución de presupuestos por estado",    category: "presupuestos", supportsSnapshot: true },
   { key: "quotes.top.debtors",         label: "Presupuestos — Ranking deudores", description: "Top clientes con mayor saldo pendiente",      category: "presupuestos", supportsSnapshot: true },
+  // Finanzas integradas — Cuotas de contratos recurrentes
+  { key: "quotes.projected.monthly",        label: "Presupuestos — Ingresos proyectados por mes", description: "Cuotas futuras pendientes agrupadas por mes de vencimiento", category: "presupuestos", supportsSnapshot: true },
+  { key: "quotes.outstanding.receivables",  label: "Presupuestos — Deuda pendiente",              description: "Total de saldos pendientes: presupuestos + cuotas vencidas", category: "presupuestos", supportsSnapshot: true },
+  { key: "quotes.installments.future",      label: "Presupuestos — Cuotas futuras",               description: "Cuotas pendientes con vencimiento en los próximos 60 días",  category: "presupuestos" },
+  { key: "quotes.installments.overdue",     label: "Presupuestos — Cuotas vencidas",              description: "Cuotas con status overdue o dueDate pasada sin pagar",       category: "presupuestos" },
 ];
 
 // ── Resolver ──────────────────────────────────────────────────────────────────
@@ -350,6 +356,109 @@ export async function resolveDataSource(
           .groupBy(quotesTable.clientId, clientsTable.name)
           .orderBy(sql`sum(${quotesTable.totalAmount}) - coalesce(sum((select coalesce(sum(p.amount),0) from quote_payments p where p.quote_id = ${quotesTable.id})), 0) desc`)
           .limit(10);
+      }
+
+      case "quotes.projected.monthly": {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const months = (params.months as number) ?? 12;
+        const future = new Date(); future.setMonth(future.getMonth() + months);
+        const futureStr = future.toISOString().slice(0, 10);
+        const rows = await db
+          .select({
+            mes: sql<string>`to_char(qi.due_date::date, 'YYYY-MM')`,
+            totalProyectado: sql<string>`sum(qi.adjusted_amount)`,
+            cantidadCuotas: sql<number>`count(*)`,
+          })
+          .from(sql`quote_installments qi`)
+          .innerJoin(quotesTable, sql`qi.quote_id = ${quotesTable.id}`)
+          .where(sql`${quotesTable.userId} = ${userIdStr} AND qi.due_date > ${todayStr} AND qi.due_date <= ${futureStr} AND qi.status NOT IN ('paid','cancelled','overdue','partially_paid')`)
+          .groupBy(sql`to_char(qi.due_date::date, 'YYYY-MM')`)
+          .orderBy(sql`to_char(qi.due_date::date, 'YYYY-MM')`);
+        return rows.map(r => ({ ...r, totalProyectado: parseFloat(r.totalProyectado ?? "0") }));
+      }
+
+      case "quotes.outstanding.receivables": {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const [quotesBalance] = await db
+          .select({
+            saldoPresupuestos: sql<string>`coalesce(sum(q.total_amount) - sum(coalesce((select sum(p.amount) from quote_payments p where p.quote_id = q.id), 0)), 0)`,
+            cantidadPresupuestos: sql<number>`count(*) filter (where q.status not in ('paid','rejected') and q.archived_at is null)`,
+          })
+          .from(sql`quotes q`)
+          .where(sql`q.user_id = ${userIdStr} and q.status not in ('paid','rejected') and q.archived_at is null`);
+        const [installBalance] = await db
+          .select({
+            saldoCuotas: sql<string>`coalesce(sum(qi.balance_due), 0)`,
+            cuotasVencidas: sql<number>`count(*) filter (where qi.status = 'overdue' or (qi.due_date < ${todayStr} and qi.status not in ('paid','cancelled')))`,
+            cuotasPendientes: sql<number>`count(*) filter (where qi.status in ('pending','due'))`,
+          })
+          .from(sql`quote_installments qi`)
+          .innerJoin(quotesTable, sql`qi.quote_id = ${quotesTable.id}`)
+          .where(sql`${quotesTable.userId} = ${userIdStr} AND qi.status NOT IN ('paid','cancelled')`);
+        return {
+          saldoPresupuestos: parseFloat(quotesBalance?.saldoPresupuestos ?? "0"),
+          saldoCuotas: parseFloat(installBalance?.saldoCuotas ?? "0"),
+          totalPendiente: parseFloat(quotesBalance?.saldoPresupuestos ?? "0") + parseFloat(installBalance?.saldoCuotas ?? "0"),
+          cantidadPresupuestos: Number(quotesBalance?.cantidadPresupuestos ?? 0),
+          cuotasVencidas: Number(installBalance?.cuotasVencidas ?? 0),
+          cuotasPendientes: Number(installBalance?.cuotasPendientes ?? 0),
+        };
+      }
+
+      case "quotes.installments.future": {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const days = (params.days as number) ?? 60;
+        const future = new Date(); future.setDate(future.getDate() + days);
+        const futureStr = future.toISOString().slice(0, 10);
+        return await db
+          .select({
+            id: quoteInstallmentsTable.id,
+            quoteId: quoteInstallmentsTable.quoteId,
+            quoteNumber: quotesTable.quoteNumber,
+            clientName: clientsTable.name,
+            installmentNumber: quoteInstallmentsTable.installmentNumber,
+            dueDate: quoteInstallmentsTable.dueDate,
+            adjustedAmount: quoteInstallmentsTable.adjustedAmount,
+            status: quoteInstallmentsTable.status,
+            balanceDue: quoteInstallmentsTable.balanceDue,
+          })
+          .from(quoteInstallmentsTable)
+          .innerJoin(quotesTable, eq(quoteInstallmentsTable.quoteId, quotesTable.id))
+          .leftJoin(clientsTable, eq(quotesTable.clientId, clientsTable.id))
+          .where(and(
+            eq(quotesTable.userId, userIdStr),
+            gte(quoteInstallmentsTable.dueDate, todayStr),
+            lte(quoteInstallmentsTable.dueDate, futureStr),
+            sql`${quoteInstallmentsTable.status} NOT IN ('paid','cancelled')`,
+          ))
+          .orderBy(quoteInstallmentsTable.dueDate)
+          .limit(30);
+      }
+
+      case "quotes.installments.overdue": {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        return await db
+          .select({
+            id: quoteInstallmentsTable.id,
+            quoteId: quoteInstallmentsTable.quoteId,
+            quoteNumber: quotesTable.quoteNumber,
+            clientName: clientsTable.name,
+            installmentNumber: quoteInstallmentsTable.installmentNumber,
+            dueDate: quoteInstallmentsTable.dueDate,
+            adjustedAmount: quoteInstallmentsTable.adjustedAmount,
+            paidAmount: quoteInstallmentsTable.paidAmount,
+            balanceDue: quoteInstallmentsTable.balanceDue,
+            status: quoteInstallmentsTable.status,
+          })
+          .from(quoteInstallmentsTable)
+          .innerJoin(quotesTable, eq(quoteInstallmentsTable.quoteId, quotesTable.id))
+          .leftJoin(clientsTable, eq(quotesTable.clientId, clientsTable.id))
+          .where(and(
+            eq(quotesTable.userId, userIdStr),
+            sql`(${quoteInstallmentsTable.status} = 'overdue' OR (${quoteInstallmentsTable.dueDate} < ${todayStr} AND ${quoteInstallmentsTable.status} NOT IN ('paid','cancelled')))`,
+          ))
+          .orderBy(quoteInstallmentsTable.dueDate)
+          .limit(30);
       }
 
       case "static.text":

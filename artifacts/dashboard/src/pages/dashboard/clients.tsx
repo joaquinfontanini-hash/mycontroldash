@@ -363,19 +363,39 @@ interface ClientQSummary {
   saldoPendiente: number;
   cantidadVencidos: number;
   cantidadParciales: number;
+  contratosActivos: number;
   lastQuote: { id: number; quoteNumber: string; issueDate: string; title: string; totalAmount: string; status: string } | null;
   lastPayment: { id: number; paymentDate: string; amount: string; currency: string } | null;
 }
 interface ClientQRow {
   id: number; quoteNumber: string; title: string; issueDate: string; dueDate: string;
   totalAmount: string; status: string; currency: string; version: number; totalPaid: number; balance: number; lastPaymentDate: string | null;
+  quoteType?: string; installmentsTotal?: number; installmentsOverdue?: number;
 }
 interface ClientPaymentRow {
   id: number; quoteNumber: string; paymentDate: string; amount: string; currency: string; paymentMethod: string; reference: string | null;
 }
+interface ClientInstallmentRow {
+  id: number; quoteId: number; quoteNumber: string; installmentNumber: number;
+  periodStart: string; periodEnd: string; dueDate: string;
+  adjustedAmount: string; status: string; paidAmount: string; balanceDue: string;
+}
+
+const INST_STATUS_LABEL: Record<string, string> = {
+  pending: "Pendiente", due: "Por vencer", overdue: "Vencida",
+  partially_paid: "Parcial", paid: "Pagada", cancelled: "Cancelada",
+};
+const INST_STATUS_COLOR: Record<string, string> = {
+  pending: "bg-slate-100 text-slate-600",
+  due: "bg-amber-100 text-amber-700",
+  overdue: "bg-red-100 text-red-700",
+  partially_paid: "bg-orange-100 text-orange-700",
+  paid: "bg-teal-100 text-teal-700",
+  cancelled: "bg-gray-100 text-gray-500",
+};
 
 function ClientQuotesSummary({ clientId, clientName }: { clientId: number; clientName: string }) {
-  const { data, isLoading, isError } = useQuery<{ summary: ClientQSummary; quotes: ClientQRow[]; payments: ClientPaymentRow[] }>({
+  const { data, isLoading, isError } = useQuery<{ summary: ClientQSummary; quotes: ClientQRow[]; payments: ClientPaymentRow[]; installments: ClientInstallmentRow[] }>({
     queryKey: ["client-quotes", clientId],
     queryFn: async () => {
       const r = await fetch(`${BASE}/api/quotes/client/${clientId}`, { credentials: "include" });
@@ -388,23 +408,40 @@ function ClientQuotesSummary({ clientId, clientName }: { clientId: number; clien
   if (isLoading) return <div className="space-y-2 py-2">{[1,2,3].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div>;
   if (isError || !data) return <p className="text-xs text-muted-foreground py-3">No se pudieron cargar los presupuestos</p>;
 
-  const { summary, quotes, payments } = data;
+  const { summary, quotes, payments, installments = [] } = data;
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-3 pt-2">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {/* KPIs fila 1 */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {[
           { label: "Presupuestado", value: fmtMoney(summary.totalPresupuestado), color: "text-foreground" },
           { label: "Cobrado", value: fmtMoney(summary.totalCobrado), color: "text-teal-600" },
           { label: "Saldo pendiente", value: fmtMoney(summary.saldoPendiente), color: summary.saldoPendiente > 0 ? "text-amber-600" : "text-foreground" },
-          { label: "Vencidos", value: summary.cantidadVencidos.toString(), color: summary.cantidadVencidos > 0 ? "text-red-600" : "text-muted-foreground" },
         ].map(k => (
           <div key={k.label} className="bg-muted/40 rounded-lg px-3 py-2 text-center">
             <p className="text-[10px] text-muted-foreground">{k.label}</p>
             <p className={`text-sm font-bold ${k.color}`}>{k.value}</p>
           </div>
         ))}
+      </div>
+      {/* KPIs fila 2 */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-muted/40 rounded-lg px-3 py-2 text-center">
+          <p className="text-[10px] text-muted-foreground">Vencidos</p>
+          <p className={`text-sm font-bold ${summary.cantidadVencidos > 0 ? "text-red-600" : "text-muted-foreground"}`}>{summary.cantidadVencidos}</p>
+        </div>
+        <div className="bg-muted/40 rounded-lg px-3 py-2 text-center">
+          <p className="text-[10px] text-muted-foreground">Parciales</p>
+          <p className={`text-sm font-bold ${summary.cantidadParciales > 0 ? "text-orange-600" : "text-muted-foreground"}`}>{summary.cantidadParciales}</p>
+        </div>
+        <div className="bg-muted/40 rounded-lg px-3 py-2 text-center">
+          <p className="text-[10px] text-muted-foreground">Último pago</p>
+          <p className="text-sm font-bold text-foreground">
+            {summary.lastPayment ? fmtDateShort(summary.lastPayment.paymentDate) : "—"}
+          </p>
+        </div>
       </div>
 
       {/* Link a presupuestos */}
@@ -422,6 +459,11 @@ function ClientQuotesSummary({ clientId, clientName }: { clientId: number; clien
           <TabsTrigger value="cobros" className="text-xs h-6">
             Cobros ({payments.length})
           </TabsTrigger>
+          {installments.length > 0 && (
+            <TabsTrigger value="cuotas" className="text-xs h-6">
+              Cuotas ({installments.length})
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="presupuestos" className="mt-2">
@@ -431,10 +473,13 @@ function ClientQuotesSummary({ clientId, clientName }: { clientId: number; clien
             <div className="space-y-1.5">
               {quotes.slice(0, 8).map(q => (
                 <div key={q.id} className="flex items-center gap-2 text-xs border rounded-lg px-3 py-2 bg-card">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${q.status === "paid" ? "bg-teal-500" : q.status === "expired" ? "bg-red-500" : q.status === "partially_paid" ? "bg-amber-500" : q.balance > 0 && q.dueDate <= new Date().toISOString().slice(0,10) ? "bg-red-500" : "bg-emerald-500"}`} />
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${q.status === "paid" ? "bg-teal-500" : q.status === "expired" ? "bg-red-500" : q.status === "partially_paid" ? "bg-amber-500" : q.balance > 0 && q.dueDate <= todayStr ? "bg-red-500" : "bg-emerald-500"}`} />
                   <div className="min-w-0 flex-1">
                     <span className="font-mono text-[10px] text-muted-foreground">{q.quoteNumber}</span>
                     <span className="ml-1.5 truncate">{q.title}</span>
+                    {q.quoteType === "recurring_indexed" && (
+                      <span className="ml-1 text-[9px] bg-violet-100 text-violet-700 px-1 rounded">Recurrente</span>
+                    )}
                   </div>
                   <span className="font-medium shrink-0">{fmtMoney(q.totalAmount, q.currency)}</span>
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${STATUS_COLOR[q.status as QuoteStatus2] ?? "bg-gray-100 text-gray-600"}`}>
@@ -466,6 +511,32 @@ function ClientQuotesSummary({ clientId, clientName }: { clientId: number; clien
               ))}
               {payments.length > 8 && (
                 <p className="text-[10px] text-muted-foreground text-center">+{payments.length - 8} más</p>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="cuotas" className="mt-2">
+          {installments.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-3">Sin cuotas de contratos recurrentes</p>
+          ) : (
+            <div className="space-y-1.5">
+              {installments.slice(0, 15).map(inst => (
+                <div key={inst.id} className="flex items-center gap-2 text-xs border rounded-lg px-3 py-2 bg-card">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${inst.status === "paid" ? "bg-teal-500" : inst.status === "overdue" ? "bg-red-500" : inst.status === "partially_paid" ? "bg-orange-500" : inst.status === "due" ? "bg-amber-500" : "bg-slate-400"}`} />
+                  <div className="min-w-0 flex-1">
+                    <span className="font-mono text-[10px] text-muted-foreground">{inst.quoteNumber}</span>
+                    <span className="ml-1.5 text-muted-foreground">#{inst.installmentNumber}</span>
+                    <span className="ml-1.5 text-muted-foreground">Vto: {fmtDateShort(inst.dueDate)}</span>
+                  </div>
+                  <span className="font-medium shrink-0">{fmtMoney(inst.adjustedAmount)}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${INST_STATUS_COLOR[inst.status] ?? "bg-gray-100 text-gray-600"}`}>
+                    {INST_STATUS_LABEL[inst.status] ?? inst.status}
+                  </span>
+                </div>
+              ))}
+              {installments.length > 15 && (
+                <p className="text-[10px] text-muted-foreground text-center">+{installments.length - 15} más</p>
               )}
             </div>
           )}
