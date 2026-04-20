@@ -54,6 +54,7 @@ const ContactsPage        = lazy(() => import("@/pages/dashboard/contacts"));
 const ChatPage            = lazy(() => import("@/pages/dashboard/chat"));
 const StudioPage          = lazy(() => import("@/pages/dashboard/studio"));
 const QuotesPage          = lazy(() => import("@/pages/dashboard/quotes"));
+const FitnessPage         = lazy(() => import("@/pages/dashboard/fitness"));
 
 // ── Clerk env vars (only required in Clerk mode) ───────────────────────────────
 const clerkPubKey   = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
@@ -124,6 +125,7 @@ const Contacts        = () => <DashboardLayout><Lazy><ContactsPage /></Lazy></Da
 const Chat            = () => <DashboardLayout><Lazy><ChatPage /></Lazy></DashboardLayout>;
 const Studio          = () => <DashboardLayout><Lazy><StudioPage /></Lazy></DashboardLayout>;
 const Quotes          = () => <DashboardLayout><Lazy><QuotesPage /></Lazy></DashboardLayout>;
+const Fitness         = () => <DashboardLayout><Lazy><FitnessPage /></Lazy></DashboardLayout>;
 
 // ── Protected route wrappers ───────────────────────────────────────────────────
 
@@ -150,6 +152,7 @@ const RouteContacts        = () => <ProtectedRoute moduleKey="contacts"         
 const RouteChat            = () => <ProtectedRoute moduleKey="chat"             component={Chat} />;
 const RouteStudio          = () => <ProtectedRoute moduleKey="dashboard_studio"  component={Studio} />;
 const RouteQuotes          = () => <ProtectedRoute moduleKey="quotes"             component={Quotes} />;
+const RouteFitness         = () => <ProtectedRoute moduleKey="fitness"            component={Fitness} />;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── LOCAL AUTH MODE ──────────────────────────────────────────────────────────
@@ -220,6 +223,7 @@ function LocalApp() {
                 <Route path="/dashboard/chat"         component={RouteChat} />
                 <Route path="/dashboard/studio"       component={RouteStudio} />
                 <Route path="/dashboard/quotes"       component={RouteQuotes} />
+                <Route path="/dashboard/fitness"      component={RouteFitness} />
                 <Route path="/dashboard/notifications" component={() => <Suspense fallback={null}><NotificationsPage /></Suspense>} />
                 <Route component={NotFound} />
               </Switch>
@@ -318,6 +322,7 @@ function ClerkProviderWithRoutes() {
               <Route path="/dashboard/chat"         component={RouteChat} />
               <Route path="/dashboard/studio"       component={RouteStudio} />
               <Route path="/dashboard/quotes"       component={RouteQuotes} />
+              <Route path="/dashboard/fitness"      component={RouteFitness} />
               <Route path="/dashboard/notifications" component={() => <Suspense fallback={null}><NotificationsPage /></Suspense>} />
               <Route component={NotFound} />
             </Switch>

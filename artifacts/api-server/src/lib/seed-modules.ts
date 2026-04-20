@@ -25,6 +25,7 @@ const DEFAULT_MODULES = [
   { key: "chat", name: "Chat", description: "Mensajería interna entre usuarios", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 19 },
   { key: "dashboard_studio", name: "Dashboard Studio", description: "Constructor de dashboards dinámicos y personalizados", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 20 },
   { key: "quotes", name: "Presupuestos y Cobranzas", description: "Gestión de presupuestos, versiones y cobranzas por cliente", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 21 },
+  { key: "fitness", name: "Actividad Física", description: "Plan de entrenamiento, nutrición y diario de comidas personal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 22 },
 ];
 
 export async function seedModules(): Promise<void> {
