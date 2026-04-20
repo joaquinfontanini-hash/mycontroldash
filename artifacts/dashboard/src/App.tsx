@@ -47,6 +47,7 @@ const FinancePage         = lazy(() => import("@/pages/dashboard/finance"));
 const GoalsPage           = lazy(() => import("@/pages/dashboard/goals"));
 const StrategyPage        = lazy(() => import("@/pages/dashboard/strategy"));
 const DecisionsPage       = lazy(() => import("@/pages/dashboard/decisions"));
+const ModulesOverviewPage = lazy(() => import("@/pages/dashboard/modules-overview"));
 const AdminPage           = lazy(() => import("@/pages/admin"));
 const SettingsPage        = lazy(() => import("@/pages/settings"));
 const ContactsPage        = lazy(() => import("@/pages/dashboard/contacts"));
@@ -115,6 +116,7 @@ const Finance         = () => <DashboardLayout><Lazy><FinancePage /></Lazy></Das
 const Goals           = () => <DashboardLayout><Lazy><GoalsPage /></Lazy></DashboardLayout>;
 const Strategy        = () => <DashboardLayout><Lazy><StrategyPage /></Lazy></DashboardLayout>;
 const Decisions       = () => <DashboardLayout><Lazy><DecisionsPage /></Lazy></DashboardLayout>;
+const ModulesOverview = () => <DashboardLayout><Lazy><ModulesOverviewPage /></Lazy></DashboardLayout>;
 const Admin           = () => <DashboardLayout><Lazy><AdminPage /></Lazy></DashboardLayout>;
 const Settings        = () => <DashboardLayout><Lazy><SettingsPage /></Lazy></DashboardLayout>;
 const Contacts        = () => <DashboardLayout><Lazy><ContactsPage /></Lazy></DashboardLayout>;
@@ -139,6 +141,7 @@ const RouteFinance         = () => <ProtectedRoute moduleKey="finance"          
 const RouteGoals           = () => <ProtectedRoute moduleKey="goals"            component={Goals} />;
 const RouteStrategy        = () => <ProtectedRoute moduleKey="strategy"         component={Strategy} />;
 const RouteDecisions       = () => <ProtectedRoute moduleKey="decisions"        component={Decisions} />;
+const RouteModulesOverview = () => <ProtectedRoute moduleKey="dashboard"        component={ModulesOverview} />;
 const RouteAdmin           = () => <ProtectedRoute moduleKey="admin"            component={Admin} />;
 const RouteSettings        = () => <ProtectedRoute moduleKey="settings"         component={Settings} />;
 const RouteContacts        = () => <ProtectedRoute moduleKey="contacts"         component={Contacts} />;
@@ -207,6 +210,7 @@ function LocalApp() {
                 <Route path="/dashboard/goals"        component={RouteGoals} />
                 <Route path="/dashboard/strategy"     component={RouteStrategy} />
                 <Route path="/dashboard/decisions"    component={RouteDecisions} />
+                <Route path="/dashboard/overview"     component={RouteModulesOverview} />
                 <Route path="/admin"                  component={RouteAdmin} />
                 <Route path="/settings"               component={RouteSettings} />
                 <Route path="/dashboard/contacts"     component={RouteContacts} />
@@ -303,6 +307,7 @@ function ClerkProviderWithRoutes() {
               <Route path="/dashboard/goals"        component={RouteGoals} />
               <Route path="/dashboard/strategy"     component={RouteStrategy} />
               <Route path="/dashboard/decisions"    component={RouteDecisions} />
+              <Route path="/dashboard/overview"     component={RouteModulesOverview} />
               <Route path="/admin"                  component={RouteAdmin} />
               <Route path="/settings"               component={RouteSettings} />
               <Route path="/dashboard/contacts"     component={RouteContacts} />

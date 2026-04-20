@@ -13,7 +13,7 @@ import {
   Shield, Search, LogOut, Moon, Sun, Menu, Users, Truck, Crown,
   DollarSign, Sparkles, RefreshCw, Brain, Target, Flag,
   ChevronLeft, ChevronRight, Pin, PinOff, PanelLeftClose, PanelLeft,
-  MessageSquare, Contact, LayoutGrid,
+  MessageSquare, Contact, LayoutGrid, Gauge,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,7 @@ function saveSidebarPinned(pinned: boolean) {
 
 const ALL_NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard" },
+  { href: "/dashboard/overview", label: "Vista de Módulos", icon: Gauge, moduleKey: "dashboard" },
   { href: "/dashboard/tasks", label: "Tareas", icon: CheckSquare, moduleKey: "tasks" },
   { href: "/dashboard/shortcuts", label: "Accesos Directos", icon: LinkIcon, moduleKey: "shortcuts" },
   { href: "/dashboard/news", label: "Noticias", icon: Newspaper, moduleKey: "news" },
