@@ -70,6 +70,8 @@ channel = "stable-25_05"
 
 [userenv.shared]
 SUPER_ADMIN_EMAIL = "joaquin.fontanini@gmail.com"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "587"
 
 [userenv.development]
 APP_URL = "https://cf04c3b9-518d-4f1a-94ae-9dfd64c80ea6-00-2250o88mujsjw.kirk.replit.dev"
