@@ -1,0 +1,188 @@
+Audita el módulo de Presupuestos y Cobranzas que acabás de implementar.
+
+Quiero una auditoría completa, técnica, funcional y de producto, como si fueras:
+- lead engineer
+- QA senior
+- auditor funcional
+- revisor de arquitectura
+
+Revisá especialmente que el módulo sea uno solo y que esté correctamente integrado con Clientes y con Dashboards.
+
+Entregame la auditoría en este formato:
+- ✅ Qué está bien
+- ⚠️ Qué está mal o incompleto
+- 🔥 Qué es crítico corregir antes de producción
+- 🛠 Cómo corregir cada problema
+- Resultado final: Aprobado / Aprobado con observaciones / No aprobado
+
+==================================================
+1) INTEGRACIÓN CON CLIENTES
+==================================================
+
+Verificar:
+- que quotes.clientId esté vinculado correctamente
+- que no se puedan crear presupuestos con clientes inexistentes
+- que no se carguen clientes manualmente
+- que exista la pestaña “Presupuestos y Cobranzas” dentro del cliente
+- que desde la ficha del cliente se vean:
+  - presupuestos
+  - cobranzas
+  - saldo pendiente
+  - total presupuestado
+  - total cobrado
+  - vencidos
+  - último pago
+
+==================================================
+2) LAS 5 RECOMENDACIONES OBLIGATORIAS
+==================================================
+
+Verificar obligatoriamente:
+
+A) Historial de versiones
+- que exista
+- que no se pierda el presupuesto original
+- que quede auditado qué cambió y quién lo cambió
+
+B) Cobros parciales
+- que se puedan registrar múltiples pagos
+- que el estado cambie correctamente
+- que el saldo se recalcule bien
+
+C) KPIs clickeables
+- que funcionen como filtros reales
+- que no sean solo visuales
+
+D) Vista dentro del cliente
+- que exista
+- que muestre información real
+- que tenga acciones rápidas
+
+E) Semáforo de vencimiento
+- que funcione
+- que el criterio sea correcto
+- que sea visible en listado y detalle
+
+==================================================
+3) INTEGRACIÓN CON DASHBOARDS
+==================================================
+
+Verificar:
+- que el módulo exponga datos al sistema de dashboards
+- que existan widgets o datasets reutilizables
+- que no haya lógica duplicada
+- que se puedan mostrar:
+  - total presupuestado
+  - total cobrado
+  - saldo pendiente
+  - vencidos
+  - cobranzas por mes
+  - deuda por cliente
+  - próximos vencimientos
+  - ranking de deudores
+- que los filtros globales afecten correctamente estos widgets
+
+==================================================
+4) BASE DE DATOS
+==================================================
+
+Verificar:
+- schema completo
+- foreign keys
+- índices
+- consistencia de estados
+- quote_revisions
+- payments
+- activity logs
+- ausencia de campos peligrosamente redundantes
+- que saldo pendiente y total cobrado no queden inconsistentes
+
+==================================================
+5) REGLAS DE NEGOCIO
+==================================================
+
+Verificar:
+- draft
+- sent
+- approved
+- rejected
+- expired
+- partially_paid
+- paid
+
+Comprobar transiciones válidas e inválidas.
+Detectar estados imposibles o inconsistentes.
+
+==================================================
+6) COBRANZAS
+==================================================
+
+Verificar:
+- múltiples pagos por presupuesto
+- cálculo de total cobrado
+- cálculo de saldo restante
+- sobrecobro bloqueado
+- validaciones
+- medios de pago
+- referencias
+
+==================================================
+7) FRONTEND / UX
+==================================================
+
+Verificar:
+- listado
+- filtros
+- detalle
+- formulario
+- dashboard interno
+- KPIs clickeables
+- semáforo
+- claridad visual
+- facilidad de uso
+- responsive
+
+==================================================
+8) BACKEND / PERFORMANCE
+==================================================
+
+Verificar:
+- filtrado en base de datos
+- paginación real
+- ausencia de N+1
+- joins/agregaciones correctas
+- performance razonable
+- endpoints consistentes
+
+==================================================
+9) PERMISOS Y SEGURIDAD
+==================================================
+
+Verificar:
+- permisos por rol
+- restricciones de edición
+- restricciones de cobro
+- restricciones de sobrecobro
+- acciones protegidas
+
+==================================================
+10) AUDITORÍA Y TRAZABILIDAD
+==================================================
+
+Verificar:
+- createdBy
+- updatedAt
+- changedBy
+- logs de actividad
+- timeline real
+- trazabilidad completa
+
+==================================================
+11) RESULTADO GENERAL
+==================================================
+
+Además de la auditoría, quiero que digas:
+- qué quedó realmente terminado
+- qué quedó parcialmente terminado
+- qué faltaría para dejarlo apto para producción real
+- qué deuda técnica queda
