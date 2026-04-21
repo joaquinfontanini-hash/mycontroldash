@@ -9,7 +9,7 @@ import {
   CloudRain, Sun, Cloud, ArrowRight, TrendingUp, RefreshCw,
   DollarSign, AlertCircle, CheckCircle2, CalendarClock,
   Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw,
-  GripHorizontal,
+  GripHorizontal, BarChart2, Lightbulb, FolderOpen, Users, Target,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -59,11 +59,15 @@ interface DueDate {
 
 // ── Widget config ─────────────────────────────────────────────────────────────
 
-const LS_KEY = "dashboard-widget-config-v1";
+const LS_KEY = "dashboard-widget-config-v2";
 
 interface WidgetConfig { order: string[]; hidden: string[] }
 
-const DEFAULT_WIDGET_ORDER = ["emails", "tasks", "travel"];
+const DEFAULT_WIDGET_ORDER = [
+  "dolar", "bcra",
+  "weather", "vencimientos", "emails", "tasks", "travel",
+  "finanzas", "decisiones", "proyectos", "clientes", "objetivos",
+];
 const DEFAULT_CONFIG: WidgetConfig = { order: DEFAULT_WIDGET_ORDER, hidden: [] };
 
 interface WidgetDef {
@@ -108,6 +112,23 @@ const WIDGET_DEFS: WidgetDef[] = [
     accent: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-50 dark:bg-emerald-950/40",
   },
+];
+
+// All configurable sections (superset of WIDGET_DEFS)
+interface SectionDef { id: string; title: string; icon: ComponentType<{ className?: string }>; group: string }
+const SECTION_DEFS: SectionDef[] = [
+  { id: "dolar",       title: "Cotizaciones",     icon: DollarSign,    group: "Indicadores" },
+  { id: "bcra",        title: "Indicadores BCRA", icon: TrendingUp,    group: "Indicadores" },
+  { id: "weather",     title: "Clima Neuquén",    icon: CloudSun,      group: "Paneles" },
+  { id: "vencimientos",title: "Vencimientos",     icon: CalendarClock, group: "Paneles" },
+  { id: "emails",      title: "Emails recientes", icon: Mail,          group: "Paneles" },
+  { id: "tasks",       title: "Tareas pendientes",icon: CheckSquare,   group: "Paneles" },
+  { id: "travel",      title: "Ofertas de viaje", icon: Plane,         group: "Paneles" },
+  { id: "finanzas",    title: "Módulo Finanzas",  icon: BarChart2,     group: "Módulos" },
+  { id: "decisiones",  title: "Módulo Decisiones",icon: Lightbulb,     group: "Módulos" },
+  { id: "proyectos",   title: "Módulo Proyectos", icon: FolderOpen,    group: "Módulos" },
+  { id: "clientes",    title: "Módulo Clientes",  icon: Users,         group: "Módulos" },
+  { id: "objetivos",   title: "Módulo Objetivos", icon: Target,        group: "Módulos" },
 ];
 
 function loadWidgetConfig(): WidgetConfig {
@@ -436,54 +457,63 @@ function WidgetConfigDialog({
 
   const reset = () => onChange(DEFAULT_CONFIG);
 
+  const groups = Array.from(new Set(SECTION_DEFS.map(s => s.group)));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Personalizar widgets</DialogTitle>
+          <DialogTitle>Personalizar secciones</DialogTitle>
           <DialogDescription className="text-xs">
-            Activá, desactivá y reordenás los widgets del panel principal. Los cambios se guardan automáticamente.
+            Activá o desactivá secciones del panel principal. Los cambios se guardan automáticamente.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-1.5 py-2">
-          {config.order.map((id, idx) => {
-            const def = WIDGET_DEFS.find(w => w.id === id);
-            if (!def) return null;
-            const isHidden = config.hidden.includes(id);
-            return (
-              <div
-                key={id}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${isHidden ? "border-border/30 bg-muted/20 opacity-50" : "border-border/60 bg-muted/10"}`}
-              >
-                <def.icon className={`h-4 w-4 shrink-0 ${isHidden ? "text-muted-foreground/40" : def.accent}`} />
-                <span className={`flex-1 text-sm font-medium ${isHidden ? "text-muted-foreground" : ""}`}>{def.title}</span>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    onClick={() => move(id, -1)}
-                    disabled={idx === 0}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-25 disabled:pointer-events-none"
-                  >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => move(id, 1)}
-                    disabled={idx === config.order.length - 1}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-25 disabled:pointer-events-none"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => toggle(id)}
-                    className={`p-1 rounded transition-colors ${isHidden ? "text-muted-foreground/40 hover:text-foreground hover:bg-muted/60" : "text-primary hover:text-muted-foreground hover:bg-muted/60"}`}
-                  >
-                    {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
+        <div className="overflow-y-auto flex-1 space-y-4 py-2 pr-1">
+          {groups.map(group => (
+            <div key={group}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5 px-1">{group}</p>
+              <div className="space-y-1">
+                {SECTION_DEFS.filter(s => s.group === group).map(def => {
+                  const id = def.id;
+                  const idx = config.order.indexOf(id);
+                  const isHidden = config.hidden.includes(id);
+                  return (
+                    <div
+                      key={id}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${isHidden ? "border-border/30 bg-muted/20 opacity-50" : "border-border/60 bg-muted/10"}`}
+                    >
+                      <def.icon className={`h-4 w-4 shrink-0 ${isHidden ? "text-muted-foreground/40" : "text-primary"}`} />
+                      <span className={`flex-1 text-sm font-medium ${isHidden ? "text-muted-foreground" : ""}`}>{def.title}</span>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                          onClick={() => move(id, -1)}
+                          disabled={idx <= 0}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-25 disabled:pointer-events-none"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => move(id, 1)}
+                          disabled={idx === config.order.length - 1}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-25 disabled:pointer-events-none"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => toggle(id)}
+                          className={`p-1 rounded transition-colors ${isHidden ? "text-muted-foreground/40 hover:text-foreground hover:bg-muted/60" : "text-primary hover:text-muted-foreground hover:bg-muted/60"}`}
+                        >
+                          {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
-        <div className="flex justify-between pt-1">
+        <div className="flex justify-between pt-2 border-t">
           <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground gap-1" onClick={reset}>
             <RotateCcw className="h-3 w-3" /> Restablecer
           </Button>
@@ -693,9 +723,10 @@ interface SummaryGridProps {
   summary: DashboardSummary | undefined;
   dueDates: DueDate[];
   dueDatesLoading: boolean;
+  hiddenSections: string[];
 }
 
-function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: SummaryGridProps) {
+function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading, hiddenSections }: SummaryGridProps) {
   const [layout, setLayout] = useState<Layout[]>(loadSummaryLayout);
 
   const handleLayoutChange = useCallback((newLayout: Layout[]) => {
@@ -780,21 +811,27 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: Su
     ),
   };
 
+  const visibleSummaryKeys = SUMMARY_KEYS.filter(k => !hiddenSections.includes(k));
+  const visibleLayout = layout.filter(l => visibleSummaryKeys.includes(l.i));
+
   return (
     <div className="space-y-3">
       {/* Cotizaciones e indicadores BCRA — altura automática */}
-      <DollarWidget />
-      <BcraWidget />
+      {!hiddenSections.includes("dolar") && <DollarWidget />}
+      {!hiddenSections.includes("bcra") && <BcraWidget />}
 
       {/* tiny reset */}
-      <div className="flex justify-end">
-        <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1 text-muted-foreground/40 hover:text-muted-foreground" onClick={resetLayout}>
-          <RotateCcw className="h-2.5 w-2.5" /> Restablecer disposición
-        </Button>
-      </div>
+      {visibleSummaryKeys.length > 0 && (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1 text-muted-foreground/40 hover:text-muted-foreground" onClick={resetLayout}>
+            <RotateCcw className="h-2.5 w-2.5" /> Restablecer disposición
+          </Button>
+        </div>
+      )}
 
+      {visibleSummaryKeys.length > 0 && (
       <GridLayout
-        layout={layout}
+        layout={visibleLayout}
         cols={12}
         rowHeight={30}
         margin={[12, 12]}
@@ -806,7 +843,7 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: Su
         resizeHandles={["se"]}
         className="summary-grid"
       >
-        {SUMMARY_KEYS.map(key => (
+        {visibleSummaryKeys.map(key => (
           <div key={key} className="group/widget">
             <div className="h-full flex flex-col overflow-hidden rounded-xl">
               <div className="drag-handle flex items-center justify-center h-4 shrink-0 cursor-grab active:cursor-grabbing select-none opacity-0 group-hover/widget:opacity-100 transition-opacity bg-muted/40 border-b border-border/30 rounded-t-xl">
@@ -819,6 +856,7 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading }: Su
           </div>
         ))}
       </GridLayout>
+      )}
     </div>
   );
 }
@@ -856,7 +894,7 @@ function loadModulesLayout(): Layout[] {
   } catch { return DEFAULT_MODULES_LAYOUT; }
 }
 
-function ModulesGrid() {
+function ModulesGrid({ hiddenSections }: { hiddenSections: string[] }) {
   const [layout, setLayout] = useState<Layout[]>(loadModulesLayout);
 
   const handleLayoutChange = useCallback((newLayout: Layout[]) => {
@@ -868,6 +906,9 @@ function ModulesGrid() {
     setLayout(DEFAULT_MODULES_LAYOUT);
     localStorage.setItem(MODULES_LS_KEY, JSON.stringify(DEFAULT_MODULES_LAYOUT));
   }, []);
+
+  const visibleItems = MODULES_ITEMS.filter(m => !hiddenSections.includes(m.key));
+  const visibleLayout = layout.filter(l => visibleItems.some(m => m.key === l.i));
 
   return (
     <div className="space-y-3">
@@ -882,8 +923,9 @@ function ModulesGrid() {
       </div>
 
       {/* Grid — always draggable/resizable */}
+      {visibleItems.length > 0 && (
       <GridLayout
-        layout={layout}
+        layout={visibleLayout}
         cols={12}
         rowHeight={30}
         margin={[12, 12]}
@@ -895,7 +937,7 @@ function ModulesGrid() {
         resizeHandles={["se"]}
         className="modules-grid"
       >
-        {MODULES_ITEMS.map(({ key, Component }) => (
+        {visibleItems.map(({ key, Component }) => (
           <div key={key} className="group/widget">
             <div className="h-full flex flex-col rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden">
               {/* Drag strip — thin top border, only visible on hover */}
@@ -909,6 +951,7 @@ function ModulesGrid() {
           </div>
         ))}
       </GridLayout>
+      )}
     </div>
   );
 }
@@ -936,35 +979,29 @@ export default function DashboardSummary() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-5 lg:grid-cols-[1fr_288px] max-w-6xl">
-        <div className="space-y-5">
+      <div className="w-full space-y-4">
+        <div className="flex items-start justify-between">
           <div>
             <Skeleton className="h-9 w-64 mb-2" />
             <Skeleton className="h-4 w-44" />
           </div>
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-32 rounded-xl" />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[...Array(6)].map((_, i) => (
-              <Card key={i}>
-                <CardHeader className="pb-2"><Skeleton className="h-4 w-1/3" /></CardHeader>
-                <CardContent><Skeleton className="h-8 w-1/2 mb-2" /><Skeleton className="h-4 w-2/3" /></CardContent>
-              </Card>
-            ))}
-          </div>
         </div>
-        <Skeleton className="hidden lg:block h-80 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl w-full" />
+        <Skeleton className="h-32 rounded-xl w-full" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2"><Skeleton className="h-4 w-1/3" /></CardHeader>
+              <CardContent><Skeleton className="h-8 w-1/2 mb-2" /><Skeleton className="h-4 w-2/3" /></CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
 
   const today = weather && Array.isArray(weather) ? weather[0] : null;
   const tomorrow = weather && Array.isArray(weather) ? weather[1] : null;
-
-  const visibleWidgets = widgetConfig.order
-    .filter(id => !widgetConfig.hidden.includes(id))
-    .map(id => WIDGET_DEFS.find(w => w.id === id))
-    .filter(Boolean) as WidgetDef[];
 
   return (
     <>
@@ -976,7 +1013,7 @@ export default function DashboardSummary() {
       />
 
       {/* ── Header ───────────────────────────────────────────── */}
-      <div className="flex items-start justify-between max-w-6xl">
+      <div className="flex items-start justify-between w-full">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Resumen Ejecutivo</h1>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -993,7 +1030,7 @@ export default function DashboardSummary() {
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => setConfigOpen(true)}
-            title="Personalizar widgets"
+            title="Personalizar secciones"
           >
             <Settings2 className="h-4 w-4" />
           </Button>
@@ -1001,19 +1038,20 @@ export default function DashboardSummary() {
       </div>
 
       {/* ── Summary Grid ─────────────────────────────────────── */}
-      <div className="max-w-6xl">
+      <div className="w-full">
         <SummaryGrid
           today={today}
           tomorrow={tomorrow}
           summary={summary}
           dueDates={dueDates}
           dueDatesLoading={dueDatesLoading}
+          hiddenSections={widgetConfig.hidden}
         />
       </div>
 
       {/* ── Módulos Grid ─────────────────────────────────────── */}
-      <div className="max-w-6xl mt-2">
-        <ModulesGrid />
+      <div className="w-full mt-2">
+        <ModulesGrid hiddenSections={widgetConfig.hidden} />
       </div>
     </>
   );
