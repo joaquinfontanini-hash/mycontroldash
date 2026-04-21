@@ -4,7 +4,8 @@ import { logger } from "./logger.js";
 
 const DEFAULT_MODULES = [
   { key: "dashboard", name: "Dashboard", description: "Panel principal", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 0 },
-  { key: "tasks", name: "Tareas", description: "Gestión de tareas", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 1 },
+  { key: "overview", name: "Vista de Módulos", description: "Vista general de acceso rápido a todos los módulos", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 1 },
+  { key: "tasks", name: "Tareas", description: "Gestión de tareas", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 2 },
   { key: "shortcuts", name: "Accesos Directos", description: "Links y accesos rápidos", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 2 },
   { key: "news", name: "Noticias", description: "Monitor de noticias", allowedRoles: ["super_admin", "admin", "editor", "viewer"], orderIndex: 3 },
   { key: "emails", name: "Emails", description: "Bandeja de email", allowedRoles: ["super_admin", "admin", "editor"], orderIndex: 4 },

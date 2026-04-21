@@ -61,7 +61,7 @@ function saveSidebarPinned(pinned: boolean) {
 
 const ALL_NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, moduleKey: "dashboard" },
-  { href: "/dashboard/overview", label: "Vista de Módulos", icon: Gauge, moduleKey: "dashboard" },
+  { href: "/dashboard/overview", label: "Vista de Módulos", icon: Gauge, moduleKey: "overview" },
   { href: "/dashboard/tasks", label: "Tareas", icon: CheckSquare, moduleKey: "tasks" },
   { href: "/dashboard/shortcuts", label: "Accesos Directos", icon: LinkIcon, moduleKey: "shortcuts" },
   { href: "/dashboard/news", label: "Noticias", icon: Newspaper, moduleKey: "news" },

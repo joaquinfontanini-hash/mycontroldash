@@ -145,7 +145,7 @@ const RouteFinance         = () => <ProtectedRoute moduleKey="finance"          
 const RouteGoals           = () => <ProtectedRoute moduleKey="goals"            component={Goals} />;
 const RouteStrategy        = () => <ProtectedRoute moduleKey="strategy"         component={Strategy} />;
 const RouteDecisions       = () => <ProtectedRoute moduleKey="decisions"        component={Decisions} />;
-const RouteModulesOverview = () => <ProtectedRoute moduleKey="dashboard"        component={ModulesOverview} />;
+const RouteModulesOverview = () => <ProtectedRoute moduleKey="overview"         component={ModulesOverview} />;
 const RouteAdmin           = () => <ProtectedRoute moduleKey="admin"            component={Admin} />;
 const RouteSettings        = () => <ProtectedRoute moduleKey="settings"         component={Settings} />;
 const RouteContacts        = () => <ProtectedRoute moduleKey="contacts"         component={Contacts} />;
