@@ -99,11 +99,22 @@ function useVisibleModules() {
   });
 
   if (!modules || !me) return ALL_NAV_ITEMS;
+
+  const isSuperAdmin = me.role === "super_admin";
   const moduleMap = new Map(modules.map(m => [m.key, m]));
+
   return ALL_NAV_ITEMS.filter(item => {
     const mod = moduleMap.get(item.moduleKey);
-    if (!mod) return true;
+    if (!mod) {
+      // Module not in server response:
+      // super_admin sees everything (server returns all modules for them),
+      // so a missing entry means it's a new item not yet seeded → show it.
+      // For other roles the server already filtered it out → hide it.
+      return isSuperAdmin;
+    }
     if (!mod.isActive) return false;
+    // super_admin bypasses the per-role check (they're not in allowedRoles columns)
+    if (isSuperAdmin) return true;
     return mod.allowedRoles.includes(me.role);
   });
 }

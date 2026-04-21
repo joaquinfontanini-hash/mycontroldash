@@ -143,7 +143,9 @@ function ModuleGuard({ moduleKey, children }: { moduleKey: string; children: Rea
           />
         );
       }
-      if (!mod.allowedRoles.includes(me.role)) {
+      // super_admin bypasses per-role restrictions
+      const isSuperAdmin = me.role === "super_admin";
+      if (!isSuperAdmin && !mod.allowedRoles.includes(me.role)) {
         return (
           <AccessDenied
             title="Sin acceso"
