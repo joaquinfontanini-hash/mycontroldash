@@ -1,132 +1,115 @@
-import app from "./app.js";
-import { logger } from "./lib/logger.js";
-import { verifyDatabaseConnection, closeDatabasePool } from "@workspace/db";
-import { reclassifyAllNews } from "./services/news.service.js";
-import { seedTravelLocationsIfNeeded } from "./services/travelSeedService.js";
+import { Router, type IRouter } from "express";
+import { requireModule } from "../middleware/require-auth.js";
 
-// ── Puerto ────────────────────────────────────────────────────────────────────
-// Railway inyecta PORT dinámicamente en cada deploy.
-// No lanzar excepción si PORT no está definida — usar fallback 3000 para dev.
-// El valor de PORT en producción siempre viene de Railway, nunca lo hardcodeamos.
-const rawPort = process.env["PORT"];
-const port = rawPort ? Number(rawPort) : 3000;
+// ── Routers de infraestructura (sin guard de módulo) ──────────────────────────
+import authRouter               from "./auth.js";
+import tasksRouter              from "./tasks.js";
+import shortcutsRouter          from "./shortcuts.js";
+import fiscalRouter             from "./fiscal.js";
+import travelRouter             from "./travel.js";
+import newsRouter               from "./news.js";
+import emailsRouter             from "./emails.js";
+import weatherRouter            from "./weather.js";
+import settingsRouter           from "./settings.js";
+import usersRouter              from "./users.js";
+import dashboardRouter          from "./dashboard.js";
+import syncRouter               from "./sync.js";
+import currencyRouter           from "./currency.js";
+import dueDatesRouter           from "./due-dates.js";
+import externalSourcesRouter    from "./external-sources.js";
+import clientsRouter            from "./clients.js";
+import annualCalendarsRouter    from "./annual-calendars.js";
+import supplierBatchesRouter    from "./supplier-batches.js";
+import modulesRouter            from "./modules.js";
+import securityLogsRouter       from "./security-logs.js";
+import financeRouter            from "./finance.js";
+import goalsRouter              from "./goals.js";
+import userSettingsRouter       from "./user-settings.js";
+import contactsRouter           from "./contacts.js";
+import chatRouter               from "./chat.js";
+import registrationRequestsRouter from "./registration-requests.js";
+import fiscalAdminRouter        from "./fiscal-admin.js";
+import passwordResetRouter      from "./password-reset.js";
+import adminEmailRouter         from "./admin-email.js";
+import notificationsRouter      from "./notifications.js";
+import inAppNotificationsRouter from "./in-app-notifications.js";
+import preferencesRouter        from "./preferences.js";
+import studioRouter             from "./studio.js";
+import quotesRouter             from "./quotes.js";
+import bcraRouter               from "./bcra.js";
 
-if (Number.isNaN(port) || port <= 0 || port > 65535) {
-  logger.error({ rawPort }, "Valor de PORT inválido — abortando");
-  process.exit(1);
-}
+// Nota: GET /health está registrado en app.ts ANTES de este router,
+// antes del rate limiter y de cualquier auth middleware.
+// No necesita un healthRouter separado aquí.
 
-// ── Verificación de conexión a la DB antes de aceptar tráfico ─────────────────
-// Falla rápido si la DB no está disponible, con reintentos y mensaje claro.
-// Esto reemplaza el execSync("drizzle-kit push") del original, que:
-//   1. Bloqueaba el event loop durante el startup
-//   2. Podía causar timeout del healthcheck de Railway
-//   3. Se ejecutaba dos veces (también en el script start del package.json)
-// El schema se aplica UNA sola vez en deploy, desde el script start del package.json.
-// Esta verificación solo confirma conectividad — no modifica la DB.
-try {
-  await verifyDatabaseConnection(3, 2000);
-} catch (err) {
-  logger.error({ err }, "No se pudo conectar a la DB — abortando servidor");
-  process.exit(1);
-}
+const router: IRouter = Router();
 
-// ── Advertencias de configuración ────────────────────────────────────────────
-if (!process.env["APP_URL"]) {
-  logger.warn(
-    "APP_URL no está definida — los links en emails de recuperación de contraseña " +
-      "apuntarán a localhost. Configurá APP_URL en Railway con la URL de Vercel.",
-  );
-}
+// ── Rutas públicas / de infraestructura (sin guard de módulo) ─────────────────
+router.use(authRouter);
+router.use(modulesRouter);
+router.use(registrationRequestsRouter);
+router.use(syncRouter);
+router.use(currencyRouter);
+router.use(bcraRouter);
+router.use(externalSourcesRouter);
+router.use(securityLogsRouter);
+router.use(settingsRouter);
+router.use(usersRouter);
+router.use(userSettingsRouter);
 
-if (!process.env["EMAIL_ENCRYPTION_KEY"]) {
-  logger.warn(
-    "EMAIL_ENCRYPTION_KEY no está definida — se usa SESSION_SECRET como fallback " +
-      "para encriptar credenciales SMTP. Configurá una clave dedicada.",
-  );
-}
+// ── Email, notificaciones, reset de contraseña ────────────────────────────────
+router.use(passwordResetRouter);               // POST /auth/forgot-password, GET+POST /auth/reset-password
+router.use(adminEmailRouter);                  // GET/POST /admin/email-provider/*, GET /admin/email-logs
+router.use(notificationsRouter);               // GET/PATCH /me/notification-preferences
+router.use("/notifications", inAppNotificationsRouter); // GET /notifications, PATCH /:id/read
+router.use("/me/preferences", preferencesRouter);       // GET/PUT /me/preferences/:key
 
-if (!process.env["SERPAPI_KEY"]) {
-  logger.warn(
-    "SERPAPI_KEY no está definida — el módulo de noticias no podrá buscar artículos externos.",
-  );
-}
+// ── Rutas con guard de módulo ─────────────────────────────────────────────────
+// Patrón: requireModule actúa como middleware de prefijo — verifica que el módulo
+// esté activo y que el rol del usuario tenga acceso ANTES de llegar al sub-router.
+// Los sub-routers se montan sin prefijo de path para que sus definiciones internas
+// permanezcan correctas (evita doble-prefijo con Router({ mergeParams: true })).
 
-// ── Levantar servidor ─────────────────────────────────────────────────────────
-const server = app.listen(port, () => {
-  logger.info(
-    { port, env: process.env["NODE_ENV"] ?? "development" },
-    "Servidor escuchando ✓",
-  );
+// Guards de módulo por prefijo de ruta
+router.use("/dashboard",                                   requireModule("dashboard"));
+router.use("/tasks",                                       requireModule("tasks"));
+router.use("/shortcuts",                                   requireModule("shortcuts"));
+router.use("/fiscal",                                      requireModule("fiscal"));
+router.use("/travel",                                      requireModule("travel"));
+router.use("/news",                                        requireModule("news"));
+router.use("/emails",                                      requireModule("emails"));
+router.use("/weather",                                     requireModule("weather"));
+router.use(["/due-dates", "/due-date-categories"],         requireModule("due-dates"));
+router.use(["/tax-homologation", "/alert-logs", "/audit-logs"], requireModule("due-dates"));
+router.use("/clients",                                     requireModule("clients"));
+router.use("/annual-calendars",                            requireModule("tax-calendars"));
+router.use("/supplier-batches",                            requireModule("supplier-batches"));
+router.use("/finance",                                     requireModule("finance"));
+router.use(["/daily-goals", "/strategy-goals"],            requireModule("goals"));
+router.use("/contacts",                                    requireModule("contacts"));
+router.use("/conversations",                               requireModule("chat"));
+router.use("/studio",                                      requireModule("dashboard_studio"));
+router.use("/quotes",                                      requireModule("quotes"));
 
-  // Tareas de fondo — no bloquean el startup ni el healthcheck
-  // Se ejecutan con setImmediate para no retrasar la primera respuesta
-  setImmediate(() => {
-    // Reclasifica artículos existentes que aún no tienen classification_reason.
-    // Solo toca artículos con campo vacío — los ya clasificados se omiten.
-    reclassifyAllNews(false).catch((err: unknown) => {
-      logger.error({ err }, "Reclasificación de noticias fallida (no crítico)");
-    });
+// Sub-routers montados sin prefijo (sus rutas internas ya incluyen el path completo)
+router.use(dashboardRouter);
+router.use(tasksRouter);
+router.use(shortcutsRouter);
+router.use(fiscalRouter);
+router.use(travelRouter);
+router.use(newsRouter);
+router.use(emailsRouter);
+router.use(weatherRouter);
+router.use(dueDatesRouter);
+router.use(clientsRouter);
+router.use(annualCalendarsRouter);
+router.use(supplierBatchesRouter);
+router.use(financeRouter);
+router.use(goalsRouter);
+router.use(contactsRouter);
+router.use(chatRouter);
+router.use(fiscalAdminRouter);
+router.use(studioRouter);
+router.use(quotesRouter);
 
-    // Populate del catálogo de ubicaciones de viajes si está desactualizado.
-    seedTravelLocationsIfNeeded().catch((err: unknown) => {
-      logger.error({ err }, "Seed de travel locations fallido (no crítico)");
-    });
-  });
-});
-
-// ── Manejo de error en listen ──────────────────────────────────────────────────
-server.on("error", (err: NodeJS.ErrnoException) => {
-  if (err.code === "EADDRINUSE") {
-    logger.error({ port }, `Puerto ${port} ya está en uso`);
-  } else {
-    logger.error({ err }, "Error al levantar el servidor");
-  }
-  process.exit(1);
-});
-
-// ── Shutdown graceful ─────────────────────────────────────────────────────────
-// Railway envía SIGTERM antes de detener el contenedor.
-// El timeout de 10s da tiempo a que terminen los requests en vuelo.
-// closeDatabasePool() cierra el pool de pg correctamente sin dejar conexiones colgadas.
-async function gracefulShutdown(signal: string): Promise<void> {
-  logger.info({ signal }, "Señal de shutdown recibida — cerrando servidor");
-
-  server.close(async (err) => {
-    if (err) {
-      logger.error({ err }, "Error al cerrar el servidor HTTP");
-    } else {
-      logger.info("Servidor HTTP cerrado");
-    }
-
-    try {
-      await closeDatabasePool();
-    } catch (dbErr) {
-      logger.error({ err: dbErr }, "Error al cerrar el pool de DB");
-    }
-
-    process.exit(err ? 1 : 0);
-  });
-
-  // Forzar salida después de 10s si los requests no terminaron
-  setTimeout(() => {
-    logger.warn("Shutdown forzado por timeout (10s)");
-    process.exit(1);
-  }, 10_000).unref();
-}
-
-process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
-
-// ── Manejo de rechazos no capturados ──────────────────────────────────────────
-// Previene que un Promise rejection sin .catch() tire abajo el servidor
-process.on("unhandledRejection", (reason) => {
-  logger.error({ reason }, "unhandledRejection — revisar el stack trace");
-  // No se termina el proceso — solo se loguea. Railway lo reiniciará si
-  // el healthcheck empieza a fallar.
-});
-
-process.on("uncaughtException", (err) => {
-  logger.error({ err }, "uncaughtException — terminando proceso");
-  process.exit(1);
-});
+export default router;
