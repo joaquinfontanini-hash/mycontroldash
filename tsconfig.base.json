@@ -1,25 +1,40 @@
 {
   "compilerOptions": {
-    "isolatedModules": true,
-    "lib": ["es2022"],
-    "module": "esnext",
+    // ── Target y módulo ──────────────────────────────────────────────────────
+    "target":           "es2022",
+    "lib":              ["es2022"],
+    "module":           "esnext",
     "moduleResolution": "bundler",
-    "noEmitOnError": true,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": false,
-    "noImplicitReturns": true,
-    "noUnusedLocals": false,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": false,
-    "strictBindCallApply": true,
+
+    // ── Strict mode completo ─────────────────────────────────────────────────
+    // Se activan todos los flags de strict individualmente para máxima
+    // visibilidad sobre qué está habilitado y por qué.
+    "strict":                     true,
+    "noImplicitAny":              true,
+    "noImplicitThis":             true,
+    "strictNullChecks":           true,
+    "strictFunctionTypes":        true,
+    "strictBindCallApply":        true,
     "strictPropertyInitialization": true,
     "useUnknownInCatchVariables": true,
-    "alwaysStrict": true,
-    "skipLibCheck": true,
-    "target": "es2022",
-    "types": [],
-    "customConditions": ["workspace"]
+    "alwaysStrict":               true,
+
+    // ── Calidad adicional ────────────────────────────────────────────────────
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride":         true,
+    "noImplicitReturns":          true,
+    "noUnusedLocals":             true,
+    "noUnusedParameters":         false,
+    "exactOptionalPropertyTypes": false,
+
+    // ── Build ────────────────────────────────────────────────────────────────
+    "isolatedModules":  true,
+    "noEmitOnError":    true,
+    "skipLibCheck":     true,
+    "resolveJsonModule": true,
+
+    // ── Misc ─────────────────────────────────────────────────────────────────
+    "types":             [],
+    "customConditions":  ["workspace"]
   }
 }
