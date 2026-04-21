@@ -693,24 +693,27 @@ function VencimientosWidget({ dueDates, isLoading }: { dueDates: DueDate[]; isLo
 
 // ── Summary Grid ─────────────────────────────────────────────────────────────
 
-const SUMMARY_LS_KEY = "dashboard-summary-layout-v2";
+const SUMMARY_LS_KEY = "dashboard-summary-layout-v3";
 
 const DEFAULT_SUMMARY_LAYOUT: Layout[] = [
-  { i: "weather",      x: 0, y: 0, w: 9, h: 4,  minH: 3, minW: 4 },
-  { i: "emails",       x: 0, y: 4, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "tasks",        x: 3, y: 4, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "travel",       x: 6, y: 4, w: 3, h: 7,  minH: 4, minW: 2 },
-  { i: "vencimientos", x: 9, y: 0, w: 3, h: 11, minH: 6, minW: 2 },
+  { i: "dolar",        x: 0, y: 0,  w: 12, h: 7,  minH: 5, minW: 6 },
+  { i: "bcra",         x: 0, y: 7,  w: 12, h: 7,  minH: 5, minW: 6 },
+  { i: "weather",      x: 0, y: 14, w: 9,  h: 4,  minH: 3, minW: 4 },
+  { i: "vencimientos", x: 9, y: 14, w: 3,  h: 11, minH: 6, minW: 2 },
+  { i: "emails",       x: 0, y: 18, w: 3,  h: 7,  minH: 4, minW: 2 },
+  { i: "tasks",        x: 3, y: 18, w: 3,  h: 7,  minH: 4, minW: 2 },
+  { i: "travel",       x: 6, y: 18, w: 3,  h: 7,  minH: 4, minW: 2 },
 ];
 
-const SUMMARY_KEYS = ["weather", "emails", "tasks", "travel", "vencimientos"];
+const SUMMARY_KEYS = ["dolar", "bcra", "weather", "vencimientos", "emails", "tasks", "travel"];
 
 function loadSummaryLayout(): Layout[] {
   try {
     const raw = localStorage.getItem(SUMMARY_LS_KEY);
     if (!raw) return DEFAULT_SUMMARY_LAYOUT;
     const parsed = JSON.parse(raw) as Layout[];
-    if (!Array.isArray(parsed) || parsed.length !== SUMMARY_KEYS.length || !parsed.every(p => SUMMARY_KEYS.includes(p.i))) {
+    const keySet = new Set(SUMMARY_KEYS);
+    if (!Array.isArray(parsed) || parsed.length !== SUMMARY_KEYS.length || !parsed.every(p => keySet.has(p.i))) {
       return DEFAULT_SUMMARY_LAYOUT;
     }
     return parsed;
@@ -740,6 +743,8 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading, hidd
   }, []);
 
   const panels: Record<string, ReactNode> = {
+    dolar: <DollarWidget />,
+    bcra: <BcraWidget />,
     weather: today ? (
       <Card className="h-full border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-500/5 to-transparent overflow-auto">
         <CardContent className="p-4">
@@ -816,10 +821,6 @@ function SummaryGrid({ today, tomorrow, summary, dueDates, dueDatesLoading, hidd
 
   return (
     <div className="space-y-3">
-      {/* Cotizaciones e indicadores BCRA — altura automática */}
-      {!hiddenSections.includes("dolar") && <DollarWidget />}
-      {!hiddenSections.includes("bcra") && <BcraWidget />}
-
       {/* tiny reset */}
       {visibleSummaryKeys.length > 0 && (
         <div className="flex justify-end">
