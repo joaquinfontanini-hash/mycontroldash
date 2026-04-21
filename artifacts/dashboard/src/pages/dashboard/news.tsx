@@ -811,7 +811,7 @@ export default function NewsPage() {
   };
 
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="space-y-6 w-full">
 
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">

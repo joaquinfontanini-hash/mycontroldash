@@ -139,7 +139,7 @@ export default function ShortcutsPage() {
   const categories = [...new Set(allShortcuts.map(s => s.category).filter(Boolean))];
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Accesos Directos</h1>

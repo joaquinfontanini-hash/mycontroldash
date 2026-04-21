@@ -1427,7 +1427,7 @@ export default function DueDatesPage() {
   // ── RENDER ──
 
   return (
-    <div className="max-w-4xl space-y-0">
+    <div className="space-y-0 w-full">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 pb-5">

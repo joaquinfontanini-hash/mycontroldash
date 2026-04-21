@@ -653,7 +653,7 @@ export function ObjetivosWidget() {
 
 export default function ModulesOverviewPage() {
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 w-full">
       <div>
         <h1 className="text-3xl font-serif font-bold tracking-tight">Vista de Módulos</h1>
         <p className="text-muted-foreground mt-1 text-sm">

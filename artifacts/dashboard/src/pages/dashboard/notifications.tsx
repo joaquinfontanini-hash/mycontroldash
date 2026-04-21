@@ -148,7 +148,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-12">
+    <div className="space-y-6 pb-12 w-full">
       {/* Page header */}
       <div>
         <h1 className="text-2xl font-semibold flex items-center gap-2">

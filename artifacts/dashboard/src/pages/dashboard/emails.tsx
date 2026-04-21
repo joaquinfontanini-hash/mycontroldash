@@ -191,7 +191,7 @@ export default function EmailsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Emails</h1>

@@ -703,7 +703,7 @@ export default function ClientsPage() {
   }, [clients, search, filterStatus, filterGroupId]);
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-serif font-bold tracking-tight">Clientes</h1>

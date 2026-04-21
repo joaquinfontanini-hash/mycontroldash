@@ -161,7 +161,7 @@ export default function StudioPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-6 space-y-6 w-full">
 
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
