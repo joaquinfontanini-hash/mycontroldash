@@ -1,94 +1,132 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool, type PoolConfig } from "pg";
-import * as schema from "./schema/index.js";
+import app from "./app.js";
+import { logger } from "./lib/logger.js";
+import { verifyDatabaseConnection, closeDatabasePool } from "@workspace/db";
+import { reclassifyAllNews } from "./services/news.service.js";
+import { seedTravelLocationsIfNeeded } from "./services/travelSeedService.js";
 
-// ── Validación de DATABASE_URL ─────────────────────────────────────────────────
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error(
-    "[db/index] DATABASE_URL no está definida.\n" +
-      "  • Desarrollo local: copiá .env.example a .env y completá los valores.\n" +
-      "  • Railway: configurá la variable en el panel de Environment Variables.",
+// ── Puerto ────────────────────────────────────────────────────────────────────
+// Railway inyecta PORT dinámicamente en cada deploy.
+// No lanzar excepción si PORT no está definida — usar fallback 3000 para dev.
+// El valor de PORT en producción siempre viene de Railway, nunca lo hardcodeamos.
+const rawPort = process.env["PORT"];
+const port = rawPort ? Number(rawPort) : 3000;
+
+if (Number.isNaN(port) || port <= 0 || port > 65535) {
+  logger.error({ rawPort }, "Valor de PORT inválido — abortando");
+  process.exit(1);
+}
+
+// ── Verificación de conexión a la DB antes de aceptar tráfico ─────────────────
+// Falla rápido si la DB no está disponible, con reintentos y mensaje claro.
+// Esto reemplaza el execSync("drizzle-kit push") del original, que:
+//   1. Bloqueaba el event loop durante el startup
+//   2. Podía causar timeout del healthcheck de Railway
+//   3. Se ejecutaba dos veces (también en el script start del package.json)
+// El schema se aplica UNA sola vez en deploy, desde el script start del package.json.
+// Esta verificación solo confirma conectividad — no modifica la DB.
+try {
+  await verifyDatabaseConnection(3, 2000);
+} catch (err) {
+  logger.error({ err }, "No se pudo conectar a la DB — abortando servidor");
+  process.exit(1);
+}
+
+// ── Advertencias de configuración ────────────────────────────────────────────
+if (!process.env["APP_URL"]) {
+  logger.warn(
+    "APP_URL no está definida — los links en emails de recuperación de contraseña " +
+      "apuntarán a localhost. Configurá APP_URL en Railway con la URL de Vercel.",
   );
 }
 
-// ── Configuración del pool ─────────────────────────────────────────────────────
-// Railway usa conexión directa (puerto 5432) — no el pooler de Supabase (6543).
-// Para Supabase directa, SSL es requerido. El certificado raíz de Supabase
-// se acepta sin verificación de CA para simplificar el deploy.
-const poolConfig: PoolConfig = {
-  connectionString: databaseUrl,
-  // Supabase requiere SSL en conexiones directas
-  ssl: databaseUrl.includes("supabase")
-    ? { rejectUnauthorized: false }
-    : undefined,
-  // Pool sizing para Railway: un servidor pequeño no debería saturar Supabase
-  max: parseInt(process.env.DB_POOL_MAX ?? "10", 10),
-  min: parseInt(process.env.DB_POOL_MIN ?? "2", 10),
-  // Timeout de conexión (ms) — falla rápido si la DB no está disponible
-  connectionTimeoutMillis: parseInt(
-    process.env.DB_CONNECTION_TIMEOUT_MS ?? "5000",
-    10,
-  ),
-  // Timeout de query idle antes de liberar la conexión al pool
-  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT_MS ?? "30000", 10),
-};
+if (!process.env["EMAIL_ENCRYPTION_KEY"]) {
+  logger.warn(
+    "EMAIL_ENCRYPTION_KEY no está definida — se usa SESSION_SECRET como fallback " +
+      "para encriptar credenciales SMTP. Configurá una clave dedicada.",
+  );
+}
 
-// ── Crear pool ─────────────────────────────────────────────────────────────────
-export const pool = new Pool(poolConfig);
+if (!process.env["SERPAPI_KEY"]) {
+  logger.warn(
+    "SERPAPI_KEY no está definida — el módulo de noticias no podrá buscar artículos externos.",
+  );
+}
 
-// ── Manejo de errores en conexiones idle ──────────────────────────────────────
-// Sin este handler, un error en una conexión idle mata el proceso con unhandled rejection
-pool.on("error", (err) => {
-  console.error("[db/pool] Error en conexión idle del pool:", err.message);
-  // No relanzamos — el pool intentará reconectarse automáticamente
+// ── Levantar servidor ─────────────────────────────────────────────────────────
+const server = app.listen(port, () => {
+  logger.info(
+    { port, env: process.env["NODE_ENV"] ?? "development" },
+    "Servidor escuchando ✓",
+  );
+
+  // Tareas de fondo — no bloquean el startup ni el healthcheck
+  // Se ejecutan con setImmediate para no retrasar la primera respuesta
+  setImmediate(() => {
+    // Reclasifica artículos existentes que aún no tienen classification_reason.
+    // Solo toca artículos con campo vacío — los ya clasificados se omiten.
+    reclassifyAllNews(false).catch((err: unknown) => {
+      logger.error({ err }, "Reclasificación de noticias fallida (no crítico)");
+    });
+
+    // Populate del catálogo de ubicaciones de viajes si está desactualizado.
+    seedTravelLocationsIfNeeded().catch((err: unknown) => {
+      logger.error({ err }, "Seed de travel locations fallido (no crítico)");
+    });
+  });
 });
 
-// ── Instancia de Drizzle ───────────────────────────────────────────────────────
-export const db = drizzle(pool, {
-  schema,
-  logger: process.env.NODE_ENV === "development" && process.env.DB_LOG === "true",
-});
-
-// ── Verificación de conectividad al iniciar ───────────────────────────────────
-// Esta función se llama desde el entry point del servidor (index.ts)
-// para fallar rápido en startup si la DB no está disponible.
-export async function verifyDatabaseConnection(
-  retries = 3,
-  delayMs = 2000,
-): Promise<void> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const client = await pool.connect();
-      await client.query("SELECT 1");
-      client.release();
-      console.log("[db] Conexión a la base de datos verificada ✓");
-      return;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (attempt < retries) {
-        console.warn(
-          `[db] Intento ${attempt}/${retries} fallido: ${message}. Reintentando en ${delayMs}ms...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      } else {
-        throw new Error(
-          `[db] No se pudo conectar a la base de datos después de ${retries} intentos.\n` +
-            `  Último error: ${message}\n` +
-            `  Verificá que DATABASE_URL sea correcta y que Supabase esté disponible.`,
-        );
-      }
-    }
+// ── Manejo de error en listen ──────────────────────────────────────────────────
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE") {
+    logger.error({ port }, `Puerto ${port} ya está en uso`);
+  } else {
+    logger.error({ err }, "Error al levantar el servidor");
   }
+  process.exit(1);
+});
+
+// ── Shutdown graceful ─────────────────────────────────────────────────────────
+// Railway envía SIGTERM antes de detener el contenedor.
+// El timeout de 10s da tiempo a que terminen los requests en vuelo.
+// closeDatabasePool() cierra el pool de pg correctamente sin dejar conexiones colgadas.
+async function gracefulShutdown(signal: string): Promise<void> {
+  logger.info({ signal }, "Señal de shutdown recibida — cerrando servidor");
+
+  server.close(async (err) => {
+    if (err) {
+      logger.error({ err }, "Error al cerrar el servidor HTTP");
+    } else {
+      logger.info("Servidor HTTP cerrado");
+    }
+
+    try {
+      await closeDatabasePool();
+    } catch (dbErr) {
+      logger.error({ err: dbErr }, "Error al cerrar el pool de DB");
+    }
+
+    process.exit(err ? 1 : 0);
+  });
+
+  // Forzar salida después de 10s si los requests no terminaron
+  setTimeout(() => {
+    logger.warn("Shutdown forzado por timeout (10s)");
+    process.exit(1);
+  }, 10_000).unref();
 }
 
-// ── Cierre graceful del pool ──────────────────────────────────────────────────
-// Llamar desde el handler de SIGTERM/SIGINT en index.ts del servidor
-export async function closeDatabasePool(): Promise<void> {
-  await pool.end();
-  console.log("[db] Pool de conexiones cerrado.");
-}
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
 
-// Re-exportar schema y tipos útiles
-export * from "./schema/index.js";
-export type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+// ── Manejo de rechazos no capturados ──────────────────────────────────────────
+// Previene que un Promise rejection sin .catch() tire abajo el servidor
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "unhandledRejection — revisar el stack trace");
+  // No se termina el proceso — solo se loguea. Railway lo reiniciará si
+  // el healthcheck empieza a fallar.
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "uncaughtException — terminando proceso");
+  process.exit(1);
+});
