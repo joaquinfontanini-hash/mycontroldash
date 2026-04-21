@@ -2,7 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+// @replit/vite-plugin-runtime-error-modal is only available in the Replit environment
+let runtimeErrorOverlay: (() => import("vite").Plugin) | null = null;
+try {
+  const mod = await import("@replit/vite-plugin-runtime-error-modal");
+  runtimeErrorOverlay = mod.default ?? mod.runtimeErrorOverlay ?? null;
+} catch { /* not available outside Replit — skip */ }
 
 export default defineConfig(async ({ command }) => {
   const isBuild = command === "build";
@@ -45,7 +50,7 @@ export default defineConfig(async ({ command }) => {
 
   return {
     base: basePath,
-    plugins: [react(), tailwindcss(), runtimeErrorOverlay(), ...devPlugins],
+    plugins: [react(), tailwindcss(), ...(runtimeErrorOverlay ? [runtimeErrorOverlay()] : []), ...devPlugins],
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "src"),

@@ -44,6 +44,12 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Environment variables (NEVER commit real values)
+.env
+.env.local
+.env.production
+.env.*.local
+
 # Replit
 .cache/
 .local/
