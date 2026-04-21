@@ -1,4 +1,4 @@
-import { ReactNode, useState, useCallback } from "react";
+import { ReactNode, useState, useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuthContext } from "@/contexts/auth-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,8 +13,17 @@ import {
   Shield, Search, LogOut, Menu, Users, Truck, Crown,
   DollarSign, Sparkles, RefreshCw, Brain, Target, Flag,
   ChevronLeft, ChevronRight, Pin, PinOff, PanelLeftClose, PanelLeft,
-  MessageSquare, Contact, LayoutGrid, Gauge, FileText, Dumbbell,
+  MessageSquare, Contact, LayoutGrid, Gauge, FileText, Dumbbell, GripVertical,
 } from "lucide-react";
+import {
+  DndContext, closestCenter, type DragEndEvent,
+  PointerSensor, KeyboardSensor, useSensor, useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext, sortableKeyboardCoordinates,
+  verticalListSortingStrategy, useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +64,21 @@ function saveSidebarState(state: SidebarState) {
 
 function saveSidebarPinned(pinned: boolean) {
   try { localStorage.setItem("sidebar-pinned", String(pinned)); } catch {}
+}
+
+// ── Nav order persistence ──────────────────────────────────────────────────────
+
+const NAV_ORDER_KEY = "sidebar-nav-order-v1";
+
+function loadNavOrder(): string[] {
+  try {
+    const saved = localStorage.getItem(NAV_ORDER_KEY);
+    return saved ? (JSON.parse(saved) as string[]) : [];
+  } catch { return []; }
+}
+
+function saveNavOrder(order: string[]) {
+  try { localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(order)); } catch {}
 }
 
 // ── Nav items ──────────────────────────────────────────────────────────────────
@@ -117,6 +141,34 @@ function useVisibleModules() {
     if (isSuperAdmin) return true;
     return mod.allowedRoles.includes(me.role);
   });
+}
+
+// ── Nav order hook ─────────────────────────────────────────────────────────────
+
+function useSortableNavOrder(items: typeof ALL_NAV_ITEMS) {
+  const [order, setOrder] = useState<string[]>(loadNavOrder);
+  const sorted = useMemo(() => {
+    if (!order.length) return items;
+    const rankOf = (href: string) => {
+      const i = order.indexOf(href);
+      return i === -1 ? order.length + 1 : i;
+    };
+    return [...items].sort((a, b) => rankOf(a.href) - rankOf(b.href));
+  }, [items, order]);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const hrefs = sorted.map(i => i.href);
+    const oldIndex = hrefs.indexOf(String(active.id));
+    const newIndex = hrefs.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const next = arrayMove(hrefs, oldIndex, newIndex);
+    setOrder(next);
+    saveNavOrder(next);
+  }, [sorted]);
+
+  return { sorted, handleDragEnd };
 }
 
 // ── Unread messages hook ────────────────────────────────────────────────────────
@@ -190,6 +242,42 @@ function NavLink({
   );
 }
 
+// ── SortableNavItem ─────────────────────────────────────────────────────────────
+
+function SortableNavItem({
+  item, location, onNavigate, collapsed, badge,
+}: {
+  item: (typeof ALL_NAV_ITEMS)[number];
+  location: string;
+  onNavigate?: () => void;
+  collapsed?: boolean;
+  badge?: number;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.href });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      className="relative group"
+    >
+      <NavLink
+        href={item.href} label={item.label} icon={item.icon}
+        location={location} onClick={onNavigate} collapsed={collapsed} badge={badge}
+      />
+      {!collapsed && (
+        <span
+          {...listeners}
+          {...attributes}
+          className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-30 hover:!opacity-70 cursor-grab active:cursor-grabbing touch-none select-none"
+          tabIndex={-1}
+        >
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── SidebarContent ─────────────────────────────────────────────────────────────
 
 function SidebarContent({
@@ -204,6 +292,11 @@ function SidebarContent({
   const [location] = useLocation();
   const { data: me } = useCurrentUser();
   const visibleItems = useVisibleModules();
+  const { sorted, handleDragEnd } = useSortableNavOrder(visibleItems);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const canSeeAdmin = isAdmin(me);
   const chatUnread = useUnreadMessages();
 
@@ -226,7 +319,7 @@ function SidebarContent({
         <Separator className="w-8 mb-1" />
 
         <nav className="flex flex-col gap-1 flex-1 overflow-y-auto w-full items-center px-1">
-          {visibleItems.map((item) => (
+          {sorted.map((item) => (
             <NavLink
               key={item.href} {...item} location={location} onClick={onNavigate} collapsed
               badge={item.moduleKey === "chat" ? chatUnread : undefined}
@@ -328,14 +421,18 @@ function SidebarContent({
         <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
           Principal
         </p>
-        <nav className="flex flex-col gap-0.5">
-          {visibleItems.map((item) => (
-            <NavLink
-              key={item.href} {...item} location={location} onClick={onNavigate}
-              badge={item.moduleKey === "chat" ? chatUnread : undefined}
-            />
-          ))}
-        </nav>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={sorted.map(i => i.href)} strategy={verticalListSortingStrategy}>
+            <nav className="flex flex-col gap-0.5">
+              {sorted.map((item) => (
+                <SortableNavItem
+                  key={item.href} item={item} location={location} onNavigate={onNavigate}
+                  badge={item.moduleKey === "chat" ? chatUnread : undefined}
+                />
+              ))}
+            </nav>
+          </SortableContext>
+        </DndContext>
 
         <Separator className="my-3" />
 
